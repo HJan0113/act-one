@@ -8,6 +8,8 @@ import com.hjan.actone.ai.model.ChatRole;
 import com.hjan.actone.ai.model.ChatUsage;
 import com.hjan.actone.common.errorcode.BaseErrorCode;
 import com.hjan.actone.common.exception.RemoteException;
+import com.hjan.actone.infra.ai.error.ModelClientErrorType;
+import com.hjan.actone.infra.ai.error.ModelClientException;
 import com.hjan.actone.infra.ai.support.FakeChatClient;
 import org.junit.jupiter.api.Test;
 
@@ -101,6 +103,25 @@ class DefaultLLMServiceTest {
                 .isInstanceOf(RemoteException.class)
                 .hasMessage("AI 模型调用失败，请稍后重试")
                 .hasCause(clientFailure);
+    }
+
+    @Test
+    void chatMapsModelTimeoutToServiceTimeoutError() {
+        ModelClientException timeout = new ModelClientException(
+                "provider timeout",
+                ModelClientErrorType.TIMEOUT,
+                null
+        );
+        DefaultLLMService service = new DefaultLLMService(
+                new FakeChatClient().failing(timeout)
+        );
+
+        assertThatThrownBy(() -> service.chat("生成摘要"))
+                .isInstanceOf(RemoteException.class)
+                .hasMessage("AI 模型调用超时，请稍后重试")
+                .hasCause(timeout)
+                .extracting("errorCode")
+                .isEqualTo(BaseErrorCode.SERVICE_TIMEOUT_ERROR.code());
     }
 
     @Test
