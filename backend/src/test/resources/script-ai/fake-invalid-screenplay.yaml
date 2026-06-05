@@ -1,0 +1,11 @@
+schema_version: "1.0"
+kind: "screenplay_draft"
+metadata:
+  title: "夜雨孤庙"
+source:
+  type: "novel"
+  chapter_count: 3
+  generation_mode: "ai_pipeline"
+characters: []
+acts: []
+scenes: []
