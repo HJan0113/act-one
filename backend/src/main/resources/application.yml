@@ -4,3 +4,32 @@ server:
 spring:
   application:
     name: act-one-backend
+
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+    url: ${ACT_ONE_DB_URL:jdbc:postgresql://localhost:5432/act_one?client_encoding=UTF8}
+    username: ${ACT_ONE_DB_USERNAME:postgres}
+    password: ${ACT_ONE_DB_PASSWORD:}
+    hikari:
+      connection-timeout: ${ACT_ONE_DB_CONNECTION_TIMEOUT:5000}
+      idle-timeout: ${ACT_ONE_DB_IDLE_TIMEOUT:600000}
+      max-lifetime: ${ACT_ONE_DB_MAX_LIFETIME:1800000}
+      maximum-pool-size: ${ACT_ONE_DB_MAX_POOL_SIZE:10}
+      minimum-idle: ${ACT_ONE_DB_MIN_IDLE:5}
+      pool-name: ActOneHikariPool
+
+  sql:
+    init:
+      mode: never
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  global-config:
+    db-config:
+      id-type: assign_id
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
