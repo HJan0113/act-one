@@ -84,6 +84,7 @@ h1 {
 
 .primary-action,
 .secondary-action,
+.save-action,
 .icon-action {
   display: inline-flex;
   align-items: center;
@@ -104,7 +105,8 @@ h1 {
   box-shadow: 0 8px 0 rgba(36, 31, 26, 0.18);
 }
 
-.secondary-action {
+.secondary-action,
+.save-action {
   border: 1px solid rgba(36, 50, 58, 0.36);
   background: rgba(255, 250, 240, 0.88);
   color: var(--slate);
@@ -113,6 +115,7 @@ h1 {
 
 .primary-action:disabled,
 .secondary-action:disabled,
+.save-action:disabled,
 .icon-action:disabled {
   cursor: not-allowed;
   opacity: 0.62;
@@ -125,7 +128,8 @@ h1 {
   transform: translateY(3px);
 }
 
-.secondary-action:not(:disabled):hover {
+.secondary-action:not(:disabled):hover,
+.save-action:not(:disabled):hover {
   background: var(--slate);
   color: #fffaf0;
   box-shadow: 0 5px 0 rgba(36, 31, 26, 0.11);
@@ -202,10 +206,24 @@ h1 {
   min-width: 0;
 }
 
+.panel-title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .panel-title h2 {
   margin: 0;
   font-size: 17px;
   letter-spacing: 0;
+}
+
+.save-action {
+  min-height: 34px;
+  padding: 0 10px;
+  box-shadow: none;
+  font-size: 12px;
 }
 
 .icon-action {
@@ -244,7 +262,7 @@ textarea {
 }
 
 .yaml-panel pre {
-  height: calc(640px - 58px - 38px - 44px);
+  height: calc(640px - 58px - 38px - 44px - 96px);
 }
 
 .yaml-meta {
@@ -286,6 +304,77 @@ textarea {
 
 .yaml-status {
   border-top-color: rgba(215, 199, 173, 0.74);
+}
+
+.draft-history {
+  min-height: 96px;
+  border-top: 1px solid rgba(215, 199, 173, 0.74);
+  background: rgba(255, 250, 240, 0.7);
+}
+
+.draft-history-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 30px;
+  padding: 0 18px;
+  color: #6b5d4d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.draft-history-title strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.draft-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 18px 12px;
+}
+
+.draft-item {
+  display: grid;
+  min-width: 170px;
+  max-width: 220px;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid rgba(36, 50, 58, 0.18);
+  border-radius: 6px;
+  background: rgba(238, 227, 208, 0.52);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.draft-item[data-active="true"] {
+  border-color: rgba(167, 53, 32, 0.72);
+  background: rgba(167, 53, 32, 0.1);
+}
+
+.draft-item span,
+.draft-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draft-item span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.draft-item small {
+  color: #6b5d4d;
+  font-size: 11px;
+}
+
+.draft-empty {
+  color: #6b5d4d;
+  font-size: 12px;
 }
 
 .status-line span {
@@ -365,6 +454,24 @@ pre {
   }
 
   .yaml-panel pre {
-    height: 318px;
+    height: 260px;
+  }
+
+  .panel-title-actions {
+    gap: 6px;
+  }
+
+  .save-action {
+    padding: 0 8px;
+  }
+
+  .draft-list {
+    flex-direction: column;
+    overflow-x: visible;
+  }
+
+  .draft-item {
+    max-width: none;
+    width: 100%;
   }
 }

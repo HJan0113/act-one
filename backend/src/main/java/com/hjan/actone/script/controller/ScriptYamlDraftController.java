@@ -2,28 +2,56 @@ package com.hjan.actone.script.controller;
 
 import com.hjan.actone.common.convention.Result;
 import com.hjan.actone.common.web.Results;
+import com.hjan.actone.script.model.ScriptDraftDetailResponse;
+import com.hjan.actone.script.model.ScriptDraftListItemResponse;
+import com.hjan.actone.script.model.ScriptDraftSaveRequest;
+import com.hjan.actone.script.model.ScriptDraftSaveResponse;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
+import com.hjan.actone.script.service.ScriptDraftService;
 import com.hjan.actone.script.service.ScriptYamlDraftService;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/script/drafts")
 public class ScriptYamlDraftController {
 
     private final ScriptYamlDraftService scriptYamlDraftService;
+    private final ScriptDraftService scriptDraftService;
 
-    public ScriptYamlDraftController(ScriptYamlDraftService scriptYamlDraftService) {
+    public ScriptYamlDraftController(ScriptYamlDraftService scriptYamlDraftService,
+                                     ScriptDraftService scriptDraftService) {
         this.scriptYamlDraftService = scriptYamlDraftService;
+        this.scriptDraftService = scriptDraftService;
     }
 
     @PostMapping("/yaml/from-text")
     public Result<ScriptYamlGenerateResponse> generateYamlFromText(
             @Valid @RequestBody ScriptYamlGenerateRequest request) {
         return Results.success(scriptYamlDraftService.generateFromText(request));
+    }
+
+    @PostMapping
+    public Result<ScriptDraftSaveResponse> save(@Valid @RequestBody ScriptDraftSaveRequest request) {
+        return Results.success(scriptDraftService.save(request));
+    }
+
+    @GetMapping
+    public Result<List<ScriptDraftListItemResponse>> list(@RequestParam String projectId) {
+        return Results.success(scriptDraftService.listByProjectId(projectId));
+    }
+
+    @GetMapping("/{draftId}")
+    public Result<ScriptDraftDetailResponse> detail(@PathVariable String draftId) {
+        return Results.success(scriptDraftService.detail(draftId));
     }
 }
