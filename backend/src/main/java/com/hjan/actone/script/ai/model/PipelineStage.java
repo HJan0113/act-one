@@ -1,0 +1,12 @@
+package com.hjan.actone.script.ai.model;
+
+public enum PipelineStage {
+    INIT,
+    CHAPTER_SUMMARY,
+    GLOBAL_STORY_EXTRACTION,
+    SCENE_PLANNING,
+    SCRIPT_YAML_GENERATION,
+    YAML_VALIDATION,
+    YAML_REPAIR,
+    COMPLETED
+}

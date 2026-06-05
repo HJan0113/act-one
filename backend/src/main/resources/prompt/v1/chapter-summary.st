@@ -15,7 +15,15 @@
 
 # 输出要求
 1. 只输出一个 JSON 对象，不要输出 Markdown 代码围栏或解释文字。
-2. 必须包含 chapterId、chapterIndex、title、summary、keyEvents、characters、locations、timeExpressions、conflicts、innerStates、sourceEvidence。
+2. 必须匹配 `ChapterSummary` JSON 结构：
+   - chapterId: 字符串
+   - chapterIndex: 数字
+   - title: 字符串
+   - summary: 字符串
+   - keyEvents: 数组，每项包含 eventId、description、evidence
+   - characters、locations、timeExpressions、conflicts: 字符串数组
+   - innerStates: 数组，每项包含 character、description、evidence
+   - sourceEvidence: 非空数组，每项包含 sourceChapterId、chapterIndex、excerpt
 3. keyEvents 按发生顺序列出，不新增原文没有的人物、事件或关系。
 4. sourceEvidence 中每项保留能支持关键事件的短原文摘录。
 5. innerStates 只识别心理、情绪和不可直接拍摄的叙述，暂不进行影视化改写。
