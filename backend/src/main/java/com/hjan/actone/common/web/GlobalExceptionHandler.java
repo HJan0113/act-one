@@ -5,6 +5,7 @@ import cn.dev33.satoken.exception.NotRoleException;
 import com.hjan.actone.common.convention.Result;
 import com.hjan.actone.common.errorcode.BaseErrorCode;
 import com.hjan.actone.common.exception.AbstractException;
+import com.hjan.actone.common.exception.RemoteException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +30,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AbstractException.class)
     public Result<Void> abstractException(HttpServletRequest request, AbstractException ex) {
         log.warn("[{}] {} business error: {}", request.getMethod(), getUrl(request), ex.getErrorMessage(), ex);
+        return Results.failure(ex);
+    }
+
+    @ExceptionHandler(RemoteException.class)
+    public Result<Void> remoteException(HttpServletRequest request, RemoteException ex) {
+        log.warn(
+                "[{}] {} remote error: code={}, message={}",
+                request.getMethod(),
+                getUrl(request),
+                ex.getErrorCode(),
+                ex.getErrorMessage()
+        );
         return Results.failure(ex);
     }
 

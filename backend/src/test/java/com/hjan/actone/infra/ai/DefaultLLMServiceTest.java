@@ -12,12 +12,17 @@ import com.hjan.actone.infra.ai.error.ModelClientErrorType;
 import com.hjan.actone.infra.ai.error.ModelClientException;
 import com.hjan.actone.infra.ai.support.FakeChatClient;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DefaultLLMServiceTest {
@@ -25,7 +30,7 @@ class DefaultLLMServiceTest {
     @Test
     void chatReturnsStandardResponseAndForwardsRequest() {
         FakeChatClient client = new FakeChatClient().responding(new ChatResponse(
-                "{\"summary\":\"完成\"}",
+                "```json\r\n{\"summary\":\"完成\"}\r\n```",
                 "fake-model",
                 "stop",
                 new ChatUsage(20, 8, 28),
@@ -46,7 +51,9 @@ class DefaultLLMServiceTest {
 
         assertThat(response.content()).isEqualTo("{\"summary\":\"完成\"}");
         assertThat(response.model()).isEqualTo("fake-model");
+        assertThat(response.finishReason()).isEqualTo("stop");
         assertThat(response.usage().totalTokens()).isEqualTo(28);
+        assertThat(response.requestId()).isEqualTo("request_1");
         assertThat(client.requests()).containsExactly(request);
         assertThat(client.requests().get(0).timeout()).isEqualTo(Duration.ofSeconds(10));
     }
@@ -68,7 +75,7 @@ class DefaultLLMServiceTest {
     @Test
     void chatRejectsEmptyResponse() {
         DefaultLLMService service = new DefaultLLMService(
-                new FakeChatClient().responding(ChatResponse.text("  "))
+                new FakeChatClient().responding(ChatResponse.text("```json\n  \n```"))
         );
 
         assertThatThrownBy(() -> service.chat("生成摘要"))
@@ -77,19 +84,25 @@ class DefaultLLMServiceTest {
     }
 
     @Test
-    void chatPreservesRemoteTimeoutException() {
+    void chatSanitizesRemoteTimeoutException() {
         RemoteException timeout = new RemoteException(
-                "AI 模型调用超时",
+                "upstream body contains api-key=secret",
                 BaseErrorCode.SERVICE_TIMEOUT_ERROR
         );
         DefaultLLMService service = new DefaultLLMService(
                 new FakeChatClient().failing(timeout)
         );
 
-        assertThatThrownBy(() -> service.chat("生成摘要"))
-                .isSameAs(timeout)
-                .extracting("errorCode")
-                .isEqualTo(BaseErrorCode.SERVICE_TIMEOUT_ERROR.code());
+        RemoteException actual = catchThrowableOfType(
+                () -> service.chat("生成摘要"),
+                RemoteException.class
+        );
+
+        assertThat(actual)
+                .hasMessage("AI 模型调用超时，请稍后重试")
+                .hasCause(timeout);
+        assertThat(actual.getErrorCode()).isEqualTo(BaseErrorCode.SERVICE_TIMEOUT_ERROR.code());
+        assertThat(actual.getErrorMessage()).doesNotContain("api-key", "secret", "upstream body");
     }
 
     @Test
@@ -99,29 +112,42 @@ class DefaultLLMServiceTest {
                 new FakeChatClient().failing(clientFailure)
         );
 
-        assertThatThrownBy(() -> service.chat("生成摘要"))
-                .isInstanceOf(RemoteException.class)
+        RemoteException actual = catchThrowableOfType(
+                () -> service.chat("生成摘要"),
+                RemoteException.class
+        );
+
+        assertThat(actual)
                 .hasMessage("AI 模型调用失败，请稍后重试")
                 .hasCause(clientFailure);
+        assertThat(actual.getErrorMessage()).doesNotContain("fake client failure");
     }
 
-    @Test
-    void chatMapsModelTimeoutToServiceTimeoutError() {
-        ModelClientException timeout = new ModelClientException(
-                "provider timeout",
-                ModelClientErrorType.TIMEOUT,
-                null
+    @ParameterizedTest
+    @MethodSource("modelErrorMappings")
+    void chatMapsModelFailureWithoutExposingProviderDetails(ModelClientErrorType errorType,
+                                                            String expectedMessage,
+                                                            BaseErrorCode expectedErrorCode) {
+        ModelClientException providerFailure = new ModelClientException(
+                "HTTP body contains api-key=secret and source novel",
+                errorType,
+                500
         );
         DefaultLLMService service = new DefaultLLMService(
-                new FakeChatClient().failing(timeout)
+                new FakeChatClient().failing(providerFailure)
         );
 
-        assertThatThrownBy(() -> service.chat("生成摘要"))
-                .isInstanceOf(RemoteException.class)
-                .hasMessage("AI 模型调用超时，请稍后重试")
-                .hasCause(timeout)
-                .extracting("errorCode")
-                .isEqualTo(BaseErrorCode.SERVICE_TIMEOUT_ERROR.code());
+        RemoteException actual = catchThrowableOfType(
+                () -> service.chat("生成摘要"),
+                RemoteException.class
+        );
+
+        assertThat(actual)
+                .hasMessage(expectedMessage)
+                .hasCause(providerFailure);
+        assertThat(actual.getErrorCode()).isEqualTo(expectedErrorCode.code());
+        assertThat(actual.getErrorMessage())
+                .doesNotContain("HTTP body", "api-key", "secret", "source novel");
     }
 
     @Test
@@ -149,5 +175,55 @@ class DefaultLLMServiceTest {
         assertThat(request.messages()).hasSize(1);
         assertThatThrownBy(() -> request.messages().add(ChatMessage.user("不可修改")))
                 .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    private static Stream<Arguments> modelErrorMappings() {
+        return Stream.of(
+                Arguments.of(
+                        ModelClientErrorType.TIMEOUT,
+                        "AI 模型调用超时，请稍后重试",
+                        BaseErrorCode.SERVICE_TIMEOUT_ERROR
+                ),
+                Arguments.of(
+                        ModelClientErrorType.RATE_LIMITED,
+                        "AI 模型请求过于频繁，请稍后重试",
+                        BaseErrorCode.REMOTE_ERROR
+                ),
+                Arguments.of(
+                        ModelClientErrorType.UNAUTHORIZED,
+                        "AI 模型配置不可用，请联系管理员",
+                        BaseErrorCode.REMOTE_ERROR
+                ),
+                Arguments.of(
+                        ModelClientErrorType.CONFIGURATION_ERROR,
+                        "AI 模型配置不可用，请联系管理员",
+                        BaseErrorCode.REMOTE_ERROR
+                ),
+                Arguments.of(
+                        ModelClientErrorType.INVALID_RESPONSE,
+                        "AI 模型返回内容无效，请重试",
+                        BaseErrorCode.REMOTE_ERROR
+                ),
+                Arguments.of(
+                        ModelClientErrorType.NETWORK_ERROR,
+                        "AI 模型服务暂时不可用，请稍后重试",
+                        BaseErrorCode.REMOTE_ERROR
+                ),
+                Arguments.of(
+                        ModelClientErrorType.SERVER_ERROR,
+                        "AI 模型服务暂时不可用，请稍后重试",
+                        BaseErrorCode.REMOTE_ERROR
+                ),
+                Arguments.of(
+                        ModelClientErrorType.PROVIDER_ERROR,
+                        "AI 模型服务暂时不可用，请稍后重试",
+                        BaseErrorCode.REMOTE_ERROR
+                ),
+                Arguments.of(
+                        ModelClientErrorType.CLIENT_ERROR,
+                        "AI 模型请求失败，请稍后重试",
+                        BaseErrorCode.REMOTE_ERROR
+                )
+        );
     }
 }

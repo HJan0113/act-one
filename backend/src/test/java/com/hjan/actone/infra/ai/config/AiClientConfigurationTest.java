@@ -2,6 +2,8 @@ package com.hjan.actone.infra.ai.config;
 
 import com.hjan.actone.ai.service.LLMService;
 import com.hjan.actone.infra.ai.ChatClient;
+import com.hjan.actone.infra.ai.error.ModelClientExceptionMapper;
+import com.hjan.actone.infra.ai.support.LLMResponseCleaner;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.env.YamlPropertySourceLoader;
@@ -42,6 +44,8 @@ class AiClientConfigurationTest {
             assertThat(context).hasSingleBean(AiModelProperties.class);
             assertThat(context).hasSingleBean(ChatClient.class);
             assertThat(context).hasSingleBean(LLMService.class);
+            assertThat(context).hasSingleBean(LLMResponseCleaner.class);
+            assertThat(context).hasSingleBean(ModelClientExceptionMapper.class);
 
             AiModelProperties properties = context.getBean(AiModelProperties.class);
             assertThat(properties.getProviders().get("siliconflow").getUrl())

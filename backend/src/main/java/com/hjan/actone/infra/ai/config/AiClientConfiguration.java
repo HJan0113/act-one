@@ -3,7 +3,9 @@ package com.hjan.actone.infra.ai.config;
 import com.hjan.actone.ai.service.LLMService;
 import com.hjan.actone.infra.ai.ChatClient;
 import com.hjan.actone.infra.ai.DefaultLLMService;
+import com.hjan.actone.infra.ai.error.ModelClientExceptionMapper;
 import com.hjan.actone.infra.ai.springai.SpringAiChatClient;
+import com.hjan.actone.infra.ai.support.LLMResponseCleaner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -20,8 +22,20 @@ public class AiClientConfiguration {
     }
 
     @Bean
+    public LLMResponseCleaner llmResponseCleaner() {
+        return new LLMResponseCleaner();
+    }
+
+    @Bean
+    public ModelClientExceptionMapper modelClientExceptionMapper() {
+        return new ModelClientExceptionMapper();
+    }
+
+    @Bean
     @ConditionalOnProperty(prefix = "ai.spring-ai.chat", name = "enabled", havingValue = "true")
-    public LLMService llmService(ChatClient chatClient) {
-        return new DefaultLLMService(chatClient);
+    public LLMService llmService(ChatClient chatClient,
+                                 LLMResponseCleaner responseCleaner,
+                                 ModelClientExceptionMapper exceptionMapper) {
+        return new DefaultLLMService(chatClient, responseCleaner, exceptionMapper);
     }
 }
