@@ -91,6 +91,52 @@ button {
   box-shadow: var(--shadow-soft);
 }
 
+.auth-shell {
+  display: grid;
+  place-items: center;
+}
+
+.login-frame {
+  display: grid;
+  gap: var(--space-5);
+  width: min(440px, calc(100vw - 32px));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--frame);
+  box-shadow: var(--shadow-soft);
+  padding: var(--space-5);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.login-form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.login-submit {
+  width: 100%;
+}
+
+.auth-message {
+  margin: 0;
+  min-height: 34px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid rgba(178, 76, 66, 0.24);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
 .top-bar {
   display: flex;
   align-items: center;
@@ -159,6 +205,48 @@ h1 {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.user-chip {
+  display: inline-grid;
+  grid-template-columns: 24px minmax(0, auto) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  max-width: 190px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted-strong);
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 800;
+}
+
+.user-chip img,
+.user-chip svg {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+
+.user-chip span,
+.user-chip small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-chip small {
+  min-height: 18px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 10px;
+  line-height: 1.2;
+  text-transform: uppercase;
 }
 
 .workbench-grid {
@@ -367,6 +455,11 @@ h1 {
 .yaml-editor:focus {
   border-color: rgba(39, 106, 95, 0.76);
   box-shadow: 0 0 0 3px rgba(39, 106, 95, 0.13);
+}
+
+.field-control input:disabled {
+  cursor: not-allowed;
+  opacity: 0.66;
 }
 
 .novel-editor,
@@ -1094,6 +1187,12 @@ h1 {
   .top-bar__actions {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .user-chip {
+    width: 100%;
+    max-width: none;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
   }
 
   .action-button {

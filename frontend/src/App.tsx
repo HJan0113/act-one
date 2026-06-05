@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { Loader2, Play, Save, Wand2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
+import { Loader2, LogIn, LogOut, Play, Save, UserCircle, Wand2 } from "lucide-react";
 
 import { ActionButton } from "./components/ActionButton";
 import { StatusBadge, type StatusTone } from "./components/StatusBadge";
@@ -80,8 +81,26 @@ type ScriptDraftDetail = ScriptDraftListItem & {
   yaml: string;
 };
 
+type AuthSession = {
+  avatar: string;
+  role: string;
+  token: string;
+  userId: string;
+  username: string;
+};
+
+type CurrentUserData = {
+  avatar: string;
+  role: string;
+  userId: string;
+  username: string;
+};
+
 const initialChapterMessage = "输入至少 3 个章节后，先解析章节，再进入 AI 生成。";
 const initialYamlMessage = "生成后将在这里展示可编辑 YAML 初稿。";
+const authStorageKey = "act-one-auth";
+const defaultLoginUsername = "admin";
+const defaultLoginPassword = "admin";
 const chapterHeadingPattern = /^第\s*([0-9一二三四五六七八九十百千万两〇零]+)\s*[章节回集部卷幕].*$/gm;
 
 async function readApiData<T>(response: Response, fallbackMessage: string): Promise<T> {
@@ -95,7 +114,54 @@ async function readApiData<T>(response: Response, fallbackMessage: string): Prom
   return result.data;
 }
 
+function readStoredAuth(): AuthSession | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const raw = window.localStorage.getItem(authStorageKey);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<AuthSession>;
+    if (parsed.token && parsed.userId && parsed.username && parsed.role) {
+      return {
+        avatar: parsed.avatar || "",
+        role: parsed.role,
+        token: parsed.token,
+        userId: parsed.userId,
+        username: parsed.username
+      };
+    }
+  } catch {
+    window.localStorage.removeItem(authStorageKey);
+  }
+  return null;
+}
+
+function writeStoredAuth(session: AuthSession) {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(authStorageKey, JSON.stringify(session));
+  }
+}
+
+function removeStoredAuth() {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(authStorageKey);
+  }
+}
+
+function isAuthExpiredError(error: unknown) {
+  return error instanceof Error && (error.message.includes("未登录") || error.message.includes("登录已过期"));
+}
+
 function App() {
+  const [authSession, setAuthSession] = useState<AuthSession | null>(() => readStoredAuth());
+  const [authChecking, setAuthChecking] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [loginUsername, setLoginUsername] = useState(defaultLoginUsername);
+  const [loginPassword, setLoginPassword] = useState(defaultLoginPassword);
+  const [loginLoading, setLoginLoading] = useState(false);
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [logline, setLogline] = useState("");
@@ -152,6 +218,115 @@ function App() {
     yamlLoading
   ]);
 
+  useEffect(() => {
+    const token = authSession?.token;
+    if (!token) {
+      setAuthChecking(false);
+      return;
+    }
+    const activeToken = token;
+
+    let ignored = false;
+    async function refreshCurrentUser() {
+      setAuthChecking(true);
+      try {
+        const response = await fetch("/api/user/me", {
+          headers: { Authorization: activeToken }
+        });
+        const data = await readApiData<CurrentUserData>(response, "登录状态校验失败");
+        if (ignored) {
+          return;
+        }
+        const nextSession = { ...data, token: activeToken };
+        setAuthSession(nextSession);
+        writeStoredAuth(nextSession);
+        setAuthError("");
+      } catch (error) {
+        if (!ignored) {
+          clearAuthSession(error instanceof Error ? error.message : "登录状态已过期，请重新登录。");
+        }
+      } finally {
+        if (!ignored) {
+          setAuthChecking(false);
+        }
+      }
+    }
+
+    refreshCurrentUser();
+    return () => {
+      ignored = true;
+    };
+  }, [authSession?.token]);
+
+  function saveAuthSession(session: AuthSession) {
+    setAuthSession(session);
+    writeStoredAuth(session);
+  }
+
+  function clearAuthSession(message = "") {
+    setAuthSession(null);
+    removeStoredAuth();
+    setAuthError(message);
+    setLoginUsername(defaultLoginUsername);
+    setLoginPassword(defaultLoginPassword);
+  }
+
+  async function requestApi<T>(url: string, init: RequestInit | undefined, fallbackMessage: string): Promise<T> {
+    const headers = new Headers(init?.headers);
+    if (authSession?.token) {
+      headers.set("Authorization", authSession.token);
+    }
+    try {
+      const response = await fetch(url, { ...init, headers });
+      return await readApiData<T>(response, fallbackMessage);
+    } catch (error) {
+      if (isAuthExpiredError(error)) {
+        clearAuthSession("登录状态已过期，请重新登录。");
+      }
+      throw error;
+    }
+  }
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const username = loginUsername.trim();
+    const password = loginPassword.trim();
+    if (!username || !password) {
+      setAuthError("用户名或密码不能为空。");
+      return;
+    }
+    setLoginLoading(true);
+    setAuthError("");
+    try {
+      const response = await fetch("/api/auth/login", {
+        body: JSON.stringify({ password, username }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST"
+      });
+      const data = await readApiData<AuthSession>(response, "登录失败");
+      saveAuthSession(data);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "登录失败。");
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
+  async function logout() {
+    const token = authSession?.token;
+    if (token) {
+      try {
+        await fetch("/api/auth/logout", {
+          headers: { Authorization: token },
+          method: "POST"
+        });
+      } catch {
+        // 本地清理优先，远端会话失败不阻塞退出。
+      }
+    }
+    clearAuthSession("");
+  }
+
   function handleNovelTextChange(value: string) {
     setNovelText(value);
     setProjectId("");
@@ -194,15 +369,11 @@ function App() {
     if (!canPreview) return;
     setPreviewLoading(true);
     try {
-      const response = await fetch("/api/novels/chapters/preview", {
+      const data = await requestApi<ChapterPreviewData>("/api/novels/chapters/preview", {
         body: JSON.stringify({ text: novelText }),
         headers: { "Content-Type": "application/json" },
         method: "POST"
-      });
-      if (!response.ok) {
-        throw new Error(`章节解析失败：${response.status}`);
-      }
-      const data = await readApiData<ChapterPreviewData>(response, "章节解析失败");
+      }, "章节解析失败");
       setIsValid(data.valid);
       setChapterCount(data.chapterCount);
       setMessage(data.message);
@@ -220,7 +391,7 @@ function App() {
     setValidationStatus("generating");
     setYamlMessage("正在生成 YAML 初稿...");
     try {
-      const response = await fetch("/api/script/drafts/yaml/from-text", {
+      const data = await requestApi<ScriptYamlData>("/api/script/drafts/yaml/from-text", {
         body: JSON.stringify({
           author,
           logline,
@@ -229,11 +400,7 @@ function App() {
         }),
         headers: { "Content-Type": "application/json" },
         method: "POST"
-      });
-      if (!response.ok) {
-        throw new Error(`YAML 生成失败：${response.status}`);
-      }
-      const data = await readApiData<ScriptYamlData>(response, "YAML 生成失败");
+      }, "YAML 生成失败");
       setYamlDraft(data.yaml);
       setSchemaVersion(data.schemaVersion);
       setGeneratedTitle(data.title);
@@ -265,7 +432,7 @@ function App() {
     if (projectId) {
       return projectId;
     }
-    const response = await fetch("/api/script/projects/from-text", {
+    const data = await requestApi<ScriptProjectData>("/api/script/projects/from-text", {
       body: JSON.stringify({
         description: logline,
         text: novelText,
@@ -273,8 +440,7 @@ function App() {
       }),
       headers: { "Content-Type": "application/json" },
       method: "POST"
-    });
-    const data = await readApiData<ScriptProjectData>(response, "项目创建失败");
+    }, "项目创建失败");
     setProjectId(data.projectId);
     setGeneratedTitle((current) => current || data.title);
     setChapterCount(data.chapterCount);
@@ -285,8 +451,11 @@ function App() {
     if (!nextProjectId) return;
     setDraftLoading(true);
     try {
-      const response = await fetch(`/api/script/drafts?projectId=${encodeURIComponent(nextProjectId)}`);
-      const data = await readApiData<ScriptDraftListItem[]>(response, "草稿列表加载失败");
+      const data = await requestApi<ScriptDraftListItem[]>(
+        `/api/script/drafts?projectId=${encodeURIComponent(nextProjectId)}`,
+        undefined,
+        "草稿列表加载失败"
+      );
       setDrafts(data);
     } catch (error) {
       setYamlMessage(error instanceof Error ? error.message : "草稿列表加载失败。");
@@ -301,7 +470,7 @@ function App() {
     setYamlMessage("正在保存 YAML 草稿...");
     try {
       const activeProjectId = await ensureProject();
-      const response = await fetch("/api/script/drafts", {
+      const data = await requestApi<ScriptDraftSaveData>("/api/script/drafts", {
         body: JSON.stringify({
           projectId: activeProjectId,
           schemaVersion: schemaVersion || "1.0",
@@ -310,8 +479,7 @@ function App() {
         }),
         headers: { "Content-Type": "application/json" },
         method: "POST"
-      });
-      const data = await readApiData<ScriptDraftSaveData>(response, "草稿保存失败");
+      }, "草稿保存失败");
       setDraftId(data.draftId);
       setProjectId(data.projectId);
       setGeneratedTitle(data.title);
@@ -330,8 +498,11 @@ function App() {
     if (!nextDraftId) return;
     setDraftLoading(true);
     try {
-      const response = await fetch(`/api/script/drafts/${encodeURIComponent(nextDraftId)}`);
-      const data = await readApiData<ScriptDraftDetail>(response, "草稿加载失败");
+      const data = await requestApi<ScriptDraftDetail>(
+        `/api/script/drafts/${encodeURIComponent(nextDraftId)}`,
+        undefined,
+        "草稿加载失败"
+      );
       setYamlDraft(data.yaml);
       setDraftId(data.draftId);
       setProjectId(data.projectId);
@@ -344,6 +515,21 @@ function App() {
     } finally {
       setDraftLoading(false);
     }
+  }
+
+  if (!authSession) {
+    return (
+      <LoginGate
+        authChecking={authChecking}
+        error={authError}
+        loading={loginLoading}
+        onPasswordChange={setLoginPassword}
+        onSubmit={handleLogin}
+        onUsernameChange={setLoginUsername}
+        password={loginPassword}
+        username={loginUsername}
+      />
+    );
   }
 
   return (
@@ -417,9 +603,17 @@ function App() {
               >
                 保存草稿
               </ActionButton>
+              <span className="user-chip" title={authSession.username}>
+                {authSession.avatar ? <img alt="" src={authSession.avatar} /> : <UserCircle aria-hidden="true" size={16} />}
+                <span>{authSession.username}</span>
+                <small>{authSession.role}</small>
+              </span>
+              <ActionButton icon={<LogOut aria-hidden="true" size={16} />} onClick={logout} variant="ghost">
+                退出
+              </ActionButton>
             </>
           }
-          status={<StatusBadge label={topBarStatus.label} tone={topBarStatus.tone} />}
+          status={<StatusBadge label={authChecking ? "校验登录" : topBarStatus.label} tone={authChecking ? "active" : topBarStatus.tone} />}
         />
       }
     >
@@ -440,6 +634,79 @@ function App() {
         title={title}
       />
     </AppShell>
+  );
+}
+
+type LoginGateProps = {
+  authChecking: boolean;
+  error: string;
+  loading: boolean;
+  onPasswordChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onUsernameChange: (value: string) => void;
+  password: string;
+  username: string;
+};
+
+function LoginGate({
+  authChecking,
+  error,
+  loading,
+  onPasswordChange,
+  onSubmit,
+  onUsernameChange,
+  password,
+  username
+}: LoginGateProps) {
+  return (
+    <main className="app-shell auth-shell">
+      <section className="login-frame" aria-labelledby="login-title">
+        <div className="login-brand">
+          <span className="product-mark" aria-hidden="true">
+            <Wand2 size={18} />
+          </span>
+          <div>
+            <p className="top-bar__eyebrow">Act One</p>
+            <h1 id="login-title">AI 小说转剧本工作台</h1>
+          </div>
+        </div>
+        <form className="login-form" onSubmit={onSubmit}>
+          <label className="field-control">
+            <span>账号</span>
+            <input
+              autoComplete="username"
+              disabled={loading || authChecking}
+              maxLength={64}
+              onChange={(event) => onUsernameChange(event.target.value)}
+              placeholder="admin"
+              value={username}
+            />
+          </label>
+          <label className="field-control">
+            <span>密码</span>
+            <input
+              autoComplete="current-password"
+              disabled={loading || authChecking}
+              maxLength={128}
+              onChange={(event) => onPasswordChange(event.target.value)}
+              placeholder={defaultLoginPassword}
+              type="password"
+              value={password}
+            />
+          </label>
+          {error ? <p className="auth-message">{error}</p> : null}
+          <ActionButton
+            className="login-submit"
+            disabled={loading || authChecking}
+            icon={loading || authChecking ? <Loader2 aria-hidden="true" className="spin" size={16} /> : <LogIn aria-hidden="true" size={16} />}
+            type="submit"
+            variant="primary"
+          >
+            {authChecking ? "校验中" : "登录"}
+          </ActionButton>
+        </form>
+      </section>
+    </main>
   );
 }
 
