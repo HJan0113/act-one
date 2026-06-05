@@ -1,15 +1,20 @@
 import { useMemo, useState } from "react";
+import { Loader2, Play, Save, Wand2 } from "lucide-react";
+
+import { ActionButton } from "./components/ActionButton";
+import { StatusBadge, type StatusTone } from "./components/StatusBadge";
 import {
-  CheckCircle2,
-  ClipboardCopy,
-  FileText,
-  Loader2,
-  Play,
-  RefreshCcw,
-  Save,
-  ScrollText,
-  Wand2
-} from "lucide-react";
+  AppShell,
+  ChapterList,
+  ConversionProgress,
+  InputPanel,
+  ScriptPreviewPanel,
+  Sidebar,
+  TopBar,
+  type ChapterOutline,
+  type ProgressStep,
+  type ValidationCheck
+} from "./components/workspace";
 
 const placeholderYaml = `schema_version: "1.0"
 kind: "screenplay_draft"
@@ -32,48 +37,52 @@ scenes: []`;
 
 type ApiResult<T> = {
   code: string;
-  message?: string;
   data?: T;
+  message?: string;
 };
 
 type ChapterPreviewData = {
-  valid: boolean;
   chapterCount: number;
   message: string;
+  valid: boolean;
 };
 
 type ScriptYamlData = {
+  chapterCount: number;
   schemaVersion: string;
   title: string;
-  chapterCount: number;
   yaml: string;
 };
 
 type ScriptProjectData = {
+  chapterCount: number;
   projectId: string;
   title: string;
-  chapterCount: number;
 };
 
 type ScriptDraftSaveData = {
   draftId: string;
   projectId: string;
-  title: string;
   schemaVersion: string;
+  title: string;
   validationStatus: string;
 };
 
 type ScriptDraftListItem = {
   draftId: string;
   projectId: string;
-  title: string;
   schemaVersion: string;
+  title: string;
   validationStatus: string;
 };
 
 type ScriptDraftDetail = ScriptDraftListItem & {
   yaml: string;
 };
+
+const initialChapterMessage = "输入至少 3 个章节后，先解析章节，再进入 AI 生成。";
+const initialYamlMessage = "生成后将在这里展示可编辑 YAML 初稿。";
+const chapterHeadingPattern = /^第\s*([0-9一二三四五六七八九十百千万两〇零]+)\s*[章节回集部卷幕].*$/gm;
 
 async function readApiData<T>(response: Response, fallbackMessage: string): Promise<T> {
   if (!response.ok) {
@@ -90,11 +99,9 @@ function App() {
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [logline, setLogline] = useState("");
-  const [novelText, setNovelText] = useState(
-    "第 1 章\n\n在这里粘贴小说正文...\n\n第 2 章\n\n...\n\n第 3 章\n\n..."
-  );
-  const [message, setMessage] = useState("输入至少 3 个章节后，先解析章节，再进入 AI 生成。");
-  const [yamlMessage, setYamlMessage] = useState("生成后将在这里展示可编辑 YAML 初稿。");
+  const [novelText, setNovelText] = useState("");
+  const [message, setMessage] = useState(initialChapterMessage);
+  const [yamlMessage, setYamlMessage] = useState(initialYamlMessage);
   const [chapterCount, setChapterCount] = useState(0);
   const [schemaVersion, setSchemaVersion] = useState("");
   const [generatedTitle, setGeneratedTitle] = useState("");
@@ -107,18 +114,80 @@ function App() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
   const [yamlDraft, setYamlDraft] = useState("");
+  const [activeChapterIndex, setActiveChapterIndex] = useState(1);
+  const [validationStatus, setValidationStatus] = useState("pending");
 
   const canPreview = useMemo(() => novelText.trim().length > 0 && !previewLoading, [novelText, previewLoading]);
   const canGenerate = useMemo(() => novelText.trim().length > 0 && !yamlLoading, [novelText, yamlLoading]);
   const canSave = useMemo(() => yamlDraft.trim().length > 0 && !saveLoading, [yamlDraft, saveLoading]);
   const canRefreshDrafts = useMemo(() => projectId.length > 0 && !draftLoading, [projectId, draftLoading]);
-  const yamlPreview = yamlDraft || placeholderYaml;
+  const chapterOutline = useMemo(() => parseChapterOutline(novelText), [novelText]);
+  const selectedChapter = useMemo(
+    () => chapterOutline.find((chapter) => chapter.index === activeChapterIndex) || chapterOutline[0],
+    [activeChapterIndex, chapterOutline]
+  );
+  const characterCount = useMemo(() => novelText.trim().length, [novelText]);
+  const visibleChapterCount = chapterCount || chapterOutline.length;
+  const schemaChecks = useMemo(() => createSchemaChecks(yamlDraft), [yamlDraft]);
+  const workflowSteps = useMemo(
+    () =>
+      createWorkflowSteps({
+        characterCount,
+        draftId,
+        isValid,
+        message,
+        previewLoading,
+        saveLoading,
+        yamlDraft,
+        yamlLoading,
+        yamlMessage
+      }),
+    [characterCount, draftId, isValid, message, previewLoading, saveLoading, yamlDraft, yamlLoading, yamlMessage]
+  );
+  const topBarStatus = useMemo(() => getTopBarStatus({ isValid, novelText, previewLoading, yamlDraft, yamlLoading }), [
+    isValid,
+    novelText,
+    previewLoading,
+    yamlDraft,
+    yamlLoading
+  ]);
 
   function handleNovelTextChange(value: string) {
     setNovelText(value);
     setProjectId("");
     setDraftId("");
     setDrafts([]);
+    setActiveChapterIndex(1);
+    if (value.trim()) {
+      setIsValid(false);
+      setChapterCount(0);
+      setMessage("文本已更新，请重新解析章节。");
+    } else {
+      setIsValid(false);
+      setChapterCount(0);
+      setMessage(initialChapterMessage);
+    }
+  }
+
+  function handleYamlDraftChange(value: string) {
+    setYamlDraft(value);
+    setDraftId("");
+    setValidationStatus(value.trim() ? "edited" : "pending");
+    setYamlMessage(value.trim() ? "YAML 已进入可编辑状态，保存后会生成新的草稿记录。" : initialYamlMessage);
+  }
+
+  async function importNovelFile(file: File) {
+    try {
+      const text = await file.text();
+      handleNovelTextChange(text);
+      if (!title.trim()) {
+        setTitle(file.name.replace(/\.(txt|md|markdown)$/i, ""));
+      }
+      setMessage(`已导入「${file.name}」，请解析章节。`);
+    } catch {
+      setIsValid(false);
+      setMessage("文件读取失败，请确认文件是可访问的纯文本或 Markdown。");
+    }
   }
 
   async function previewChapters() {
@@ -126,9 +195,9 @@ function App() {
     setPreviewLoading(true);
     try {
       const response = await fetch("/api/novels/chapters/preview", {
-        method: "POST",
+        body: JSON.stringify({ text: novelText }),
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: novelText })
+        method: "POST"
       });
       if (!response.ok) {
         throw new Error(`章节解析失败：${response.status}`);
@@ -148,17 +217,18 @@ function App() {
   async function generateYaml() {
     if (!canGenerate) return;
     setYamlLoading(true);
+    setValidationStatus("generating");
     setYamlMessage("正在生成 YAML 初稿...");
     try {
       const response = await fetch("/api/script/drafts/yaml/from-text", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title,
           author,
           logline,
-          text: novelText
-        })
+          text: novelText,
+          title
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST"
       });
       if (!response.ok) {
         throw new Error(`YAML 生成失败：${response.status}`);
@@ -172,7 +242,9 @@ function App() {
       setIsValid(true);
       setMessage(`已识别 ${data.chapterCount} 个章节。`);
       setYamlMessage("YAML 初稿生成成功，可继续复制或编辑。");
+      setValidationStatus("generated");
     } catch (error) {
+      setValidationStatus("error");
       setYamlMessage(error instanceof Error ? error.message : "YAML 生成失败。");
     } finally {
       setYamlLoading(false);
@@ -194,13 +266,13 @@ function App() {
       return projectId;
     }
     const response = await fetch("/api/script/projects/from-text", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        title: generatedTitle || title,
         description: logline,
-        text: novelText
-      })
+        text: novelText,
+        title: generatedTitle || title
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST"
     });
     const data = await readApiData<ScriptProjectData>(response, "项目创建失败");
     setProjectId(data.projectId);
@@ -230,20 +302,21 @@ function App() {
     try {
       const activeProjectId = await ensureProject();
       const response = await fetch("/api/script/drafts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId: activeProjectId,
-          title: generatedTitle || title || "未命名剧本",
           schemaVersion: schemaVersion || "1.0",
+          title: generatedTitle || title || "未命名剧本",
           yaml: yamlDraft
-        })
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST"
       });
       const data = await readApiData<ScriptDraftSaveData>(response, "草稿保存失败");
       setDraftId(data.draftId);
       setProjectId(data.projectId);
       setGeneratedTitle(data.title);
       setSchemaVersion(data.schemaVersion);
+      setValidationStatus(data.validationStatus);
       setYamlMessage(`草稿已保存，状态：${data.validationStatus}。`);
       await loadDrafts(data.projectId);
     } catch (error) {
@@ -264,6 +337,7 @@ function App() {
       setProjectId(data.projectId);
       setGeneratedTitle(data.title);
       setSchemaVersion(data.schemaVersion);
+      setValidationStatus(data.validationStatus);
       setYamlMessage(`已加载草稿，状态：${data.validationStatus}。`);
     } catch (error) {
       setYamlMessage(error instanceof Error ? error.message : "草稿加载失败。");
@@ -273,148 +347,237 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
-      <section className="workspace">
-        <header className="masthead">
-          <div>
-            <p className="eyebrow">Act One</p>
-            <h1>AI 小说转剧本工作台</h1>
-          </div>
-          <div className="masthead-actions">
-            <button className="secondary-action" type="button" onClick={previewChapters} disabled={!canPreview}>
-              {previewLoading ? (
-                <Loader2 aria-hidden="true" className="spin" size={18} />
-              ) : (
-                <Play aria-hidden="true" size={18} />
-              )}
-              解析章节
-            </button>
-            <button className="primary-action" type="button" onClick={generateYaml} disabled={!canGenerate}>
-              {yamlLoading ? (
-                <Loader2 aria-hidden="true" className="spin" size={18} />
-              ) : (
-                <Wand2 aria-hidden="true" size={18} />
-              )}
-              生成 YAML
-            </button>
-          </div>
-        </header>
-
-        <section className="metadata-row" aria-label="剧本基础信息">
-          <label className="meta-field">
-            <span>剧本标题</span>
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="未填写时使用第一章标题"
-              maxLength={128}
-            />
-          </label>
-          <label className="meta-field compact">
-            <span>作者</span>
-            <input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder="可选" maxLength={64} />
-          </label>
-          <label className="meta-field wide">
-            <span>一句话梗概</span>
-            <input
-              value={logline}
-              onChange={(event) => setLogline(event.target.value)}
-              placeholder="主角目标、冲突和转变"
-              maxLength={512}
-            />
-          </label>
-        </section>
-
-        <div className="editor-grid">
-          <section className="panel input-panel" aria-labelledby="novel-input-title">
-            <div className="panel-title">
-              <FileText aria-hidden="true" size={20} />
-              <h2 id="novel-input-title">小说章节</h2>
-            </div>
-            <textarea
-              aria-label="小说章节输入"
-              value={novelText}
-              onChange={(event) => handleNovelTextChange(event.target.value)}
-              spellCheck={false}
-            />
-            <div className="status-line" data-valid={isValid}>
-              <CheckCircle2 aria-hidden="true" size={16} />
-              <span>{message}</span>
-              {chapterCount > 0 ? <strong>{chapterCount} 章</strong> : null}
-            </div>
-          </section>
-
-          <section className="panel yaml-panel" aria-labelledby="yaml-preview-title">
-            <div className="panel-title">
-              <div className="panel-title-main">
-                <ScrollText aria-hidden="true" size={20} />
-                <h2 id="yaml-preview-title">剧本 YAML</h2>
-              </div>
-              <div className="panel-title-actions">
-                <button className="save-action" type="button" onClick={saveDraft} disabled={!canSave}>
-                  {saveLoading ? (
-                    <Loader2 aria-hidden="true" className="spin" size={16} />
-                  ) : (
-                    <Save aria-hidden="true" size={16} />
-                  )}
-                  保存
-                </button>
-                <button
-                  className="icon-action"
-                  type="button"
-                  onClick={() => loadDrafts()}
-                  disabled={!canRefreshDrafts}
-                  aria-label="刷新草稿列表"
-                >
-                  {draftLoading ? (
-                    <Loader2 aria-hidden="true" className="spin" size={17} />
-                  ) : (
-                    <RefreshCcw aria-hidden="true" size={17} />
-                  )}
-                </button>
-                <button className="icon-action" type="button" onClick={copyYaml} disabled={!yamlDraft} aria-label="复制 YAML">
-                  <ClipboardCopy aria-hidden="true" size={17} />
-                </button>
-              </div>
-            </div>
-            <div className="yaml-meta">
-              <span>{schemaVersion ? `Schema ${schemaVersion}` : "Schema 1.0"}</span>
-              <span>{draftId ? `Draft ${draftId}` : generatedTitle || "待生成"}</span>
-            </div>
-            <pre>{yamlPreview}</pre>
-            <div className="status-line yaml-status" data-valid={Boolean(yamlDraft)}>
-              <CheckCircle2 aria-hidden="true" size={16} />
-              <span>{yamlMessage}</span>
-            </div>
-            <div className="draft-history" aria-label="已保存草稿">
-              <div className="draft-history-title">
-                <span>保存记录</span>
-                {projectId ? <strong>{drafts.length} 条</strong> : null}
-              </div>
-              <div className="draft-list">
-                {drafts.length > 0 ? (
-                  drafts.map((draft) => (
-                    <button
-                      className="draft-item"
-                      type="button"
-                      key={draft.draftId}
-                      data-active={draft.draftId === draftId}
-                      onClick={() => loadDraftDetail(draft.draftId)}
-                    >
-                      <span>{draft.title}</span>
-                      <small>{draft.schemaVersion} / {draft.validationStatus}</small>
-                    </button>
-                  ))
-                ) : (
-                  <span className="draft-empty">保存后可在此重新加载草稿。</span>
-                )}
-              </div>
-            </div>
-          </section>
-        </div>
-      </section>
-    </main>
+    <AppShell
+      sidebar={
+        <Sidebar
+          author={author}
+          chapterCount={visibleChapterCount}
+          isValid={isValid}
+          projectId={projectId}
+          title={generatedTitle || title}
+        >
+          <ChapterList
+            activeChapterIndex={selectedChapter?.index || activeChapterIndex}
+            chapterCount={visibleChapterCount}
+            chapters={chapterOutline}
+            onSelectChapter={setActiveChapterIndex}
+          />
+          <ConversionProgress steps={workflowSteps} />
+        </Sidebar>
+      }
+      scriptPanel={
+        <ScriptPreviewPanel
+          activeDraftId={draftId}
+          canRefreshDrafts={canRefreshDrafts}
+          canSave={canSave}
+          draftId={draftId}
+          draftLoading={draftLoading}
+          drafts={drafts}
+          generatedTitle={generatedTitle}
+          onCopyYaml={copyYaml}
+          onLoadDraft={loadDraftDetail}
+          onRefreshDrafts={() => loadDrafts()}
+          onSaveDraft={saveDraft}
+          onYamlChange={handleYamlDraftChange}
+          projectId={projectId}
+          saveLoading={saveLoading}
+          schemaChecks={schemaChecks}
+          schemaVersion={schemaVersion}
+          validationStatus={validationStatus}
+          yaml={yamlDraft}
+          yamlMessage={yamlMessage}
+          yamlPlaceholder={placeholderYaml}
+        />
+      }
+      topBar={
+        <TopBar
+          actions={
+            <>
+              <ActionButton
+                disabled={!canPreview}
+                icon={previewLoading ? <Loader2 aria-hidden="true" className="spin" size={16} /> : <Play aria-hidden="true" size={16} />}
+                onClick={previewChapters}
+                variant="secondary"
+              >
+                解析章节
+              </ActionButton>
+              <ActionButton
+                disabled={!canGenerate}
+                icon={yamlLoading ? <Loader2 aria-hidden="true" className="spin" size={16} /> : <Wand2 aria-hidden="true" size={16} />}
+                onClick={generateYaml}
+                variant="primary"
+              >
+                生成 YAML
+              </ActionButton>
+              <ActionButton
+                disabled={!canSave}
+                icon={saveLoading ? <Loader2 aria-hidden="true" className="spin" size={16} /> : <Save aria-hidden="true" size={16} />}
+                onClick={saveDraft}
+                variant="quiet"
+              >
+                保存草稿
+              </ActionButton>
+            </>
+          }
+          status={<StatusBadge label={topBarStatus.label} tone={topBarStatus.tone} />}
+        />
+      }
+    >
+      <InputPanel
+        author={author}
+        chapterCount={visibleChapterCount}
+        characterCount={characterCount}
+        isValid={isValid}
+        logline={logline}
+        message={message}
+        novelText={novelText}
+        onAuthorChange={setAuthor}
+        onFileImport={importNovelFile}
+        onLoglineChange={setLogline}
+        onNovelTextChange={handleNovelTextChange}
+        onTitleChange={setTitle}
+        selectedChapter={selectedChapter}
+        title={title}
+      />
+    </AppShell>
   );
+}
+
+function parseChapterOutline(text: string): ChapterOutline[] {
+  const matches = Array.from(text.matchAll(chapterHeadingPattern));
+  if (matches.length === 0) {
+    return [];
+  }
+
+  return matches.map((match, index) => {
+    const nextMatch = matches[index + 1];
+    const title = match[0].trim();
+    const contentStart = (match.index || 0) + match[0].length;
+    const contentEnd = nextMatch?.index ?? text.length;
+    const content = text.slice(contentStart, contentEnd).trim();
+    const normalizedExcerpt = content.replace(/\s+/g, " ").slice(0, 160);
+
+    return {
+      excerpt: normalizedExcerpt,
+      id: `chapter-${index + 1}`,
+      index: index + 1,
+      title,
+      wordCount: countReadableCharacters(content)
+    };
+  });
+}
+
+function countReadableCharacters(value: string) {
+  return value.replace(/\s+/g, "").length;
+}
+
+function createSchemaChecks(yaml: string): ValidationCheck[] {
+  const source = yaml.trim();
+  const pending = source.length === 0;
+
+  return [
+    {
+      detail: pending ? "等待生成 YAML" : "schema_version: 1.0",
+      label: "版本字段",
+      state: pending ? "pending" : /schema_version:\s*["']?1\.0["']?/i.test(source) ? "pass" : "warn"
+    },
+    {
+      detail: pending ? "等待生成 YAML" : "kind: screenplay_draft",
+      label: "内容类型",
+      state: pending ? "pending" : /kind:\s*["']?screenplay_draft["']?/i.test(source) ? "pass" : "warn"
+    },
+    {
+      detail: pending ? "等待生成 YAML" : "metadata / source / acts",
+      label: "顶层结构",
+      state:
+        pending
+          ? "pending"
+          : /metadata:\s*\n/i.test(source) && /source:\s*\n/i.test(source) && /acts:\s*\n/i.test(source)
+            ? "pass"
+            : "warn"
+    },
+    {
+      detail: pending ? "等待生成 YAML" : "scenes 数组可继续打磨",
+      label: "场景承载",
+      state: pending ? "pending" : /scenes:\s*(\n|\[\])/i.test(source) ? "pass" : "warn"
+    }
+  ];
+}
+
+function createWorkflowSteps({
+  characterCount,
+  draftId,
+  isValid,
+  message,
+  previewLoading,
+  saveLoading,
+  yamlDraft,
+  yamlLoading,
+  yamlMessage
+}: {
+  characterCount: number;
+  draftId: string;
+  isValid: boolean;
+  message: string;
+  previewLoading: boolean;
+  saveLoading: boolean;
+  yamlDraft: string;
+  yamlLoading: boolean;
+  yamlMessage: string;
+}): ProgressStep[] {
+  return [
+    {
+      detail: characterCount > 0 ? `${characterCount} 字符已输入` : "等待小说文本",
+      label: "小说输入",
+      status: characterCount > 0 ? "complete" : "active"
+    },
+    {
+      detail: previewLoading ? "解析服务处理中" : message,
+      label: "章节解析",
+      status: previewLoading ? "active" : isValid ? "complete" : characterCount > 0 ? "warning" : "idle"
+    },
+    {
+      detail: yamlLoading ? "结构化生成中" : yamlMessage,
+      label: "YAML 初稿",
+      status: yamlLoading ? "active" : yamlDraft.trim() ? "complete" : "idle"
+    },
+    {
+      detail: draftId ? `已保存 ${draftId}` : "等待保存",
+      label: "草稿归档",
+      status: saveLoading ? "active" : draftId ? "complete" : "idle"
+    }
+  ];
+}
+
+function getTopBarStatus({
+  isValid,
+  novelText,
+  previewLoading,
+  yamlDraft,
+  yamlLoading
+}: {
+  isValid: boolean;
+  novelText: string;
+  previewLoading: boolean;
+  yamlDraft: string;
+  yamlLoading: boolean;
+}): { label: string; tone: StatusTone } {
+  if (yamlLoading) {
+    return { label: "正在转换", tone: "active" };
+  }
+  if (yamlDraft.trim()) {
+    return { label: "YAML 已生成", tone: "success" };
+  }
+  if (previewLoading) {
+    return { label: "正在解析", tone: "active" };
+  }
+  if (isValid) {
+    return { label: "章节可转换", tone: "success" };
+  }
+  if (novelText.trim()) {
+    return { label: "待解析", tone: "warning" };
+  }
+  return { label: "待输入", tone: "neutral" };
 }
 
 export default App;
