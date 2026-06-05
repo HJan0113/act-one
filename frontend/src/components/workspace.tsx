@@ -39,6 +39,13 @@ export type DraftListItem = {
   validationStatus: string;
 };
 
+export type ProjectListItem = {
+  description?: string | null;
+  projectId: string;
+  status: string;
+  title: string;
+};
+
 export type ProgressStep = {
   detail: string;
   label: string;
@@ -205,6 +212,46 @@ export function ChapterList({ activeChapterIndex, chapterCount, chapters, onSele
           size="sm"
           title="暂无章节"
         />
+      )}
+    </section>
+  );
+}
+
+type ProjectListProps = {
+  activeProjectId: string;
+  loading: boolean;
+  onRefresh: () => void;
+  onSelectProject: (projectId: string) => void;
+  projects: ProjectListItem[];
+};
+
+export function ProjectList({ activeProjectId, loading, onRefresh, onSelectProject, projects }: ProjectListProps) {
+  return (
+    <section className="sidebar__section project-list" aria-label="我的项目">
+      <div className="sidebar__section-title">
+        <FolderOpen size={16} aria-hidden="true" />
+        <span>我的项目</span>
+        <button aria-label="刷新我的项目" className="sidebar-icon-button" disabled={loading} onClick={onRefresh} type="button">
+          <RefreshCcw aria-hidden="true" className={loading ? "spin" : ""} size={14} />
+        </button>
+      </div>
+      {projects.length > 0 ? (
+        <div className="project-list__items">
+          {projects.map((project) => (
+            <button
+              className="project-list__item"
+              data-active={project.projectId === activeProjectId}
+              key={project.projectId}
+              onClick={() => onSelectProject(project.projectId)}
+              type="button"
+            >
+              <span>{project.title}</span>
+              <small>{project.status || "draft"}</small>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <EmptyState description="保存草稿后会在这里形成项目入口。" icon={<FolderOpen size={18} />} size="sm" title="暂无项目" />
       )}
     </section>
   );

@@ -1,9 +1,15 @@
 package com.hjan.actone.script.service;
 
+import com.hjan.actone.common.context.LoginUser;
+import com.hjan.actone.common.context.UserContext;
 import com.hjan.actone.common.exception.ClientException;
 import com.hjan.actone.script.dao.entity.ScriptDraftDO;
+import com.hjan.actone.script.dao.entity.ScriptProjectDO;
 import com.hjan.actone.script.dao.mapper.ScriptDraftMapper;
+import com.hjan.actone.script.dao.mapper.ScriptProjectMapper;
 import com.hjan.actone.script.model.ScriptDraftSaveRequest;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -19,8 +25,20 @@ import static org.mockito.Mockito.when;
 class ScriptDraftServiceTest {
 
     private final ScriptDraftMapper scriptDraftMapper = mock(ScriptDraftMapper.class);
+    private final ScriptProjectMapper scriptProjectMapper = mock(ScriptProjectMapper.class);
     private final ScriptYamlValidator scriptYamlValidator = new ScriptYamlValidator();
-    private final ScriptDraftService service = new ScriptDraftService(scriptDraftMapper, scriptYamlValidator);
+    private final ScriptDraftService service = new ScriptDraftService(scriptDraftMapper, scriptProjectMapper, scriptYamlValidator);
+
+    @BeforeEach
+    void setUp() {
+        UserContext.set(new LoginUser("user_1", "admin", "admin", ""));
+        when(scriptProjectMapper.selectOne(any())).thenReturn(project("project_1", "user_1"));
+    }
+
+    @AfterEach
+    void tearDown() {
+        UserContext.clear();
+    }
 
     @Test
     void savePersistsYamlDraft() {
@@ -79,6 +97,15 @@ class ScriptDraftServiceTest {
     }
 
     @Test
+    void listByProjectIdRejectsProjectOwnedByOthers() {
+        when(scriptProjectMapper.selectOne(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.listByProjectId("project_2"))
+                .isInstanceOf(ClientException.class)
+                .hasMessageContaining("无权访问");
+    }
+
+    @Test
     void detailReturnsYamlContent() {
         when(scriptDraftMapper.selectById("draft_1")).thenReturn(draft("draft_1", "project_1"));
 
@@ -108,6 +135,14 @@ class ScriptDraftServiceTest {
         draft.setCreateTime(LocalDateTime.of(2026, 6, 5, 10, 0));
         draft.setUpdateTime(LocalDateTime.of(2026, 6, 5, 11, 0));
         return draft;
+    }
+
+    private ScriptProjectDO project(String projectId, String userId) {
+        ScriptProjectDO project = new ScriptProjectDO();
+        project.setId(projectId);
+        project.setTitle("测试项目");
+        project.setCreatedBy(userId);
+        return project;
     }
 
     private String validYaml() {

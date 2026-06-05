@@ -9,6 +9,7 @@ import {
   ChapterList,
   ConversionProgress,
   InputPanel,
+  ProjectList,
   ScriptPreviewPanel,
   Sidebar,
   TopBar,
@@ -59,6 +60,15 @@ type ScriptProjectData = {
   chapterCount: number;
   projectId: string;
   title: string;
+};
+
+type ScriptProjectListItem = {
+  createTime?: string;
+  description?: string | null;
+  projectId: string;
+  status: string;
+  title: string;
+  updateTime?: string;
 };
 
 type ScriptDraftSaveData = {
@@ -174,6 +184,7 @@ function App() {
   const [schemaVersion, setSchemaVersion] = useState("");
   const [generatedTitle, setGeneratedTitle] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [projects, setProjects] = useState<ScriptProjectListItem[]>([]);
   const [draftId, setDraftId] = useState("");
   const [drafts, setDrafts] = useState<ScriptDraftListItem[]>([]);
   const [isValid, setIsValid] = useState(false);
@@ -181,6 +192,7 @@ function App() {
   const [yamlLoading, setYamlLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [projectLoading, setProjectLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
   const [yamlDraft, setYamlDraft] = useState("");
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
@@ -250,6 +262,7 @@ function App() {
         setAuthSession(nextSession);
         writeStoredAuth(nextSession);
         setAuthError("");
+        await loadProjects(activeToken);
       } catch (error) {
         if (!ignored) {
           clearAuthSession(error instanceof Error ? error.message : "登录状态已过期，请重新登录。");
@@ -278,12 +291,22 @@ function App() {
     setAuthError(message);
     setLoginUsername(defaultLoginUsername);
     setLoginPassword(defaultLoginPassword);
+    setProjects([]);
+    setProjectId("");
+    setDraftId("");
+    setDrafts([]);
   }
 
-  async function requestApi<T>(url: string, init: RequestInit | undefined, fallbackMessage: string): Promise<T> {
+  async function requestApi<T>(
+    url: string,
+    init: RequestInit | undefined,
+    fallbackMessage: string,
+    tokenOverride?: string
+  ): Promise<T> {
     const headers = new Headers(init?.headers);
-    if (authSession?.token) {
-      headers.set("Authorization", authSession.token);
+    const token = tokenOverride || authSession?.token;
+    if (token) {
+      headers.set("Authorization", token);
     }
     try {
       const response = await fetch(url, { ...init, headers });
@@ -455,17 +478,60 @@ function App() {
     setProjectId(data.projectId);
     setGeneratedTitle((current) => current || data.title);
     setChapterCount(data.chapterCount);
+    setProjects((current) => [
+      {
+        projectId: data.projectId,
+        status: "draft",
+        title: data.title
+      },
+      ...current.filter((project) => project.projectId !== data.projectId)
+    ]);
     return data.projectId;
   }
 
-  async function loadDrafts(nextProjectId = projectId) {
+  async function loadProjects(tokenOverride?: string) {
+    setProjectLoading(true);
+    try {
+      const data = await requestApi<ScriptProjectListItem[]>("/api/script/projects/my", undefined, "项目列表加载失败", tokenOverride);
+      setProjects(data);
+      if (data.length === 0) {
+        setProjectId("");
+        setDraftId("");
+        setDrafts([]);
+        return;
+      }
+      const nextProject = projectId ? data.find((project) => project.projectId === projectId) || data[0] : data[0];
+      setProjectId(nextProject.projectId);
+      setGeneratedTitle(nextProject.title);
+      await loadDrafts(nextProject.projectId, tokenOverride);
+    } catch (error) {
+      setYamlMessage(error instanceof Error ? error.message : "项目列表加载失败。");
+    } finally {
+      setProjectLoading(false);
+    }
+  }
+
+  async function selectProject(nextProjectId: string) {
+    const project = projects.find((item) => item.projectId === nextProjectId);
+    setProjectId(nextProjectId);
+    setGeneratedTitle(project?.title || "");
+    setDraftId("");
+    setYamlDraft("");
+    setValidationStatus("pending");
+    setValidationError("");
+    setYamlMessage(initialYamlMessage);
+    await loadDrafts(nextProjectId);
+  }
+
+  async function loadDrafts(nextProjectId = projectId, tokenOverride?: string) {
     if (!nextProjectId) return;
     setDraftLoading(true);
     try {
       const data = await requestApi<ScriptDraftListItem[]>(
         `/api/script/drafts?projectId=${encodeURIComponent(nextProjectId)}`,
         undefined,
-        "草稿列表加载失败"
+        "草稿列表加载失败",
+        tokenOverride
       );
       setDrafts(data);
     } catch (error) {
@@ -598,6 +664,13 @@ function App() {
             chapterCount={visibleChapterCount}
             chapters={chapterOutline}
             onSelectChapter={setActiveChapterIndex}
+          />
+          <ProjectList
+            activeProjectId={projectId}
+            loading={projectLoading}
+            onRefresh={() => loadProjects()}
+            onSelectProject={selectProject}
+            projects={projects}
           />
           <ConversionProgress steps={workflowSteps} />
         </Sidebar>

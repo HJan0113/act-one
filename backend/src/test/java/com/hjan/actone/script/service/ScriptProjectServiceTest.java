@@ -1,13 +1,19 @@
 package com.hjan.actone.script.service;
 
+import com.hjan.actone.common.context.LoginUser;
+import com.hjan.actone.common.context.UserContext;
 import com.hjan.actone.common.exception.ClientException;
 import com.hjan.actone.script.dao.entity.ScriptChapterDO;
 import com.hjan.actone.script.dao.entity.ScriptProjectDO;
 import com.hjan.actone.script.dao.mapper.ScriptChapterMapper;
 import com.hjan.actone.script.dao.mapper.ScriptProjectMapper;
 import com.hjan.actone.script.model.ScriptProjectCreateRequest;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -24,6 +30,16 @@ class ScriptProjectServiceTest {
     private final ScriptChapterMapper chapterMapper = mock(ScriptChapterMapper.class);
     private final ScriptProjectService service = new ScriptProjectService(chapterParser, projectMapper, chapterMapper);
 
+    @BeforeEach
+    void setUp() {
+        UserContext.set(new LoginUser("user_1", "admin", "admin", ""));
+    }
+
+    @AfterEach
+    void tearDown() {
+        UserContext.clear();
+    }
+
     @Test
     void createFromTextPersistsProjectAndChapters() {
         when(projectMapper.insert(any(ScriptProjectDO.class))).thenAnswer(invocation -> {
@@ -37,8 +53,27 @@ class ScriptProjectServiceTest {
 
         assertThat(response.projectId()).isEqualTo("project_1");
         assertThat(response.chapterCount()).isEqualTo(3);
-        verify(projectMapper).insert(any(ScriptProjectDO.class));
+        ArgumentCaptor<ScriptProjectDO> captor = ArgumentCaptor.forClass(ScriptProjectDO.class);
+        verify(projectMapper).insert(captor.capture());
+        assertThat(captor.getValue().getCreatedBy()).isEqualTo("user_1");
+        assertThat(captor.getValue().getUpdatedBy()).isEqualTo("user_1");
         verify(chapterMapper, times(3)).insert(any(ScriptChapterDO.class));
+    }
+
+    @Test
+    void listMineReturnsOnlyCurrentUserProjects() {
+        ScriptProjectDO project = new ScriptProjectDO();
+        project.setId("project_1");
+        project.setTitle("测试项目");
+        project.setDescription("描述");
+        project.setStatus("draft");
+        when(projectMapper.selectList(any())).thenReturn(List.of(project));
+
+        var response = service.listMine();
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).projectId()).isEqualTo("project_1");
+        assertThat(response.get(0).title()).isEqualTo("测试项目");
     }
 
     @Test
@@ -82,4 +117,3 @@ class ScriptProjectServiceTest {
                 """;
     }
 }
-

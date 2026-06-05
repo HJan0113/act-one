@@ -1,5 +1,8 @@
 package com.hjan.actone.script.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.hjan.actone.common.context.LoginUser;
+import com.hjan.actone.common.context.UserContext;
 import com.hjan.actone.common.exception.ClientException;
 import com.hjan.actone.script.dao.entity.ScriptChapterDO;
 import com.hjan.actone.script.dao.entity.ScriptProjectDO;
@@ -8,6 +11,7 @@ import com.hjan.actone.script.dao.mapper.ScriptProjectMapper;
 import com.hjan.actone.script.model.NovelChapter;
 import com.hjan.actone.script.model.ScriptProjectCreateRequest;
 import com.hjan.actone.script.model.ScriptProjectCreateResponse;
+import com.hjan.actone.script.model.ScriptProjectListItemResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -46,8 +50,9 @@ public class ScriptProjectService {
         project.setTitle(resolveTitle(request.title(), chapters));
         project.setDescription(trimToNull(request.description()));
         project.setStatus(DEFAULT_STATUS);
-        project.setCreatedBy("system");
-        project.setUpdatedBy("system");
+        LoginUser loginUser = UserContext.requireUser();
+        project.setCreatedBy(loginUser.userId());
+        project.setUpdatedBy(loginUser.userId());
         projectMapper.insert(project);
 
         for (NovelChapter chapter : chapters) {
@@ -62,6 +67,14 @@ public class ScriptProjectService {
         }
 
         return new ScriptProjectCreateResponse(project.getId(), project.getTitle(), chapters.size(), chapters);
+    }
+
+    public List<ScriptProjectListItemResponse> listMine() {
+        String userId = UserContext.requireUser().userId();
+        List<ScriptProjectDO> projects = projectMapper.selectList(new LambdaQueryWrapper<ScriptProjectDO>()
+                .eq(ScriptProjectDO::getCreatedBy, userId)
+                .orderByDesc(ScriptProjectDO::getUpdateTime));
+        return projects.stream().map(this::toListItem).toList();
     }
 
     private String resolveTitle(String title, List<NovelChapter> chapters) {
@@ -81,6 +94,17 @@ public class ScriptProjectService {
         return value.trim();
     }
 
+    private ScriptProjectListItemResponse toListItem(ScriptProjectDO project) {
+        return new ScriptProjectListItemResponse(
+                project.getId(),
+                project.getTitle(),
+                project.getDescription(),
+                project.getStatus(),
+                project.getCreateTime(),
+                project.getUpdateTime()
+        );
+    }
+
     private String sha256(String content) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -91,4 +115,3 @@ public class ScriptProjectService {
         }
     }
 }
-
