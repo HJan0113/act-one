@@ -8,7 +8,7 @@ spring:
   datasource:
     driver-class-name: org.postgresql.Driver
     type: com.zaxxer.hikari.HikariDataSource
-    url: ${ACT_ONE_DB_URL:jdbc:postgresql://hjan.xin:5432/act-one?client_encoding=UTF8}
+    url: ${ACT_ONE_DB_URL:jdbc:postgresql://localhost:5432/act_one?client_encoding=UTF8}
     username: ${ACT_ONE_DB_USERNAME:postgres}
     password: ${ACT_ONE_DB_PASSWORD:}
     hikari:

@@ -10,7 +10,6 @@
 # Environment and local config
 .env
 .env.*
-!.env.example
 
 # Java / Maven
 target/
@@ -32,6 +31,4 @@ frontend/vite.config.d.ts
 .vscode/
 *.iml
 
-/README.md
-/backend/.env.example
 /backend/src/main/resources/db/

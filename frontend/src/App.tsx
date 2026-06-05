@@ -66,6 +66,7 @@ type ScriptDraftSaveData = {
   projectId: string;
   schemaVersion: string;
   title: string;
+  validationError?: string | null;
   validationStatus: string;
 };
 
@@ -78,6 +79,7 @@ type ScriptDraftListItem = {
 };
 
 type ScriptDraftDetail = ScriptDraftListItem & {
+  validationError?: string | null;
   yaml: string;
 };
 
@@ -178,14 +180,17 @@ function App() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [yamlLoading, setYamlLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
   const [yamlDraft, setYamlDraft] = useState("");
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
   const [validationStatus, setValidationStatus] = useState("pending");
+  const [validationError, setValidationError] = useState("");
 
   const canPreview = useMemo(() => novelText.trim().length > 0 && !previewLoading, [novelText, previewLoading]);
   const canGenerate = useMemo(() => novelText.trim().length > 0 && !yamlLoading, [novelText, yamlLoading]);
   const canSave = useMemo(() => yamlDraft.trim().length > 0 && !saveLoading, [yamlDraft, saveLoading]);
+  const canExport = useMemo(() => draftId.length > 0 && !exportLoading, [draftId, exportLoading]);
   const canRefreshDrafts = useMemo(() => projectId.length > 0 && !draftLoading, [projectId, draftLoading]);
   const chapterOutline = useMemo(() => parseChapterOutline(novelText), [novelText]);
   const selectedChapter = useMemo(
@@ -194,7 +199,11 @@ function App() {
   );
   const characterCount = useMemo(() => novelText.trim().length, [novelText]);
   const visibleChapterCount = chapterCount || chapterOutline.length;
-  const schemaChecks = useMemo(() => createSchemaChecks(yamlDraft), [yamlDraft]);
+  const schemaChecks = useMemo(() => createSchemaChecks(yamlDraft, validationStatus, validationError), [
+    validationError,
+    validationStatus,
+    yamlDraft
+  ]);
   const workflowSteps = useMemo(
     () =>
       createWorkflowSteps({
@@ -348,6 +357,7 @@ function App() {
     setYamlDraft(value);
     setDraftId("");
     setValidationStatus(value.trim() ? "edited" : "pending");
+    setValidationError("");
     setYamlMessage(value.trim() ? "YAML 已进入可编辑状态，保存后会生成新的草稿记录。" : initialYamlMessage);
   }
 
@@ -405,6 +415,7 @@ function App() {
       setSchemaVersion(data.schemaVersion);
       setGeneratedTitle(data.title);
       setDraftId("");
+      setValidationError("");
       setChapterCount(data.chapterCount);
       setIsValid(true);
       setMessage(`已识别 ${data.chapterCount} 个章节。`);
@@ -485,7 +496,12 @@ function App() {
       setGeneratedTitle(data.title);
       setSchemaVersion(data.schemaVersion);
       setValidationStatus(data.validationStatus);
-      setYamlMessage(`草稿已保存，状态：${data.validationStatus}。`);
+      setValidationError(data.validationError || "");
+      setYamlMessage(
+        data.validationStatus === "valid"
+          ? "草稿已保存，YAML 校验通过。"
+          : `草稿已保存，校验未通过：${data.validationError || "请查看 Schema 校验面板。"}`
+      );
       await loadDrafts(data.projectId);
     } catch (error) {
       setYamlMessage(error instanceof Error ? error.message : "草稿保存失败。");
@@ -509,11 +525,46 @@ function App() {
       setGeneratedTitle(data.title);
       setSchemaVersion(data.schemaVersion);
       setValidationStatus(data.validationStatus);
-      setYamlMessage(`已加载草稿，状态：${data.validationStatus}。`);
+      setValidationError(data.validationError || "");
+      setYamlMessage(
+        data.validationStatus === "valid"
+          ? "已加载草稿，YAML 校验通过。"
+          : `已加载草稿，状态：${data.validationStatus}。`
+      );
     } catch (error) {
       setYamlMessage(error instanceof Error ? error.message : "草稿加载失败。");
     } finally {
       setDraftLoading(false);
+    }
+  }
+
+  async function exportDraftYaml() {
+    if (!canExport) return;
+    setExportLoading(true);
+    setYamlMessage("正在导出 YAML 文件...");
+    try {
+      const headers = new Headers();
+      if (authSession?.token) {
+        headers.set("Authorization", authSession.token);
+      }
+      const response = await fetch(`/api/script/drafts/${encodeURIComponent(draftId)}/export.yaml`, { headers });
+      if (!response.ok) {
+        throw new Error(await readResponseError(response, "YAML 导出失败"));
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = readDownloadFilename(response, `${generatedTitle || title || "script-draft"}-${draftId}.yaml`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setYamlMessage("YAML 文件已导出。");
+    } catch (error) {
+      setYamlMessage(error instanceof Error ? error.message : "YAML 导出失败。");
+    } finally {
+      setExportLoading(false);
     }
   }
 
@@ -554,12 +605,14 @@ function App() {
       scriptPanel={
         <ScriptPreviewPanel
           activeDraftId={draftId}
+          canExport={canExport}
           canRefreshDrafts={canRefreshDrafts}
           canSave={canSave}
           draftId={draftId}
           draftLoading={draftLoading}
           drafts={drafts}
           generatedTitle={generatedTitle}
+          onExportYaml={exportDraftYaml}
           onCopyYaml={copyYaml}
           onLoadDraft={loadDraftDetail}
           onRefreshDrafts={() => loadDrafts()}
@@ -569,6 +622,8 @@ function App() {
           saveLoading={saveLoading}
           schemaChecks={schemaChecks}
           schemaVersion={schemaVersion}
+          exportLoading={exportLoading}
+          validationError={validationError}
           validationStatus={validationStatus}
           yaml={yamlDraft}
           yamlMessage={yamlMessage}
@@ -738,20 +793,26 @@ function countReadableCharacters(value: string) {
   return value.replace(/\s+/g, "").length;
 }
 
-function createSchemaChecks(yaml: string): ValidationCheck[] {
+function createSchemaChecks(yaml: string, validationStatus: string, validationError: string): ValidationCheck[] {
   const source = yaml.trim();
   const pending = source.length === 0;
+  const checked = validationStatus === "valid" || validationStatus === "invalid";
 
   return [
     {
+      detail: pending ? "等待生成 YAML" : checked ? (validationError || "后端校验通过") : "保存后执行后端校验",
+      label: "后端校验",
+      state: pending ? "pending" : validationStatus === "valid" ? "pass" : validationStatus === "invalid" ? "fail" : "pending"
+    },
+    {
       detail: pending ? "等待生成 YAML" : "schema_version: 1.0",
       label: "版本字段",
-      state: pending ? "pending" : /schema_version:\s*["']?1\.0["']?/i.test(source) ? "pass" : "warn"
+      state: pending ? "pending" : /schema_version:\s*["']?1\.0["']?/i.test(source) ? "pass" : "fail"
     },
     {
       detail: pending ? "等待生成 YAML" : "kind: screenplay_draft",
       label: "内容类型",
-      state: pending ? "pending" : /kind:\s*["']?screenplay_draft["']?/i.test(source) ? "pass" : "warn"
+      state: pending ? "pending" : /kind:\s*["']?screenplay_draft["']?/i.test(source) ? "pass" : "fail"
     },
     {
       detail: pending ? "等待生成 YAML" : "metadata / source / acts",
@@ -761,14 +822,33 @@ function createSchemaChecks(yaml: string): ValidationCheck[] {
           ? "pending"
           : /metadata:\s*\n/i.test(source) && /source:\s*\n/i.test(source) && /acts:\s*\n/i.test(source)
             ? "pass"
-            : "warn"
+            : "fail"
     },
     {
       detail: pending ? "等待生成 YAML" : "scenes 数组可继续打磨",
       label: "场景承载",
-      state: pending ? "pending" : /scenes:\s*(\n|\[\])/i.test(source) ? "pass" : "warn"
+      state: pending ? "pending" : /scenes:\s*\n\s*-\s+id:/i.test(source) ? "pass" : "fail"
     }
   ];
+}
+
+async function readResponseError(response: Response, fallbackMessage: string) {
+  try {
+    const result = (await response.json()) as ApiResult<unknown>;
+    return result.message || `${fallbackMessage}：${response.status}`;
+  } catch {
+    return `${fallbackMessage}：${response.status}`;
+  }
+}
+
+function readDownloadFilename(response: Response, fallback: string) {
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (encoded?.[1]) {
+    return decodeURIComponent(encoded[1]);
+  }
+  const simple = disposition.match(/filename="?([^";]+)"?/i);
+  return simple?.[1] || fallback;
 }
 
 function createWorkflowSteps({

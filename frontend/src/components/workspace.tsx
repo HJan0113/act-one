@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ClipboardCopy,
   Code2,
+  FileDown,
   FileInput,
   FileText,
   FolderOpen,
@@ -21,7 +22,7 @@ import {
 
 import { ActionButton } from "./ActionButton";
 import { EmptyState } from "./EmptyState";
-import { StatusBadge } from "./StatusBadge";
+import { StatusBadge, type StatusTone } from "./StatusBadge";
 
 export type ChapterOutline = {
   excerpt: string;
@@ -47,7 +48,7 @@ export type ProgressStep = {
 export type ValidationCheck = {
   detail: string;
   label: string;
-  state: "pass" | "pending" | "warn";
+  state: "fail" | "pass" | "pending" | "warn";
 };
 
 type AppShellProps = {
@@ -355,13 +356,16 @@ export function InputPanel({
 
 type ScriptPreviewPanelProps = {
   activeDraftId: string;
+  canExport: boolean;
   canRefreshDrafts: boolean;
   canSave: boolean;
   draftLoading: boolean;
   drafts: DraftListItem[];
   draftId: string;
+  exportLoading: boolean;
   generatedTitle: string;
   onCopyYaml: () => void;
+  onExportYaml: () => void;
   onLoadDraft: (draftId: string) => void;
   onRefreshDrafts: () => void;
   onSaveDraft: () => void;
@@ -370,6 +374,7 @@ type ScriptPreviewPanelProps = {
   saveLoading: boolean;
   schemaChecks: ValidationCheck[];
   schemaVersion: string;
+  validationError: string;
   validationStatus: string;
   yaml: string;
   yamlMessage: string;
@@ -378,13 +383,16 @@ type ScriptPreviewPanelProps = {
 
 export function ScriptPreviewPanel({
   activeDraftId,
+  canExport,
   canRefreshDrafts,
   canSave,
   draftLoading,
   drafts,
   draftId,
+  exportLoading,
   generatedTitle,
   onCopyYaml,
+  onExportYaml,
   onLoadDraft,
   onRefreshDrafts,
   onSaveDraft,
@@ -393,6 +401,7 @@ export function ScriptPreviewPanel({
   saveLoading,
   schemaChecks,
   schemaVersion,
+  validationError,
   validationStatus,
   yaml,
   yamlMessage,
@@ -416,6 +425,15 @@ export function ScriptPreviewPanel({
           >
             保存
           </ActionButton>
+          <ActionButton
+            aria-label="导出 YAML 文件"
+            disabled={!canExport}
+            icon={<FileDown aria-hidden="true" className={exportLoading ? "spin" : ""} size={15} />}
+            iconOnly
+            onClick={onExportYaml}
+            size="sm"
+            variant="ghost"
+          />
           <ActionButton
             aria-label="刷新草稿列表"
             disabled={!canRefreshDrafts}
@@ -449,7 +467,7 @@ export function ScriptPreviewPanel({
         <span>{yamlMessage}</span>
       </div>
 
-      <SchemaValidationPanel checks={schemaChecks} status={validationStatus} yamlReady={Boolean(yaml.trim())} />
+      <SchemaValidationPanel checks={schemaChecks} error={validationError} status={validationStatus} yamlReady={Boolean(yaml.trim())} />
 
       <section className="draft-history" aria-label="已保存草稿">
         <div className="draft-history__heading">
@@ -536,11 +554,12 @@ export function ConversionProgress({ steps }: ConversionProgressProps) {
 
 type SchemaValidationPanelProps = {
   checks: ValidationCheck[];
+  error: string;
   status: string;
   yamlReady: boolean;
 };
 
-export function SchemaValidationPanel({ checks, status, yamlReady }: SchemaValidationPanelProps) {
+export function SchemaValidationPanel({ checks, error, status, yamlReady }: SchemaValidationPanelProps) {
   return (
     <section className="schema-panel" aria-label="Schema 校验结果">
       <div className="schema-panel__heading">
@@ -548,8 +567,9 @@ export function SchemaValidationPanel({ checks, status, yamlReady }: SchemaValid
           <ListChecks size={15} aria-hidden="true" />
           Schema 校验
         </span>
-        <StatusBadge label={yamlReady ? status || "local" : "pending"} tone={yamlReady ? "info" : "neutral"} />
+        <StatusBadge label={yamlReady ? status || "local" : "pending"} tone={validationTone(status, yamlReady)} />
       </div>
+      {error ? <p className="schema-panel__error">{error}</p> : null}
       <div className="schema-checks">
         {checks.map((check) => (
           <div className="schema-check" data-state={check.state} key={check.label}>
@@ -563,4 +583,20 @@ export function SchemaValidationPanel({ checks, status, yamlReady }: SchemaValid
       </div>
     </section>
   );
+}
+
+function validationTone(status: string, yamlReady: boolean): StatusTone {
+  if (!yamlReady) {
+    return "neutral";
+  }
+  if (status === "valid") {
+    return "success";
+  }
+  if (status === "invalid") {
+    return "danger";
+  }
+  if (status === "edited") {
+    return "warning";
+  }
+  return "info";
 }
