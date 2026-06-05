@@ -1,6 +1,7 @@
 package com.hjan.actone.infra.ai.config;
 
 import com.hjan.actone.ai.service.LLMService;
+import com.hjan.actone.ai.prompt.PromptTemplateService;
 import com.hjan.actone.infra.ai.ChatClient;
 import com.hjan.actone.infra.ai.error.ModelClientExceptionMapper;
 import com.hjan.actone.infra.ai.support.LLMResponseCleaner;
@@ -44,6 +45,7 @@ class AiClientConfigurationTest {
             assertThat(context).hasSingleBean(AiModelProperties.class);
             assertThat(context).hasSingleBean(ChatClient.class);
             assertThat(context).hasSingleBean(LLMService.class);
+            assertThat(context).hasSingleBean(PromptTemplateService.class);
             assertThat(context).hasSingleBean(LLMResponseCleaner.class);
             assertThat(context).hasSingleBean(ModelClientExceptionMapper.class);
 
@@ -58,6 +60,18 @@ class AiClientConfigurationTest {
             assertThat(context.getBean(ChatClient.class).provider())
                     .isEqualTo("spring-ai-openai-compatible");
         });
+    }
+
+    @Test
+    void registersPromptServiceWhenRealChatClientIsDisabled() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(AiClientConfiguration.class)
+                .withPropertyValues("ai.spring-ai.chat.enabled=false")
+                .run(context -> {
+                    assertThat(context).hasSingleBean(PromptTemplateService.class);
+                    assertThat(context).doesNotHaveBean(ChatClient.class);
+                    assertThat(context).doesNotHaveBean(LLMService.class);
+                });
     }
 
     @Test
