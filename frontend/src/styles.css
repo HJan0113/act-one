@@ -89,6 +89,12 @@ h1 {
   transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
+.primary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
+}
+
 .primary-action:hover {
   background: var(--accent-dark);
   box-shadow: 0 5px 0 rgba(36, 31, 26, 0.18);
@@ -144,12 +150,49 @@ pre {
 }
 
 textarea {
+  height: calc(640px - 58px - 44px);
   resize: none;
+}
+
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-top: 1px solid var(--line);
+  color: #6b5d4d;
+  font-size: 13px;
+  background: rgba(238, 227, 208, 0.55);
+}
+
+.status-line[data-valid="true"] {
+  color: #246247;
+}
+
+.status-line span {
+  min-width: 0;
+  flex: 1;
+}
+
+.status-line strong {
+  color: var(--ink);
+  font-size: 12px;
 }
 
 pre {
   overflow: auto;
   white-space: pre-wrap;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 860px) {
@@ -181,4 +224,3 @@ pre {
     height: 360px;
   }
 }
-
