@@ -12,9 +12,9 @@ import java.util.regex.Pattern;
 @Service
 public class NovelChapterParser {
 
-    private static final int MIN_CHAPTER_COUNT = 3;
+    public static final int MIN_CHAPTER_COUNT = 3;
     private static final Pattern CHAPTER_HEADING = Pattern.compile(
-            "(?m)^\\s*(第[一二三四五六七八九十百千万零〇两0-9]+[章节回幕卷].*)$"
+            "(?m)^\\s*(第\\s*[一二三四五六七八九十百千万零〇两0-9]+\\s*[章节回幕卷].*)$"
     );
 
     public NovelPreviewResponse preview(String rawText) {
@@ -31,11 +31,19 @@ public class NovelChapterParser {
         return new NovelPreviewResponse(valid, chapters.size(), message, chapters);
     }
 
-    private List<NovelChapter> parse(String text) {
+    public List<NovelChapter> parse(String rawText) {
+        String text = cleanup(rawText);
+        if (text.isBlank()) {
+            return List.of();
+        }
         Matcher matcher = CHAPTER_HEADING.matcher(text);
         List<Heading> headings = new ArrayList<>();
         while (matcher.find()) {
-            headings.add(new Heading(matcher.start(), matcher.end(), matcher.group(1).trim()));
+            String title = matcher.group(1).trim();
+            if (looksLikeNarrativeSentence(title)) {
+                continue;
+            }
+            headings.add(new Heading(matcher.start(), matcher.end(), title));
         }
         if (headings.isEmpty()) {
             return List.of(new NovelChapter("chapter_1", 1, "未分章正文", text, text.length()));
@@ -58,7 +66,7 @@ public class NovelChapterParser {
         return chapters;
     }
 
-    private String cleanup(String text) {
+    public String cleanup(String text) {
         if (text == null) {
             return "";
         }
@@ -71,7 +79,11 @@ public class NovelChapterParser {
                 .trim();
     }
 
+    private boolean looksLikeNarrativeSentence(String title) {
+        return title.endsWith("。") || title.endsWith("！") || title.endsWith("？")
+                || title.endsWith(".") || title.endsWith("!") || title.endsWith("?");
+    }
+
     private record Heading(int start, int end, String title) {
     }
 }
-

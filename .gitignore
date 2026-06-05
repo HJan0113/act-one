@@ -19,10 +19,13 @@ target/
 
 # Node / Vite
 node_modules/
+.vite/
 dist/
 build/
 coverage/
 *.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
 
 # IDE
 .idea/
@@ -30,3 +33,5 @@ coverage/
 *.iml
 
 /README.md
+/backend/.env.example
+/backend/src/main/resources/db/
