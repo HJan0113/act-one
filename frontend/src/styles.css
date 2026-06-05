@@ -25,6 +25,7 @@ body {
 }
 
 button,
+input,
 textarea {
   font: inherit;
 }
@@ -73,32 +74,97 @@ h1 {
   letter-spacing: 0;
 }
 
-.primary-action {
+.masthead-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.primary-action,
+.secondary-action,
+.icon-action {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   min-height: 44px;
   padding: 0 18px;
-  border: 1px solid var(--accent-dark);
   border-radius: 6px;
-  background: var(--accent);
-  color: #fffaf0;
   cursor: pointer;
   font-weight: 700;
-  box-shadow: 0 8px 0 rgba(36, 31, 26, 0.18);
-  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease;
 }
 
-.primary-action:disabled {
+.primary-action {
+  border: 1px solid var(--accent-dark);
+  background: var(--accent);
+  color: #fffaf0;
+  box-shadow: 0 8px 0 rgba(36, 31, 26, 0.18);
+}
+
+.secondary-action {
+  border: 1px solid rgba(36, 50, 58, 0.36);
+  background: rgba(255, 250, 240, 0.88);
+  color: var(--slate);
+  box-shadow: 0 8px 0 rgba(36, 31, 26, 0.11);
+}
+
+.primary-action:disabled,
+.secondary-action:disabled,
+.icon-action:disabled {
   cursor: not-allowed;
   opacity: 0.62;
   transform: none;
 }
 
-.primary-action:hover {
+.primary-action:not(:disabled):hover {
   background: var(--accent-dark);
   box-shadow: 0 5px 0 rgba(36, 31, 26, 0.18);
   transform: translateY(3px);
+}
+
+.secondary-action:not(:disabled):hover {
+  background: var(--slate);
+  color: #fffaf0;
+  box-shadow: 0 5px 0 rgba(36, 31, 26, 0.11);
+  transform: translateY(3px);
+}
+
+.metadata-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(140px, 0.45fr) minmax(260px, 1.15fr);
+  gap: 12px;
+  padding-top: 18px;
+}
+
+.meta-field {
+  display: grid;
+  gap: 7px;
+}
+
+.meta-field span {
+  color: #6b5d4d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.meta-field input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  outline: 0;
+  background: rgba(255, 250, 240, 0.9);
+  color: var(--ink);
+  padding: 0 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.meta-field input:focus {
+  border-color: rgba(167, 53, 32, 0.72);
+  box-shadow: 0 0 0 3px rgba(167, 53, 32, 0.12);
 }
 
 .editor-grid {
@@ -120,6 +186,7 @@ h1 {
 .panel-title {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   height: 58px;
   padding: 0 18px;
@@ -128,10 +195,32 @@ h1 {
   color: var(--slate);
 }
 
+.panel-title-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .panel-title h2 {
   margin: 0;
   font-size: 17px;
   letter-spacing: 0;
+}
+
+.icon-action {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid rgba(36, 50, 58, 0.28);
+  background: rgba(255, 250, 240, 0.74);
+  color: var(--slate);
+  box-shadow: none;
+}
+
+.icon-action:not(:disabled):hover {
+  background: var(--slate);
+  color: #fffaf0;
 }
 
 textarea,
@@ -154,6 +243,31 @@ textarea {
   resize: none;
 }
 
+.yaml-panel pre {
+  height: calc(640px - 58px - 38px - 44px);
+}
+
+.yaml-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  padding: 0 18px;
+  border-bottom: 1px solid rgba(215, 199, 173, 0.74);
+  background: rgba(255, 250, 240, 0.58);
+  color: #3f6870;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.yaml-meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .status-line {
   display: flex;
   align-items: center;
@@ -168,6 +282,10 @@ textarea {
 
 .status-line[data-valid="true"] {
   color: #246247;
+}
+
+.yaml-status {
+  border-top-color: rgba(215, 199, 173, 0.74);
 }
 
 .status-line span {
@@ -206,7 +324,29 @@ pre {
     min-height: auto;
   }
 
+  .masthead-actions {
+    width: 100%;
+  }
+
+  .metadata-row {
+    grid-template-columns: 1fr;
+  }
+
+  .meta-field.compact,
+  .meta-field.wide {
+    grid-column: auto;
+  }
+
   .primary-action {
+    flex: 1;
+  }
+
+  .secondary-action {
+    flex: 1;
+  }
+
+  .primary-action,
+  .secondary-action {
     width: 100%;
     justify-content: center;
   }
@@ -222,5 +362,9 @@ pre {
   textarea,
   pre {
     height: 360px;
+  }
+
+  .yaml-panel pre {
+    height: 318px;
   }
 }
