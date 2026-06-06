@@ -1204,6 +1204,172 @@ h1 {
     font-size: var(--text-xs);
 }
 
+.character-workbench {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+    gap: var(--space-4);
+    min-height: calc(100vh - 142px);
+    align-items: start;
+}
+
+.character-panel,
+.relationship-panel {
+    min-height: 0;
+}
+
+.character-card-grid,
+.relationship-list {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-4);
+}
+
+.character-card-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.character-card {
+    display: grid;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-4);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: #fbfaf5;
+}
+
+.character-card[data-candidate="true"] {
+    border-style: dashed;
+    background:
+        linear-gradient(135deg, rgba(185, 121, 24, 0.08), transparent 45%),
+        #fbfaf5;
+}
+
+.character-card header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2);
+    align-items: start;
+}
+
+.character-card header span {
+    grid-column: 1 / -1;
+    overflow: hidden;
+    color: var(--muted);
+    font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: var(--text-xs);
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.character-card h3 {
+    margin: 0;
+    color: var(--ink-strong);
+    font-size: var(--text-xl);
+    line-height: 1.2;
+}
+
+.character-card > p {
+    margin: 0;
+    color: var(--muted-strong);
+    font-size: var(--text-sm);
+    line-height: 1.65;
+}
+
+.character-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--line);
+}
+
+.character-facts div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    min-height: 56px;
+    padding: var(--space-2);
+    background: var(--surface);
+}
+
+.character-facts dt,
+.character-facts dd {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.character-facts dt {
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 800;
+}
+
+.character-facts dd {
+    color: var(--ink);
+    font-size: var(--text-xs);
+    font-weight: 800;
+}
+
+.character-sources,
+.relationship-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.character-sources span,
+.relationship-sources span {
+    min-height: 24px;
+    padding: 4px 8px;
+    border: 1px solid rgba(39, 106, 95, 0.18);
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-size: var(--text-xs);
+    font-weight: 800;
+}
+
+.relationship-item {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: #fbfaf5;
+}
+
+.relationship-item header {
+    display: grid;
+    gap: 4px;
+}
+
+.relationship-item header span {
+    color: var(--accent-strong);
+    font-size: var(--text-xs);
+    font-weight: 900;
+}
+
+.relationship-item header strong {
+    color: var(--ink-strong);
+    font-size: var(--text-md);
+    line-height: 1.35;
+}
+
+.relationship-item p {
+    margin: 0;
+    color: var(--muted-strong);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+}
+
 .panel-heading {
   display: flex;
   align-items: center;
@@ -2060,6 +2226,7 @@ h1 {
   }
 
     .page-split--source,
+    .character-workbench,
     .trace-workbench,
     .archive-grid {
         grid-template-columns: 1fr;
@@ -2125,8 +2292,8 @@ h1 {
     }
 
     .workspace-nav {
-        grid-template-columns: repeat(5, minmax(128px, 1fr));
-        min-width: 700px;
+        grid-template-columns: repeat(6, minmax(128px, 1fr));
+        min-width: 840px;
     }
 
     .workspace-nav__item[data-active="true"] {
@@ -2164,12 +2331,14 @@ h1 {
   }
 
     .page-split,
+    .character-workbench,
     .page-grid--pipeline,
     .trace-workbench,
     .archive-grid {
         grid-template-columns: 1fr;
     }
 
+    .character-workbench,
     .trace-workbench {
         min-height: auto;
     }
@@ -2179,6 +2348,7 @@ h1 {
     }
 
   .metadata-grid,
+  .character-facts,
   .schema-checks,
   .result-summary {
     grid-template-columns: 1fr;
@@ -2210,7 +2380,7 @@ h1 {
   }
 
     .workspace-nav {
-        min-width: 640px;
+        min-width: 760px;
     }
 
   .panel-heading {

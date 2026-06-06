@@ -5,6 +5,27 @@ export type ScriptTraceDialogue = {
   speaker: string;
 };
 
+export type ScriptCharacterCard = {
+  aliases: string[];
+  description: string;
+  firstAppearanceChapterId: string;
+  goal: string;
+  id: string;
+  motivation: string;
+  name: string;
+  role: string;
+  sourceChapterIds: string[];
+};
+
+export type ScriptRelationship = {
+  description: string;
+  id: string;
+  sourceCharacterId: string;
+  sourceChapterIds: string[];
+  targetCharacterId: string;
+  type: string;
+};
+
 export type ScriptTraceScene = {
   actId: string;
   action: string;
@@ -24,10 +45,153 @@ export type ScriptTraceScene = {
 const sceneStartPattern = /^\s{2}-\s+id:\s*(.+)\s*$/;
 const topLevelKeyPattern = /^[a-zA-Z_][\w-]*:\s*(?:.*)?$/;
 
+export function parseScriptYamlCharacters(yaml: string): ScriptCharacterCard[] {
+  return collectTopLevelListBlocks(yaml, "characters")
+    .map(parseCharacterBlock)
+    .filter((character): character is ScriptCharacterCard => Boolean(character));
+}
+
+export function parseScriptYamlRelationships(yaml: string): ScriptRelationship[] {
+  return collectTopLevelListBlocks(yaml, "relationships")
+    .map(parseRelationshipBlock)
+    .filter((relationship): relationship is ScriptRelationship => Boolean(relationship));
+}
+
 export function parseScriptYamlScenes(yaml: string): ScriptTraceScene[] {
   const lines = yaml.replace(/\r\n?/g, "\n").split("\n");
   const sceneBlocks = collectSceneBlocks(lines);
   return sceneBlocks.map(parseSceneBlock).filter((scene): scene is ScriptTraceScene => Boolean(scene));
+}
+
+function collectTopLevelListBlocks(yaml: string, sectionName: string) {
+  const lines = yaml.replace(/\r\n?/g, "\n").split("\n");
+  const blocks: string[][] = [];
+  const sectionPattern = new RegExp(`^${sectionName}:\\s*$`);
+  const itemPattern = /^ {2}-\s+[a-zA-Z_][\w-]*:\s*(.*)$/;
+  let inSection = false;
+  let current: string[] = [];
+
+  for (const line of lines) {
+    if (!inSection) {
+      if (sectionPattern.test(line)) {
+        inSection = true;
+      }
+      continue;
+    }
+
+    if (topLevelKeyPattern.test(line)) {
+      break;
+    }
+
+    if (itemPattern.test(line)) {
+      if (current.length > 0) {
+        blocks.push(current);
+      }
+      current = [line];
+      continue;
+    }
+
+    if (current.length > 0) {
+      current.push(line);
+    }
+  }
+
+  if (current.length > 0) {
+    blocks.push(current);
+  }
+
+  return blocks;
+}
+
+function parseCharacterBlock(block: string[]): ScriptCharacterCard | null {
+  const parsed = parseYamlItemBlock(block);
+  const id = parsed.fields.get("id") || "";
+  const name = parsed.fields.get("name") || id;
+  if (!id && !name) {
+    return null;
+  }
+
+  return {
+    aliases: getListField(parsed.lists, "aliases"),
+    description: parsed.fields.get("description") || "",
+    firstAppearanceChapterId:
+      parsed.fields.get("first_appearance_chapter_id") || parsed.fields.get("firstAppearanceChapterId") || "",
+    goal: parsed.fields.get("goal") || parsed.fields.get("objective") || "",
+    id,
+    motivation: parsed.fields.get("motivation") || "",
+    name,
+    role: parsed.fields.get("role") || "待补充",
+    sourceChapterIds: getListField(parsed.lists, "source_chapter_ids", "sourceChapterIds")
+  };
+}
+
+function parseRelationshipBlock(block: string[]): ScriptRelationship | null {
+  const parsed = parseYamlItemBlock(block);
+  const id = parsed.fields.get("id") || "";
+  const sourceCharacterId =
+    parsed.fields.get("source_character_id") || parsed.fields.get("sourceCharacterId") || "";
+  const targetCharacterId =
+    parsed.fields.get("target_character_id") || parsed.fields.get("targetCharacterId") || "";
+  if (!id && (!sourceCharacterId || !targetCharacterId)) {
+    return null;
+  }
+
+  return {
+    description: parsed.fields.get("description") || "",
+    id: id || `${sourceCharacterId}-${targetCharacterId}`,
+    sourceCharacterId,
+    sourceChapterIds: getListField(parsed.lists, "source_chapter_ids", "sourceChapterIds"),
+    targetCharacterId,
+    type: parsed.fields.get("type") || "关系"
+  };
+}
+
+function parseYamlItemBlock(block: string[]) {
+  const fields = new Map<string, string>();
+  const lists = new Map<string, string[]>();
+  const first = block[0]?.match(/^ {2}-\s+([a-zA-Z_][\w-]*):\s*(.*)$/);
+  if (first) {
+    fields.set(first[1], cleanScalar(first[2] || ""));
+  }
+
+  for (let index = 1; index < block.length; index += 1) {
+    const line = block[index];
+    const field = line.match(/^ {4}([a-zA-Z_][\w-]*):\s*(.*)$/);
+    if (!field) {
+      continue;
+    }
+
+    const key = field[1];
+    const rawValue = field[2] || "";
+    if (rawValue.startsWith("|")) {
+      const collected = collectIndentedBlock(block, index + 1, 6);
+      fields.set(key, collected.value);
+      index = collected.endIndex - 1;
+      continue;
+    }
+
+    if (rawValue.trim().startsWith("[") && rawValue.trim().endsWith("]")) {
+      lists.set(key, parseInlineList(rawValue));
+      continue;
+    }
+
+    if (!rawValue.trim()) {
+      const collected = collectNestedLines(block, index + 1, 6);
+      const blockList = parseBlockList(collected.lines);
+      if (blockList.length > 0) {
+        lists.set(key, blockList);
+        index = collected.endIndex - 1;
+        continue;
+      }
+    }
+
+    fields.set(key, cleanScalar(rawValue));
+  }
+
+  return {
+    fields,
+    lists
+  };
 }
 
 function collectSceneBlocks(lines: string[]) {
@@ -259,6 +423,16 @@ function parseBlockList(lines: string[]) {
   return lines
     .map((line) => cleanScalar(line.match(/^ {6}-\s*(.*)$/)?.[1] || ""))
     .filter(Boolean);
+}
+
+function getListField(lists: Map<string, string[]>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = lists.get(key);
+    if (value) {
+      return value;
+    }
+  }
+  return [];
 }
 
 function parseBoolean(value?: string) {

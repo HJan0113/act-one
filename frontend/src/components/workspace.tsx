@@ -26,7 +26,7 @@ import {
 import {ActionButton} from "./ActionButton";
 import {EmptyState} from "./EmptyState";
 import {StatusBadge, type StatusTone} from "./StatusBadge";
-import type {ScriptTraceScene} from "../utils/scriptYamlTrace";
+import type {ScriptCharacterCard, ScriptRelationship, ScriptTraceScene} from "../utils/scriptYamlTrace";
 
 export type ChapterOutline = {
   content: string;
@@ -85,7 +85,7 @@ export type ValidationCheck = {
   state: "fail" | "pass" | "pending" | "warn";
 };
 
-export type WorkspaceView = "archive" | "pipeline" | "result" | "source" | "trace";
+export type WorkspaceView = "archive" | "characters" | "pipeline" | "result" | "source" | "trace";
 
 type AppShellProps = {
     activeView: WorkspaceView;
@@ -181,6 +181,12 @@ const workspaceNavItems: Array<{
         icon: <ScrollText size={18} aria-hidden="true"/>,
         id: "trace",
         label: "追溯"
+    },
+    {
+        detail: "角色卡片",
+        icon: <ListChecks size={18} aria-hidden="true"/>,
+        id: "characters",
+        label: "人物"
     },
     {
         detail: "项目与草稿",
@@ -800,6 +806,281 @@ function renderHighlightedSource(content: string, excerpt: string): ReactNode {
       {after}
     </p>
   );
+}
+
+type CharacterWorkbenchProps = {
+  characters: ScriptCharacterCard[];
+  relationships: ScriptRelationship[];
+  scenes: ScriptTraceScene[];
+  yamlReady: boolean;
+};
+
+type CharacterStat = {
+  lineCount: number;
+  sceneCount: number;
+};
+
+type RelationshipView = {
+  description: string;
+  id: string;
+  sourceChapterIds: string[];
+  sourceName: string;
+  targetName: string;
+  type: string;
+};
+
+export function CharacterWorkbench({
+  characters,
+  relationships,
+  scenes,
+  yamlReady
+}: CharacterWorkbenchProps) {
+  const candidateCharacters = characters.length > 0 ? characters : deriveCharacterCandidates(scenes);
+  const usingCandidates = characters.length === 0 && candidateCharacters.length > 0;
+  const characterStats = createCharacterStats(candidateCharacters, scenes);
+  const relationshipViews =
+    relationships.length > 0
+      ? relationships.map((relationship) => createRelationshipView(relationship, candidateCharacters))
+      : inferRelationshipViews(candidateCharacters, scenes);
+
+  return (
+    <div className="character-workbench" aria-label="人物卡片与关系数据">
+      <section className="studio-panel character-panel" aria-label="人物卡片">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Character Cards</p>
+            <h2>人物卡片</h2>
+          </div>
+          <StatusBadge
+            label={candidateCharacters.length > 0 ? `${candidateCharacters.length} 人` : yamlReady ? "无角色" : "待生成"}
+            tone={candidateCharacters.length > 0 ? "info" : "neutral"}
+          />
+        </div>
+
+        <div className="character-card-grid">
+          {candidateCharacters.length > 0 ? (
+            candidateCharacters.map((character) => {
+              const stats = characterStats.get(characterIdentity(character)) || {lineCount: 0, sceneCount: 0};
+              return (
+                <article className="character-card" data-candidate={usingCandidates} key={character.id || character.name}>
+                  <header>
+                    <span>{character.id || "speaker_candidate"}</span>
+                    <h3>{character.name}</h3>
+                    <StatusBadge label={usingCandidates ? "候选" : character.role || "待补充"} tone={usingCandidates ? "warning" : "success"} />
+                  </header>
+
+                  <p>{character.description || (usingCandidates ? "从对白说话人自动识别，等待 AI 角色卡补全。" : "角色描述待补充。")}</p>
+
+                  <dl className="character-facts">
+                    <div>
+                      <dt>别名</dt>
+                      <dd>{character.aliases.length > 0 ? character.aliases.join(" / ") : "未记录"}</dd>
+                    </div>
+                    <div>
+                      <dt>目标</dt>
+                      <dd>{character.goal || character.motivation || "待补充"}</dd>
+                    </div>
+                    <div>
+                      <dt>首次出场</dt>
+                      <dd>{chapterIdLabel(character.firstAppearanceChapterId) || inferFirstChapterLabel(character, scenes)}</dd>
+                    </div>
+                    <div>
+                      <dt>出场 / 对白</dt>
+                      <dd>{stats.sceneCount} 场 / {stats.lineCount} 句</dd>
+                    </div>
+                  </dl>
+
+                  <div className="character-sources">
+                    {(character.sourceChapterIds.length > 0 ? character.sourceChapterIds : inferSourceChapterIds(character, scenes)).slice(0, 4).map((chapterId) => (
+                      <span key={chapterId}>{chapterIdLabel(chapterId) || chapterId}</span>
+                    ))}
+                  </div>
+                </article>
+              );
+            })
+          ) : (
+            <EmptyState
+              description={yamlReady ? "当前 YAML 未提供 characters，也未从对白中识别到说话人。" : "生成或加载 YAML 草稿后，这里会显示角色卡片。"}
+              icon={<ListChecks size={18} />}
+              size="sm"
+              title="暂无人物卡"
+            />
+          )}
+        </div>
+      </section>
+
+      <section className="studio-panel relationship-panel" aria-label="人物关系数据">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Relationship Data</p>
+            <h2>关系线索</h2>
+          </div>
+          <StatusBadge
+            label={relationships.length > 0 ? `${relationships.length} 条结构化关系` : relationshipViews.length > 0 ? `${relationshipViews.length} 条共现线索` : "待补充"}
+            tone={relationshipViews.length > 0 ? "info" : "neutral"}
+          />
+        </div>
+
+        <div className="relationship-list">
+          {relationshipViews.length > 0 ? (
+            relationshipViews.map((relationship) => (
+              <article className="relationship-item" key={relationship.id}>
+                <header>
+                  <span>{relationship.type}</span>
+                  <strong>{relationship.sourceName} → {relationship.targetName}</strong>
+                </header>
+                <p>{relationship.description || "关系描述待补充。"}</p>
+                {relationship.sourceChapterIds.length > 0 ? (
+                  <div className="relationship-sources">
+                    {relationship.sourceChapterIds.slice(0, 5).map((chapterId) => (
+                      <span key={chapterId}>{chapterIdLabel(chapterId) || chapterId}</span>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ))
+          ) : (
+            <EmptyState
+              description="后续可由 AI 输出 relationships；当前页面已预留结构化关系和场景共现两种展示。"
+              icon={<ShieldCheck size={18} />}
+              size="sm"
+              title="暂无关系数据"
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function deriveCharacterCandidates(scenes: ScriptTraceScene[]): ScriptCharacterCard[] {
+  const speakers = Array.from(
+    new Set(
+      scenes.flatMap((scene) => [
+        ...scene.characters,
+        ...scene.dialogues.map((dialogue) => dialogue.speaker)
+      ]).filter(Boolean)
+    )
+  );
+  return speakers.map((speaker, index) => ({
+    aliases: [],
+    description: "",
+    firstAppearanceChapterId: "",
+    goal: "",
+    id: `speaker_candidate_${String(index + 1).padStart(3, "0")}`,
+    motivation: "",
+    name: speaker,
+    role: "对白候选",
+    sourceChapterIds: []
+  }));
+}
+
+function createCharacterStats(characters: ScriptCharacterCard[], scenes: ScriptTraceScene[]) {
+  const stats = new Map<string, CharacterStat>();
+  characters.forEach((character) => {
+    stats.set(characterIdentity(character), {lineCount: 0, sceneCount: 0});
+  });
+
+  scenes.forEach((scene) => {
+    characters.forEach((character) => {
+      const identity = characterIdentity(character);
+      const appearsInScene = sceneMentionsCharacter(scene, character);
+      if (appearsInScene) {
+        const current = stats.get(identity) || {lineCount: 0, sceneCount: 0};
+        stats.set(identity, {
+          lineCount: current.lineCount + scene.dialogues.filter((dialogue) => dialogueMatchesCharacter(dialogue.speaker, character)).length,
+          sceneCount: current.sceneCount + 1
+        });
+      }
+    });
+  });
+
+  return stats;
+}
+
+function inferRelationshipViews(characters: ScriptCharacterCard[], scenes: ScriptTraceScene[]): RelationshipView[] {
+  const relationships = new Map<string, RelationshipView & {sceneIds: Set<string>}>();
+
+  scenes.forEach((scene) => {
+    const participants = characters.filter((character) => sceneMentionsCharacter(scene, character));
+    for (let sourceIndex = 0; sourceIndex < participants.length; sourceIndex += 1) {
+      for (let targetIndex = sourceIndex + 1; targetIndex < participants.length; targetIndex += 1) {
+        const source = participants[sourceIndex];
+        const target = participants[targetIndex];
+        const key = [characterIdentity(source), characterIdentity(target)].sort().join("|");
+        const current = relationships.get(key);
+        const next = current || {
+          description: "",
+          id: key,
+          sceneIds: new Set<string>(),
+          sourceChapterIds: [],
+          sourceName: source.name,
+          targetName: target.name,
+          type: "场景共现"
+        };
+        next.sceneIds.add(scene.id);
+        next.sourceChapterIds = Array.from(new Set([...next.sourceChapterIds, scene.sourceChapterId].filter(Boolean)));
+        next.description = `共同出现在 ${next.sceneIds.size} 个场景中，可作为关系图谱的候选边。`;
+        relationships.set(key, next);
+      }
+    }
+  });
+
+  return Array.from(relationships.values()).map(({sceneIds: _sceneIds, ...relationship}) => relationship);
+}
+
+function createRelationshipView(relationship: ScriptRelationship, characters: ScriptCharacterCard[]): RelationshipView {
+  return {
+    description: relationship.description,
+    id: relationship.id,
+    sourceChapterIds: relationship.sourceChapterIds,
+    sourceName: characterNameById(relationship.sourceCharacterId, characters),
+    targetName: characterNameById(relationship.targetCharacterId, characters),
+    type: relationship.type
+  };
+}
+
+function characterNameById(characterId: string, characters: ScriptCharacterCard[]) {
+  return characters.find((character) => character.id === characterId)?.name || characterId || "未知人物";
+}
+
+function sceneMentionsCharacter(scene: ScriptTraceScene, character: ScriptCharacterCard) {
+  return (
+    scene.characters.some((value) => valueMatchesCharacter(value, character)) ||
+    scene.dialogues.some((dialogue) => dialogueMatchesCharacter(dialogue.speaker, character))
+  );
+}
+
+function dialogueMatchesCharacter(speaker: string, character: ScriptCharacterCard) {
+  return valueMatchesCharacter(speaker, character);
+}
+
+function valueMatchesCharacter(value: string, character: ScriptCharacterCard) {
+  const normalized = value.trim();
+  if (!normalized) {
+    return false;
+  }
+  return [character.id, character.name, ...character.aliases].some((candidate) => candidate && candidate.trim() === normalized);
+}
+
+function characterIdentity(character: ScriptCharacterCard) {
+  return character.id || character.name;
+}
+
+function inferFirstChapterLabel(character: ScriptCharacterCard, scenes: ScriptTraceScene[]) {
+  const firstScene = scenes.find((scene) => sceneMentionsCharacter(scene, character));
+  return firstScene ? chapterIdLabel(firstScene.sourceChapterId) || `第 ${firstScene.chapterIndex} 章` : "待补充";
+}
+
+function inferSourceChapterIds(character: ScriptCharacterCard, scenes: ScriptTraceScene[]) {
+  return Array.from(
+    new Set(scenes.filter((scene) => sceneMentionsCharacter(scene, character)).map((scene) => scene.sourceChapterId).filter(Boolean))
+  );
+}
+
+function chapterIdLabel(chapterId: string) {
+  const match = chapterId.match(/chapter[_-](\d+)/i);
+  return match ? `第 ${Number(match[1])} 章` : "";
 }
 
 type ScriptPreviewPanelProps = {

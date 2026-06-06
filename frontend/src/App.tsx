@@ -24,6 +24,7 @@ import {
     InputPanel,
     type ProgressStep,
     ScriptPreviewPanel,
+    CharacterWorkbench,
     Sidebar,
     SourceTraceWorkbench,
     TaskConsole,
@@ -48,7 +49,7 @@ import {
     streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
 import type {AuthSession, ScriptDraftListItem, ScriptProjectListItem, ScriptYamlStreamPayload} from "./types/api";
-import {parseScriptYamlScenes} from "./utils/scriptYamlTrace";
+import {parseScriptYamlCharacters, parseScriptYamlRelationships, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
 
 const placeholderYaml = `schema_version: "1.0"
 kind: "screenplay_draft"
@@ -122,6 +123,8 @@ function App() {
   const canExport = useMemo(() => draftId.length > 0 && !exportLoading, [draftId, exportLoading]);
   const canRefreshDrafts = useMemo(() => projectId.length > 0 && !draftLoading, [projectId, draftLoading]);
   const chapterOutline = useMemo(() => parseChapterOutline(novelText), [novelText]);
+  const characterCards = useMemo(() => parseScriptYamlCharacters(yamlDraft), [yamlDraft]);
+  const relationships = useMemo(() => parseScriptYamlRelationships(yamlDraft), [yamlDraft]);
   const traceScenes = useMemo(() => parseScriptYamlScenes(yamlDraft), [yamlDraft]);
   const selectedChapter = useMemo(
     () => chapterOutline.find((chapter) => chapter.index === activeChapterIndex) || chapterOutline[0],
@@ -976,6 +979,15 @@ function App() {
                     activeSceneId={activeTraceSceneId}
                     chapters={chapterOutline}
                     onSelectScene={setActiveTraceSceneId}
+                    scenes={traceScenes}
+                    yamlReady={Boolean(yamlDraft.trim())}
+                />
+            ) : null}
+
+            {activeView === "characters" ? (
+                <CharacterWorkbench
+                    characters={characterCards}
+                    relationships={relationships}
                     scenes={traceScenes}
                     yamlReady={Boolean(yamlDraft.trim())}
                 />
