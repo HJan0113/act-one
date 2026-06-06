@@ -2,6 +2,7 @@
 
 # Existing local folders kept outside the project repository
 /notice/
+/docs/
 /output/
 /.claude/
 /.gstack/
