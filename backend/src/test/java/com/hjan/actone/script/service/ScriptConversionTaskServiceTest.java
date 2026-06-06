@@ -14,11 +14,13 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -57,6 +59,45 @@ class ScriptConversionTaskServiceTest {
         assertThat(response.modelId()).isEqualTo("qwen3-max");
         assertThat(response.message()).contains("stage=INIT");
         verify(taskMapper).insert(any(ScriptConversionTaskDO.class));
+    }
+
+    @Test
+    void createOrReuseReturnsExistingPendingTaskWhenForceNewFalse() {
+        ScriptConversionTaskDO existing = task("task_existing", "project_1");
+        existing.setStatus(ScriptConversionTaskService.STATUS_PENDING);
+        existing.setCreateTime(LocalDateTime.of(2026, 6, 6, 10, 0));
+        when(taskMapper.selectList(any())).thenReturn(List.of(existing));
+
+        var response = service.createOrReuse("project_1", "1.0", "qwen3-max", false);
+
+        assertThat(response.taskId()).isEqualTo("task_existing");
+        assertThat(response.status()).isEqualTo(ScriptConversionTaskService.STATUS_PENDING);
+        verify(taskMapper, never()).insert(any(ScriptConversionTaskDO.class));
+    }
+
+    @Test
+    void createOrReuseCreatesNewTaskWhenForceNewTrue() {
+        when(taskMapper.insert(any(ScriptConversionTaskDO.class))).thenAnswer(invocation -> {
+            ScriptConversionTaskDO task = invocation.getArgument(0);
+            task.setId("task_new");
+            return 1;
+        });
+
+        var response = service.createOrReuse("project_1", "1.0", "qwen3-max", true);
+
+        assertThat(response.taskId()).isEqualTo("task_new");
+        assertThat(response.status()).isEqualTo(ScriptConversionTaskService.STATUS_PENDING);
+        verify(taskMapper, never()).selectList(any());
+        verify(taskMapper).insert(any(ScriptConversionTaskDO.class));
+    }
+
+    @Test
+    void findReusableReturnsEmptyWhenNoActiveTask() {
+        when(taskMapper.selectList(any())).thenReturn(List.of());
+
+        var response = service.findReusable("project_1");
+
+        assertThat(response).isEmpty();
     }
 
     @Test

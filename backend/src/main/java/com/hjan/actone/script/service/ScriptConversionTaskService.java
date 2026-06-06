@@ -14,7 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 @Service
@@ -59,6 +61,34 @@ public class ScriptConversionTaskService {
         task.setModelId(trimToNull(modelId));
         taskMapper.insert(task);
         return toResponse(task);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ScriptConversionTaskResponse createOrReuse(String projectId,
+                                                      String schemaVersion,
+                                                      String modelId,
+                                                      boolean forceNew) {
+        if (!forceNew) {
+            Optional<ScriptConversionTaskResponse> reusable = findReusable(projectId);
+            if (reusable.isPresent()) {
+                return reusable.get();
+            }
+        }
+        return create(projectId, schemaVersion, modelId);
+    }
+
+    public Optional<ScriptConversionTaskResponse> findReusable(String projectId) {
+        String normalizedProjectId = requireText(projectId, "项目 ID 不能为空。");
+        verifyProjectOwned(normalizedProjectId);
+        List<ScriptConversionTaskDO> tasks = taskMapper.selectList(new LambdaQueryWrapper<ScriptConversionTaskDO>()
+                .eq(ScriptConversionTaskDO::getProjectId, normalizedProjectId)
+                .in(ScriptConversionTaskDO::getStatus, STATUS_PENDING, STATUS_RUNNING)
+                .orderByDesc(ScriptConversionTaskDO::getCreateTime)
+                .last("LIMIT 1"));
+        if (tasks == null || tasks.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(toResponse(tasks.get(0)));
     }
 
     @Transactional(rollbackFor = Exception.class)
