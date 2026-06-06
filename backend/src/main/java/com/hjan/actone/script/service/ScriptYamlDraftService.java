@@ -1,6 +1,7 @@
 package com.hjan.actone.script.service;
 
 import com.hjan.actone.common.exception.ClientException;
+import com.hjan.actone.script.ai.pipeline.ScriptAiGenerationMode;
 import com.hjan.actone.script.model.NovelChapter;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
@@ -30,7 +31,17 @@ public class ScriptYamlDraftService {
 
         String title = resolveTitle(request.title(), chapters);
         String yaml = buildYaml(title, request.author(), request.logline(), chapters);
-        return new ScriptYamlGenerateResponse(SCHEMA_VERSION, title, chapters.size(), yaml);
+        return new ScriptYamlGenerateResponse(
+                SCHEMA_VERSION,
+                title,
+                chapters.size(),
+                yaml,
+                ScriptAiGenerationMode.RULE_BASED_SCAFFOLD.yamlValue(),
+                false,
+                null,
+                null,
+                null
+        );
     }
 
     private String buildYaml(String title, String author, String logline, List<NovelChapter> chapters) {

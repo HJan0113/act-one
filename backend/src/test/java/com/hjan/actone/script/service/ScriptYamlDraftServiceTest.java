@@ -23,6 +23,9 @@ class ScriptYamlDraftServiceTest {
         assertThat(response.schemaVersion()).isEqualTo("1.0");
         assertThat(response.title()).isEqualTo("测试剧本");
         assertThat(response.chapterCount()).isEqualTo(3);
+        assertThat(response.generationMode()).isEqualTo("rule_based_scaffold");
+        assertThat(response.fallback()).isFalse();
+        assertThat(response.fallbackReason()).isNull();
         assertThat(response.yaml())
                 .contains("schema_version: \"1.0\"")
                 .contains("kind: \"screenplay_draft\"")

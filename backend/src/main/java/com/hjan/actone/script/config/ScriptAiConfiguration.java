@@ -18,8 +18,12 @@ import com.hjan.actone.script.ai.pipeline.LlmScriptYamlGenerationStage;
 import com.hjan.actone.script.ai.pipeline.LlmYamlRepairStage;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
+import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineService;
 import com.hjan.actone.script.ai.pipeline.ScriptYamlGenerationStage;
 import com.hjan.actone.script.ai.pipeline.YamlRepairStage;
+import com.hjan.actone.script.service.NovelChapterParser;
+import com.hjan.actone.script.service.ScriptYamlDraftService;
+import com.hjan.actone.script.service.ScriptYamlValidator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -100,5 +104,46 @@ public class ScriptAiConfiguration {
     @ConditionalOnMissingBean(YamlRepairStage.class)
     public YamlRepairStage yamlRepairStage(LLMService llmService, PromptTemplateService promptTemplateService) {
         return new LlmYamlRepairStage(llmService, promptTemplateService);
+    }
+
+    @Bean
+    @ConditionalOnBean({
+            NovelChapterParser.class,
+            ScriptYamlValidator.class,
+            ScriptYamlDraftService.class,
+            ChapterSummaryStage.class,
+            GlobalStoryExtractionStage.class,
+            ScenePlanningStage.class,
+            CinematicTreatmentStage.class,
+            DialogueGenerationStage.class,
+            SourceTraceStage.class,
+            ScriptYamlGenerationStage.class,
+            YamlRepairStage.class
+    })
+    @ConditionalOnMissingBean(ScriptAiPipelineService.class)
+    public ScriptAiPipelineService scriptAiPipelineService(NovelChapterParser chapterParser,
+                                                           ScriptYamlValidator yamlValidator,
+                                                           ScriptYamlDraftService ruleBasedDraftService,
+                                                           ChapterSummaryStage chapterSummaryStage,
+                                                           GlobalStoryExtractionStage globalStoryExtractionStage,
+                                                           ScenePlanningStage scenePlanningStage,
+                                                           CinematicTreatmentStage cinematicTreatmentStage,
+                                                           DialogueGenerationStage dialogueGenerationStage,
+                                                           SourceTraceStage sourceTraceStage,
+                                                           ScriptYamlGenerationStage scriptYamlGenerationStage,
+                                                           YamlRepairStage yamlRepairStage) {
+        return new ScriptAiPipelineService(
+                chapterParser,
+                yamlValidator,
+                ruleBasedDraftService,
+                chapterSummaryStage,
+                globalStoryExtractionStage,
+                scenePlanningStage,
+                cinematicTreatmentStage,
+                dialogueGenerationStage,
+                sourceTraceStage,
+                scriptYamlGenerationStage,
+                yamlRepairStage
+        );
     }
 }

@@ -88,6 +88,8 @@ function App() {
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
   const [validationStatus, setValidationStatus] = useState("pending");
   const [validationError, setValidationError] = useState("");
+  const [generationMode, setGenerationMode] = useState("");
+  const [fallbackReason, setFallbackReason] = useState("");
 
   const canPreview = useMemo(() => novelText.trim().length > 0 && !previewLoading, [novelText, previewLoading]);
   const canGenerate = useMemo(() => novelText.trim().length > 0 && !yamlLoading, [novelText, yamlLoading]);
@@ -250,6 +252,10 @@ function App() {
     setDraftId("");
     setValidationStatus(value.trim() ? "edited" : "pending");
     setValidationError("");
+    setGenerationMode(extractGenerationMode(value));
+    if (extractGenerationMode(value) !== "rule_based_fallback") {
+      setFallbackReason("");
+    }
     setYamlMessage(value.trim() ? "YAML 已进入可编辑状态，保存后会生成新的草稿记录。" : initialYamlMessage);
   }
 
@@ -300,16 +306,19 @@ function App() {
           token
         )
       );
+      const nextGenerationMode = data.generationMode || extractGenerationMode(data.yaml);
       setYamlDraft(data.yaml);
       setSchemaVersion(data.schemaVersion);
       setGeneratedTitle(data.title);
       setDraftId("");
-      setValidationError("");
+      setGenerationMode(nextGenerationMode);
+      setFallbackReason(data.fallbackReason || "");
+      setValidationError(data.validationError || "");
       setChapterCount(data.chapterCount);
       setIsValid(true);
       setMessage(`已识别 ${data.chapterCount} 个章节。`);
-      setYamlMessage("YAML 初稿生成成功，可继续复制或编辑。");
-      setValidationStatus("generated");
+      setYamlMessage(createGenerationMessage(nextGenerationMode, Boolean(data.fallback), data.fallbackReason || ""));
+      setValidationStatus(data.validationStatus || "generated");
     } catch (error) {
       setValidationStatus("error");
       setYamlMessage(error instanceof Error ? error.message : "YAML 生成失败。");
@@ -386,6 +395,8 @@ function App() {
     setYamlDraft("");
     setValidationStatus("pending");
     setValidationError("");
+    setGenerationMode("");
+    setFallbackReason("");
     setYamlMessage(initialYamlMessage);
     await loadDrafts(nextProjectId);
   }
@@ -449,6 +460,8 @@ function App() {
       setProjectId(data.projectId);
       setGeneratedTitle(data.title);
       setSchemaVersion(data.schemaVersion);
+      setGenerationMode(extractGenerationMode(data.yaml));
+      setFallbackReason("");
       setValidationStatus(data.validationStatus);
       setValidationError(data.validationError || "");
       setYamlMessage(
@@ -538,6 +551,8 @@ function App() {
           draftLoading={draftLoading}
           drafts={drafts}
           generatedTitle={generatedTitle}
+          fallbackReason={fallbackReason}
+          generationMode={generationMode}
           onExportYaml={exportDraftYaml}
           onCopyYaml={copyYaml}
           onLoadDraft={loadDraftDetail}
@@ -756,6 +771,34 @@ function createSchemaChecks(yaml: string, validationStatus: string, validationEr
       state: pending ? "pending" : /scenes:\s*\n\s*-\s+id:/i.test(source) ? "pass" : "fail"
     }
   ];
+}
+
+function extractGenerationMode(yaml: string) {
+  const match = yaml.match(/generation_mode:\s*["']?([a-z_]+)["']?/i);
+  return match?.[1] || "";
+}
+
+function createGenerationMessage(generationMode: string, fallback: boolean, fallbackReason: string) {
+  const label = generationModeLabel(generationMode);
+  if (fallback) {
+    return fallbackReason
+      ? `${label} 已生成：${fallbackReason}`
+      : `${label} 已生成：AI Pipeline 不可用，已显式降级。`;
+  }
+  return `${label} 生成成功，可继续复制或编辑。`;
+}
+
+function generationModeLabel(generationMode: string) {
+  if (generationMode === "ai_pipeline") {
+    return "AI Pipeline";
+  }
+  if (generationMode === "rule_based_fallback") {
+    return "规则兜底";
+  }
+  if (generationMode === "rule_based_scaffold") {
+    return "规则脚手架";
+  }
+  return "生成模式";
 }
 
 function createWorkflowSteps({

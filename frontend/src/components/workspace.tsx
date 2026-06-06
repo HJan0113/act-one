@@ -410,6 +410,8 @@ type ScriptPreviewPanelProps = {
   drafts: DraftListItem[];
   draftId: string;
   exportLoading: boolean;
+  fallbackReason: string;
+  generationMode: string;
   generatedTitle: string;
   onCopyYaml: () => void;
   onExportYaml: () => void;
@@ -437,6 +439,8 @@ export function ScriptPreviewPanel({
   drafts,
   draftId,
   exportLoading,
+  fallbackReason,
+  generationMode,
   generatedTitle,
   onCopyYaml,
   onExportYaml,
@@ -503,9 +507,19 @@ export function ScriptPreviewPanel({
       </div>
 
       <div className="yaml-meta">
-        <StatusBadge label={schemaVersion ? `Schema ${schemaVersion}` : "Schema 1.0"} tone="info" />
+        <div className="yaml-meta__badges">
+          <StatusBadge label={schemaVersion ? `Schema ${schemaVersion}` : "Schema 1.0"} tone="info" />
+          <StatusBadge label={generationModeLabel(generationMode)} tone={generationModeTone(generationMode, fallbackReason)} />
+        </div>
         <span>{draftId ? `Draft ${draftId}` : generatedTitle || "待生成"}</span>
       </div>
+
+      {fallbackReason ? (
+        <div className="generation-fallback">
+          <ShieldCheck aria-hidden="true" size={15} />
+          <span>{fallbackReason}</span>
+        </div>
+      ) : null}
 
       <YamlEditor onChange={onYamlChange} placeholder={yamlPlaceholder} value={yaml} />
 
@@ -552,6 +566,32 @@ export function ScriptPreviewPanel({
       </section>
     </aside>
   );
+}
+
+function generationModeLabel(generationMode: string) {
+  if (generationMode === "ai_pipeline") {
+    return "AI Pipeline";
+  }
+  if (generationMode === "rule_based_fallback") {
+    return "规则兜底";
+  }
+  if (generationMode === "rule_based_scaffold") {
+    return "规则脚手架";
+  }
+  return "待生成";
+}
+
+function generationModeTone(generationMode: string, fallbackReason: string): StatusTone {
+  if (fallbackReason || generationMode === "rule_based_fallback") {
+    return "warning";
+  }
+  if (generationMode === "ai_pipeline") {
+    return "success";
+  }
+  if (generationMode === "rule_based_scaffold") {
+    return "neutral";
+  }
+  return "neutral";
 }
 
 type YamlEditorProps = {

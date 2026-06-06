@@ -21,8 +21,12 @@ import com.hjan.actone.script.ai.pipeline.LlmScriptYamlGenerationStage;
 import com.hjan.actone.script.ai.pipeline.LlmYamlRepairStage;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
+import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineService;
 import com.hjan.actone.script.ai.pipeline.ScriptYamlGenerationStage;
 import com.hjan.actone.script.ai.pipeline.YamlRepairStage;
+import com.hjan.actone.script.service.NovelChapterParser;
+import com.hjan.actone.script.service.ScriptYamlDraftService;
+import com.hjan.actone.script.service.ScriptYamlValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -50,6 +54,7 @@ class ScriptAiConfigurationTest {
                     assertThat(context).hasSingleBean(SourceTraceStage.class);
                     assertThat(context).hasSingleBean(ScriptYamlGenerationStage.class);
                     assertThat(context).hasSingleBean(YamlRepairStage.class);
+                    assertThat(context).doesNotHaveBean(ScriptAiPipelineService.class);
                     assertThat(context.getBean(ChapterSummaryStage.class))
                             .isInstanceOf(LlmChapterSummaryStage.class);
                     assertThat(context.getBean(GlobalStoryExtractionStage.class))
@@ -70,6 +75,16 @@ class ScriptAiConfigurationTest {
     }
 
     @Test
+    void registersScriptAiPipelineServiceWhenAllStagesAndBaseServicesAreAvailable() {
+        contextRunner
+                .withBean(LLMService.class, StubLlmService::new)
+                .withBean(NovelChapterParser.class, NovelChapterParser::new)
+                .withBean(ScriptYamlValidator.class, ScriptYamlValidator::new)
+                .withBean(ScriptYamlDraftService.class, () -> new ScriptYamlDraftService(new NovelChapterParser()))
+                .run(context -> assertThat(context).hasSingleBean(ScriptAiPipelineService.class));
+    }
+
+    @Test
     void doesNotRegisterChapterSummaryStageWithoutLlmService() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
@@ -83,6 +98,7 @@ class ScriptAiConfigurationTest {
             assertThat(context).doesNotHaveBean(DialogueGenerationStage.class);
             assertThat(context).doesNotHaveBean(ScriptYamlGenerationStage.class);
             assertThat(context).doesNotHaveBean(YamlRepairStage.class);
+            assertThat(context).doesNotHaveBean(ScriptAiPipelineService.class);
         });
     }
 
