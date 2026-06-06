@@ -4,6 +4,9 @@ import com.hjan.actone.ai.service.LLMService;
 import com.hjan.actone.ai.prompt.PromptTemplateService;
 import com.hjan.actone.infra.ai.ChatClient;
 import com.hjan.actone.infra.ai.error.ModelClientExceptionMapper;
+import com.hjan.actone.infra.ai.model.ModelHealthStore;
+import com.hjan.actone.infra.ai.model.ModelRoutingExecutor;
+import com.hjan.actone.infra.ai.model.ModelSelector;
 import com.hjan.actone.infra.ai.support.LLMResponseCleaner;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -36,7 +39,9 @@ class AiClientConfigurationTest {
                     "ai.chat.candidates[0].provider=siliconflow",
                     "ai.chat.candidates[0].model=test-model",
                     "ai.chat.candidates[0].enabled=true",
-                    "ai.chat.candidates[0].priority=1"
+                    "ai.chat.candidates[0].priority=1",
+                    "ai.selection.failure-threshold=3",
+                    "ai.selection.open-duration-ms=1500"
             );
 
     @Test
@@ -45,6 +50,9 @@ class AiClientConfigurationTest {
             assertThat(context).hasSingleBean(AiModelProperties.class);
             assertThat(context).hasSingleBean(ChatClient.class);
             assertThat(context).hasSingleBean(LLMService.class);
+            assertThat(context).hasSingleBean(ModelHealthStore.class);
+            assertThat(context).hasSingleBean(ModelSelector.class);
+            assertThat(context).hasSingleBean(ModelRoutingExecutor.class);
             assertThat(context).hasSingleBean(PromptTemplateService.class);
             assertThat(context).hasSingleBean(LLMResponseCleaner.class);
             assertThat(context).hasSingleBean(ModelClientExceptionMapper.class);
@@ -57,6 +65,8 @@ class AiClientConfigurationTest {
             assertThat(properties.getChat().getDefaultModel()).isEqualTo("spring-ai-test");
             assertThat(properties.getChat().getCandidates().get(0).getModel()).isEqualTo("test-model");
             assertThat(properties.getSpringAi().getChat().getTimeout()).hasSeconds(30);
+            assertThat(properties.getSelection().getFailureThreshold()).isEqualTo(3);
+            assertThat(properties.getSelection().getOpenDurationMs()).isEqualTo(1500);
             assertThat(context.getBean(ChatClient.class).provider())
                     .isEqualTo("spring-ai-openai-compatible");
         });
@@ -71,6 +81,8 @@ class AiClientConfigurationTest {
                     assertThat(context).hasSingleBean(PromptTemplateService.class);
                     assertThat(context).doesNotHaveBean(ChatClient.class);
                     assertThat(context).doesNotHaveBean(LLMService.class);
+                    assertThat(context).doesNotHaveBean(ModelSelector.class);
+                    assertThat(context).doesNotHaveBean(ModelRoutingExecutor.class);
                 });
     }
 
@@ -91,8 +103,12 @@ class AiClientConfigurationTest {
                         "default-model: qwen3-max",
                         "id: qwen3-max",
                         "provider: bailian",
-                        "model: qwen3-max"
+                        "model: qwen3-max",
+                        "selection:",
+                        "failure-threshold: 2",
+                        "open-duration-ms: 30000"
                 );
+        assertThat(yaml).doesNotContain("rerank:", "embedding:");
 
         List<PropertySource<?>> propertySources = new YamlPropertySourceLoader().load(
                 "application",

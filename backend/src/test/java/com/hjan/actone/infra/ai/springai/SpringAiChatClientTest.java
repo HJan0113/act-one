@@ -6,6 +6,7 @@ import com.hjan.actone.ai.model.ChatResponseFormat;
 import com.hjan.actone.infra.ai.config.AiModelProperties;
 import com.hjan.actone.infra.ai.error.ModelClientErrorType;
 import com.hjan.actone.infra.ai.error.ModelClientException;
+import com.hjan.actone.infra.ai.model.ModelTarget;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -31,7 +32,7 @@ class SpringAiChatClientTest {
 
     @Test
     void chatUsesSpringAiCompatibleRequestAndParsesResponse() {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture("request-model");
         fixture.server().expect(requestTo("https://mock.example/v1/chat/completions"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("Authorization", "Bearer test-api-key"))
@@ -53,7 +54,7 @@ class SpringAiChatClientTest {
                 ChatResponseFormat.JSON_OBJECT
         );
 
-        var response = fixture.client().chat(request);
+        var response = fixture.client().chat(request, fixture.target());
 
         assertThat(response.content()).isEqualTo("{\"summary\":\"完成\"}");
         assertThat(response.model()).isEqualTo("response-model");
@@ -67,7 +68,7 @@ class SpringAiChatClientTest {
 
     @Test
     void chatUsesConfiguredDefaults() {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture("configured-model");
         fixture.server().expect(requestTo("https://mock.example/v1/chat/completions"))
                 .andExpect(jsonPath("$.model").value("configured-model"))
                 .andExpect(jsonPath("$.temperature").value(0.3))
@@ -75,7 +76,7 @@ class SpringAiChatClientTest {
                 .andExpect(jsonPath("$.max_tokens").value(4096))
                 .andRespond(withSuccess(successResponse("默认响应"), MediaType.APPLICATION_JSON));
 
-        var response = fixture.client().chat(ChatRequest.of("生成摘要"));
+        var response = fixture.client().chat(ChatRequest.of("生成摘要"), fixture.target());
 
         assertThat(response.content()).isEqualTo("默认响应");
         fixture.server().verify();
@@ -83,11 +84,11 @@ class SpringAiChatClientTest {
 
     @Test
     void chatRejectsEmptyContent() {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture("configured-model");
         fixture.server().expect(requestTo("https://mock.example/v1/chat/completions"))
                 .andRespond(withSuccess(successResponse("  "), MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> fixture.client().chat(ChatRequest.of("生成摘要")))
+        assertThatThrownBy(() -> fixture.client().chat(ChatRequest.of("生成摘要"), fixture.target()))
                 .isInstanceOf(ModelClientException.class)
                 .hasMessageContaining("返回内容为空")
                 .extracting("errorType")
@@ -97,11 +98,11 @@ class SpringAiChatClientTest {
 
     @Test
     void chatClassifiesHttpError() {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture("configured-model");
         fixture.server().expect(requestTo("https://mock.example/v1/chat/completions"))
                 .andRespond(withTooManyRequests());
 
-        assertThatThrownBy(() -> fixture.client().chat(ChatRequest.of("生成摘要")))
+        assertThatThrownBy(() -> fixture.client().chat(ChatRequest.of("生成摘要"), fixture.target()))
                 .isInstanceOf(ModelClientException.class)
                 .hasMessage("Spring AI 模型请求失败: HTTP 429")
                 .extracting("errorType", "statusCode")
@@ -111,11 +112,11 @@ class SpringAiChatClientTest {
 
     @Test
     void chatClassifiesTimeout() {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture("configured-model");
         fixture.server().expect(requestTo("https://mock.example/v1/chat/completions"))
                 .andRespond(withException(new SocketTimeoutException("Read timed out")));
 
-        assertThatThrownBy(() -> fixture.client().chat(ChatRequest.of("生成摘要")))
+        assertThatThrownBy(() -> fixture.client().chat(ChatRequest.of("生成摘要"), fixture.target()))
                 .isInstanceOf(ModelClientException.class)
                 .hasMessageContaining("请求超时")
                 .extracting("errorType")
@@ -125,11 +126,11 @@ class SpringAiChatClientTest {
 
     @Test
     void chatRejectsInvalidJson() {
-        Fixture fixture = fixture();
+        Fixture fixture = fixture("configured-model");
         fixture.server().expect(requestTo("https://mock.example/v1/chat/completions"))
                 .andRespond(withSuccess("{not-json", MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> fixture.client().chat(ChatRequest.of("生成摘要")))
+        assertThatThrownBy(() -> fixture.client().chat(ChatRequest.of("生成摘要"), fixture.target()))
                 .isInstanceOf(ModelClientException.class)
                 .hasMessageContaining("响应结构非法")
                 .extracting("errorType")
@@ -137,12 +138,23 @@ class SpringAiChatClientTest {
         fixture.server().verify();
     }
 
-    private Fixture fixture() {
+    private Fixture fixture(String model) {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         AiModelProperties properties = properties();
-        SpringAiChatClient client = new SpringAiChatClient(properties, timeout -> builder);
-        return new Fixture(client, server);
+        SpringAiChatClient client = new SpringAiChatClient(
+                SpringAiProviderIds.OPENAI_COMPATIBLE,
+                properties.getSpringAi().getChat(),
+                timeout -> builder
+        );
+        AiModelProperties.ModelCandidate candidate = properties.getChat().getCandidates().get(0);
+        ModelTarget target = new ModelTarget(
+                candidate.getId(),
+                model,
+                candidate,
+                properties.getProviders().get(candidate.getProvider())
+        );
+        return new Fixture(client, server, target);
     }
 
     private AiModelProperties properties() {
@@ -201,7 +213,8 @@ class SpringAiChatClientTest {
 
     private record Fixture(
             SpringAiChatClient client,
-            MockRestServiceServer server
+            MockRestServiceServer server,
+            ModelTarget target
     ) {
     }
 }

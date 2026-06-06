@@ -50,13 +50,11 @@ ai:
       api-key: ${BAILIAN_API_KEY:}
       endpoints:
         chat: /compatible-mode/v1/chat/completions
-        rerank: /api/v1/services/rerank/text-rerank/text-rerank
     siliconflow:
       url: https://api.siliconflow.cn
       api-key: ${SILICONFLOW_API_KEY:}
       endpoints:
         chat: /v1/chat/completions
-        embedding: /v1/embeddings
 
   spring-ai:
     chat:
@@ -74,6 +72,10 @@ ai:
         model: qwen3-max
         enabled: true
         priority: 1
+
+  selection:
+    failure-threshold: 2
+    open-duration-ms: 30000
 
 script:
   ai:

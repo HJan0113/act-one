@@ -13,7 +13,13 @@ import com.hjan.actone.common.errorcode.BaseErrorCode;
 import com.hjan.actone.common.exception.RemoteException;
 import com.hjan.actone.infra.ai.error.ModelClientErrorType;
 import com.hjan.actone.infra.ai.error.ModelClientException;
+import com.hjan.actone.infra.ai.error.ModelClientExceptionMapper;
+import com.hjan.actone.infra.ai.config.AiModelProperties;
+import com.hjan.actone.infra.ai.model.ModelHealthStore;
+import com.hjan.actone.infra.ai.model.ModelRoutingExecutor;
+import com.hjan.actone.infra.ai.model.ModelSelector;
 import com.hjan.actone.infra.ai.support.FakeChatClient;
+import com.hjan.actone.infra.ai.support.LLMResponseCleaner;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -23,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -149,6 +156,37 @@ class DefaultLLMServiceTest {
         assertThatThrownBy(() -> service.chat("生成摘要"))
                 .isInstanceOf(RemoteException.class)
                 .hasMessageContaining("返回内容为空");
+    }
+
+    @Test
+    void chatFallsBackToNextCandidateAndCleansResponse() {
+        AiModelProperties properties = routingProperties();
+        ModelHealthStore healthStore = new ModelHealthStore(properties);
+        FakeChatClient primary = new FakeChatClient("p1")
+                .failing(new ModelClientException("failed", ModelClientErrorType.SERVER_ERROR, 500));
+        FakeChatClient secondary = new FakeChatClient("p2")
+                .responding(new ChatResponse(
+                        "```json\n{\"ok\":true}\n```",
+                        "secondary-model",
+                        "stop",
+                        new ChatUsage(1, 2, 3),
+                        "request_2"
+                ));
+        DefaultLLMService service = new DefaultLLMService(
+                new ModelSelector(properties, healthStore),
+                new ModelRoutingExecutor(healthStore),
+                List.of(primary, secondary),
+                new LLMResponseCleaner(),
+                new ModelClientExceptionMapper()
+        );
+
+        ChatResponse response = service.chat(ChatRequest.of("生成摘要"));
+
+        assertThat(response.content()).isEqualTo("{\"ok\":true}");
+        assertThat(response.model()).isEqualTo("secondary-model");
+        assertThat(primary.targets()).extracting(target -> target.id()).containsExactly("primary");
+        assertThat(secondary.targets()).extracting(target -> target.id()).containsExactly("secondary");
+        assertThat(healthStore.isUnavailable("primary")).isFalse();
     }
 
     @Test
@@ -293,6 +331,42 @@ class DefaultLLMServiceTest {
                         BaseErrorCode.REMOTE_ERROR
                 )
         );
+    }
+
+    private AiModelProperties routingProperties() {
+        AiModelProperties.ProviderConfig p1 = provider();
+        AiModelProperties.ProviderConfig p2 = provider();
+
+        AiModelProperties properties = new AiModelProperties();
+        properties.setProviders(Map.of("p1", p1, "p2", p2));
+        properties.getSelection().setFailureThreshold(2);
+        properties.getChat().setDefaultModel("primary");
+        properties.getChat().setCandidates(List.of(
+                candidate("primary", "p1", "primary-model", 1),
+                candidate("secondary", "p2", "secondary-model", 2)
+        ));
+        return properties;
+    }
+
+    private AiModelProperties.ProviderConfig provider() {
+        AiModelProperties.ProviderConfig provider = new AiModelProperties.ProviderConfig();
+        provider.setUrl("https://mock.example");
+        provider.setApiKey("test-key");
+        provider.setEndpoints(Map.of("chat", "/v1/chat/completions"));
+        return provider;
+    }
+
+    private AiModelProperties.ModelCandidate candidate(String id,
+                                                       String provider,
+                                                       String model,
+                                                       int priority) {
+        AiModelProperties.ModelCandidate candidate = new AiModelProperties.ModelCandidate();
+        candidate.setId(id);
+        candidate.setProvider(provider);
+        candidate.setModel(model);
+        candidate.setEnabled(true);
+        candidate.setPriority(priority);
+        return candidate;
     }
 
     private ListAppender<ILoggingEvent> attachLogAppender() {

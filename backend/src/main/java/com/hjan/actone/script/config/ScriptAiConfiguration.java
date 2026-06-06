@@ -30,6 +30,7 @@ import com.hjan.actone.script.service.ScriptYamlDraftService;
 import com.hjan.actone.script.service.ScriptYamlValidator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -63,7 +64,7 @@ public class ScriptAiConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({LLMService.class, PromptTemplateService.class, ObjectMapper.class})
+    @ConditionalOnProperty(prefix = "ai.spring-ai.chat", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean(ChapterSummaryStage.class)
     public ChapterSummaryStage chapterSummaryStage(LLMService llmService,
                                                    PromptTemplateService promptTemplateService,
@@ -78,7 +79,7 @@ public class ScriptAiConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({LLMService.class, PromptTemplateService.class, ObjectMapper.class})
+    @ConditionalOnProperty(prefix = "ai.spring-ai.chat", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean(GlobalStoryExtractionStage.class)
     public GlobalStoryExtractionStage globalStoryExtractionStage(LLMService llmService,
                                                                  PromptTemplateService promptTemplateService,
@@ -95,7 +96,7 @@ public class ScriptAiConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({LLMService.class, PromptTemplateService.class, ObjectMapper.class})
+    @ConditionalOnProperty(prefix = "ai.spring-ai.chat", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean(ScenePlanningStage.class)
     public ScenePlanningStage scenePlanningStage(LLMService llmService,
                                                  PromptTemplateService promptTemplateService,
@@ -110,7 +111,7 @@ public class ScriptAiConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({LLMService.class, PromptTemplateService.class, ObjectMapper.class})
+    @ConditionalOnProperty(prefix = "ai.spring-ai.chat", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean(CinematicTreatmentStage.class)
     public CinematicTreatmentStage cinematicTreatmentStage(LLMService llmService,
                                                            PromptTemplateService promptTemplateService,
@@ -125,7 +126,7 @@ public class ScriptAiConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({LLMService.class, PromptTemplateService.class, ObjectMapper.class})
+    @ConditionalOnProperty(prefix = "ai.spring-ai.chat", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean(DialogueGenerationStage.class)
     public DialogueGenerationStage dialogueGenerationStage(LLMService llmService,
                                                            PromptTemplateService promptTemplateService,
@@ -140,7 +141,7 @@ public class ScriptAiConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({LLMService.class, PromptTemplateService.class, ObjectMapper.class})
+    @ConditionalOnProperty(prefix = "ai.spring-ai.chat", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean(ScriptYamlGenerationStage.class)
     public ScriptYamlGenerationStage scriptYamlGenerationStage(LLMService llmService,
                                                                PromptTemplateService promptTemplateService,
@@ -155,7 +156,7 @@ public class ScriptAiConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({LLMService.class, PromptTemplateService.class})
+    @ConditionalOnProperty(prefix = "ai.spring-ai.chat", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean(YamlRepairStage.class)
     public YamlRepairStage yamlRepairStage(LLMService llmService,
                                            PromptTemplateService promptTemplateService,
@@ -184,6 +185,7 @@ public class ScriptAiConfiguration {
             PipelineConsistencyChecker.class,
             ScriptYamlFactConstraintChecker.class
     })
+    @ConditionalOnProperty(prefix = "ai.spring-ai.chat", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean(ScriptAiPipelineService.class)
     public ScriptAiPipelineService scriptAiPipelineService(NovelChapterParser chapterParser,
                                                            ScriptYamlValidator yamlValidator,

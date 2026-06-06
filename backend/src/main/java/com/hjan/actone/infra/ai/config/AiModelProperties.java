@@ -16,6 +16,7 @@ public class AiModelProperties {
     private Map<String, ProviderConfig> providers = new HashMap<>();
     private SpringAiConfig springAi = new SpringAiConfig();
     private ModelGroup chat = new ModelGroup();
+    private Selection selection = new Selection();
 
     @Data
     public static class ProviderConfig {
@@ -51,5 +52,11 @@ public class AiModelProperties {
         private String model;
         private Boolean enabled = true;
         private Integer priority = 100;
+    }
+
+    @Data
+    public static class Selection {
+        private Integer failureThreshold = 2;
+        private Long openDurationMs = 30000L;
     }
 }

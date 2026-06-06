@@ -5,6 +5,7 @@ import com.hjan.actone.ai.model.ChatRequest;
 import com.hjan.actone.ai.model.ChatResponse;
 import com.hjan.actone.ai.prompt.PromptTemplateService;
 import com.hjan.actone.ai.service.LLMService;
+import com.hjan.actone.infra.ai.config.AiClientConfiguration;
 import com.hjan.actone.infra.ai.prompt.ClasspathPromptTemplateService;
 import com.hjan.actone.script.ai.pipeline.CinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
@@ -47,6 +48,7 @@ class ScriptAiConfigurationTest {
     @Test
     void registersChapterSummaryStageWhenLlmServiceIsAvailable() {
         contextRunner
+                .withPropertyValues("ai.spring-ai.chat.enabled=true")
                 .withBean(LLMService.class, StubLlmService::new)
                 .run(context -> {
                     assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
@@ -83,10 +85,33 @@ class ScriptAiConfigurationTest {
     @Test
     void registersScriptAiPipelineServiceWhenAllStagesAndBaseServicesAreAvailable() {
         contextRunner
+                .withPropertyValues("ai.spring-ai.chat.enabled=true")
                 .withBean(LLMService.class, StubLlmService::new)
                 .withBean(NovelChapterParser.class, NovelChapterParser::new)
                 .withBean(ScriptYamlValidator.class, ScriptYamlValidator::new)
                 .withBean(ScriptYamlDraftService.class, () -> new ScriptYamlDraftService(new NovelChapterParser()))
+                .run(context -> assertThat(context).hasSingleBean(ScriptAiPipelineService.class));
+    }
+
+    @Test
+    void registersScriptAiPipelineServiceWhenScriptConfigurationIsProcessedBeforeAiClientConfiguration() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(ScriptAiConfiguration.class, AiClientConfiguration.class)
+                .withBean(ObjectMapper.class, ObjectMapper::new)
+                .withBean(NovelChapterParser.class, NovelChapterParser::new)
+                .withBean(ScriptYamlValidator.class, ScriptYamlValidator::new)
+                .withBean(ScriptYamlDraftService.class, () -> new ScriptYamlDraftService(new NovelChapterParser()))
+                .withPropertyValues(
+                        "ai.providers.siliconflow.url=https://mock.example",
+                        "ai.providers.siliconflow.api-key=test-api-key",
+                        "ai.providers.siliconflow.endpoints.chat=/v1/chat/completions",
+                        "ai.spring-ai.chat.enabled=true",
+                        "ai.chat.default-model=spring-ai-test",
+                        "ai.chat.candidates[0].id=spring-ai-test",
+                        "ai.chat.candidates[0].provider=siliconflow",
+                        "ai.chat.candidates[0].model=test-model",
+                        "ai.chat.candidates[0].enabled=true"
+                )
                 .run(context -> assertThat(context).hasSingleBean(ScriptAiPipelineService.class));
     }
 
