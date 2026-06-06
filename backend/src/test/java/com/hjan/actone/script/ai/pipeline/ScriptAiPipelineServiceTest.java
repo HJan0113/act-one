@@ -18,6 +18,7 @@ import com.hjan.actone.script.service.ScriptYamlValidationResult;
 import com.hjan.actone.script.service.ScriptYamlValidator;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,6 +54,72 @@ class ScriptAiPipelineServiceTest {
         assertThat(stages.yamlContext.sourceTrace().scenes()).hasSize(1);
         assertThat(stages.yamlContext.scenePlan().scenes()).hasSize(1);
         assertThat(stages.repairCalls).isZero();
+    }
+
+    @Test
+    void generateNotifiesObserverOfStageProgressAndValidation() {
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline");
+        ScriptAiPipelineService service = service(stages);
+        List<String> events = new ArrayList<>();
+
+        ScriptAiPipelineObserver observer = new ScriptAiPipelineObserver() {
+            @Override
+            public void onPipelineStart(PipelineContext context) {
+                events.add("pipeline:" + context.currentStage());
+            }
+
+            @Override
+            public void onStageStart(PipelineContext context, PipelineStage stage) {
+                events.add("start:" + stage);
+            }
+
+            @Override
+            public void onStageSuccess(PipelineContext context, PipelineStage stage) {
+                events.add("success:" + stage);
+            }
+
+            @Override
+            public void onValidation(PipelineContext context, ScriptYamlValidationResult validationResult) {
+                events.add("validation:" + validationResult.status());
+            }
+
+            @Override
+            public void onFallback(PipelineContext context, PipelineStage fallbackStage, String reason) {
+                events.add("fallback:" + fallbackStage);
+            }
+
+            @Override
+            public void onComplete(ScriptAiPipelineResult result) {
+                events.add("complete:" + result.context().currentStage());
+            }
+        };
+
+        ScriptAiPipelineResult result = service.generate(request(), observer);
+
+        assertThat(result.valid()).isTrue();
+        assertThat(events).containsSubsequence(
+                "pipeline:INIT",
+                "start:CHAPTER_SUMMARY",
+                "success:CHAPTER_SUMMARY",
+                "start:GLOBAL_STORY_EXTRACTION",
+                "success:GLOBAL_STORY_EXTRACTION",
+                "start:SCENE_PLANNING",
+                "success:SCENE_PLANNING",
+                "start:PSYCHOLOGICAL_VISUALIZATION",
+                "success:PSYCHOLOGICAL_VISUALIZATION",
+                "start:DIALOGUE_GENERATION",
+                "success:DIALOGUE_GENERATION",
+                "start:SOURCE_TRACE",
+                "success:SOURCE_TRACE",
+                "start:SCRIPT_YAML_GENERATION",
+                "success:SCRIPT_YAML_GENERATION",
+                "start:YAML_VALIDATION",
+                "success:YAML_VALIDATION",
+                "validation:valid",
+                "complete:COMPLETED"
+        );
+        assertThat(events).doesNotContain("fallback:CHAPTER_SUMMARY");
     }
 
     @Test

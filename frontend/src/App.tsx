@@ -38,14 +38,14 @@ import {readStoredAuth, removeStoredAuth, writeStoredAuth} from "./services/auth
 import {
     createProjectFromText,
     exportDraftYaml as exportDraftYamlFile,
-    generateYaml as generateScriptYaml,
     getDraftDetail,
     listDrafts as listProjectDrafts,
     listMyProjects,
     previewChapters as previewNovelChapters,
-    saveDraft as saveScriptDraft
+    saveDraft as saveScriptDraft,
+    streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
-import type {AuthSession, ScriptDraftListItem, ScriptProjectListItem} from "./types/api";
+import type {AuthSession, ScriptDraftListItem, ScriptProjectListItem, ScriptYamlStreamPayload} from "./types/api";
 
 const placeholderYaml = `schema_version: "1.0"
 kind: "screenplay_draft"
@@ -374,6 +374,7 @@ function App() {
     if (!canGenerate) return;
       const controller = new AbortController();
       const taskId = createLocalTaskId();
+      let streamTaskId = taskId;
       generationAbortRef.current = controller;
       setActiveView("pipeline");
     setYamlLoading(true);
@@ -382,20 +383,70 @@ function App() {
       setConversionTask({
           currentStage: "AI Pipeline 编排",
           errorMessage: "",
-          message: "同步生成已提交，后端正在执行摘要、抽取、场景规划、对白和 YAML 生成。",
-          progress: 42,
+          message: "流式生成已提交，正在等待后端 meta / progress 事件。",
+          progress: 4,
           status: "running",
           taskId
       });
+
+      const updateTaskFromStream = (payload: ScriptYamlStreamPayload, status: TaskStatus = "running") => {
+          if (payload.taskId) {
+              streamTaskId = payload.taskId;
+          }
+          setConversionTask((current) => ({
+              ...current,
+              currentStage: pipelineStageLabel(payload.stage) || current.currentStage,
+              errorMessage: status === "failed" ? payload.message || current.errorMessage : "",
+              message: payload.message || current.message,
+              progress: nextTaskProgress(payload.progress, current.progress),
+              status,
+              taskId: payload.taskId || current.taskId || streamTaskId
+          }));
+      };
+
     try {
       const data = await requestWithAuth((token) =>
-        generateScriptYaml(
+        streamGenerateScriptYaml(
           {
             author,
             logline,
             text: novelText,
             title
           },
+            {
+                onError: (payload) => {
+                    updateTaskFromStream(payload, "failed");
+                    setYamlMessage(payload.message || "YAML 生成失败。");
+                },
+                onFinish: (payload) => {
+                    updateTaskFromStream(payload, "success");
+                },
+                onMessage: (payload) => {
+                    updateTaskFromStream(payload);
+                    if (payload.message) {
+                        setYamlMessage(payload.message);
+                    }
+                },
+                onMeta: updateTaskFromStream,
+                onProgress: (payload) => {
+                    updateTaskFromStream(payload);
+                    if (payload.message) {
+                        setYamlMessage(payload.message);
+                    }
+                },
+                onValidation: (payload) => {
+                    updateTaskFromStream(payload);
+                    if (payload.validationStatus) {
+                        setValidationStatus(payload.validationStatus);
+                        setValidationError(payload.validationError || "");
+                        setYamlMessage(
+                            payload.validationStatus === "valid"
+                                ? "Schema 校验通过，等待完成事件。"
+                                : payload.validationError || "Schema 校验未通过，等待自动修复或兜底结果。"
+                        );
+                    }
+                }
+            },
             token,
             controller.signal
         )
@@ -418,9 +469,9 @@ function App() {
             currentStage: data.validationStatus === "valid" ? "Schema 校验通过" : "YAML 已生成",
             errorMessage: data.validationError || "",
             message: nextYamlMessage,
-            progress: data.validationStatus === "valid" ? 92 : 84,
+            progress: data.validationStatus === "valid" ? 100 : 96,
             status: data.validationStatus === "invalid" ? "failed" : "success",
-            taskId
+            taskId: streamTaskId
         });
         setActiveView("result");
     } catch (error) {
@@ -435,7 +486,7 @@ function App() {
             message: aborted ? errorMessage : "请检查模型配置、网络或输入文本后重试。",
             progress: aborted ? Math.max(current.progress, 20) : Math.max(current.progress, 42),
             status: aborted ? "canceled" : "failed",
-            taskId
+            taskId: streamTaskId
         }));
         setActiveView(aborted ? "source" : "pipeline");
     } finally {
@@ -837,8 +888,8 @@ function App() {
                         <div className="task-details__body">
                             <p>{taskSummary.errorMessage || taskSummary.message}</p>
                             <div className="task-detail-list">
-                                <span>后续接入 SSE 后，此页会实时显示 `meta / progress / validation / finish / error` 事件。</span>
-                                <span>停止生成已支持前端请求中止，后端取消接口落地后会切换为真实任务取消。</span>
+                                <span>此页实时显示后端 `meta / progress / validation / finish / error` 事件。</span>
+                                <span>停止生成当前会中止前端流式连接，后端任务取消会在下一项接入。</span>
                                 <span>阶段结果暂存、失败恢复和超长文本分块会继续挂在此页。</span>
                             </div>
                         </div>
@@ -1128,6 +1179,35 @@ function createInitialTask(): ConversionTaskState {
 
 function createLocalTaskId() {
     return `local-${Date.now().toString(36)}`;
+}
+
+const pipelineStageLabels: Record<string, string> = {
+    CHAPTER_SUMMARY: "章节摘要",
+    COMPLETED: "转换完成",
+    DIALOGUE_GENERATION: "对白生成",
+    GLOBAL_STORY_EXTRACTION: "全局故事抽取",
+    INIT: "任务初始化",
+    PSYCHOLOGICAL_VISUALIZATION: "心理影视化",
+    SCENE_PLANNING: "场景规划",
+    SCRIPT_YAML_GENERATION: "YAML 生成",
+    SOURCE_TRACE: "源文追溯",
+    YAML_REPAIR: "YAML 自动修复",
+    YAML_VALIDATION: "Schema 校验"
+};
+
+function pipelineStageLabel(stage?: string | null) {
+    if (!stage) {
+        return "";
+    }
+    return pipelineStageLabels[stage] || stage;
+}
+
+function nextTaskProgress(value: number | null | undefined, current: number) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return current;
+    }
+    const normalized = Math.max(0, Math.min(100, Math.round(value)));
+    return Math.max(current, normalized);
 }
 
 function isAbortError(error: unknown) {

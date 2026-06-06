@@ -59,6 +59,26 @@ export type ScriptYamlData = {
   yaml: string;
 };
 
+export type ScriptYamlStreamEventName =
+  | "meta"
+  | "progress"
+  | "message"
+  | "validation"
+  | "finish"
+  | "error"
+  | "done";
+
+export type ScriptYamlStreamPayload = {
+  message?: string | null;
+  progress?: number | null;
+  result?: ScriptYamlData | null;
+  stage?: string | null;
+  taskId?: string | null;
+  valid?: boolean | null;
+  validationError?: string | null;
+  validationStatus?: string | null;
+};
+
 export type ScriptProjectCreateRequest = {
   description: string;
   text: string;
