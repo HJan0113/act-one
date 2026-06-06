@@ -47,6 +47,7 @@ public enum PromptTemplateId {
                     "scene_plans",
                     "cinematic_treatment",
                     "dialogue_draft",
+                    "source_trace",
                     "schema_summary"
             )
     ),

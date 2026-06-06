@@ -99,6 +99,27 @@ class AiIntermediateModelSerializationTest {
     }
 
     @Test
+    void sourceTraceRoundTripsJsonAndKeepsSceneEvidence() throws Exception {
+        SourceTrace trace = sourceTrace();
+
+        String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(trace);
+        SourceTrace restored = objectMapper.readValue(json, SourceTrace.class);
+
+        assertThat(restored).isEqualTo(trace);
+        assertThat(restored.scenes()).singleElement()
+                .satisfies(scene -> {
+                    assertThat(scene.sceneId()).isEqualTo("scene_001");
+                    assertThat(scene.sourceChapterId()).isEqualTo("chapter_1");
+                    assertThat(scene.sourceExcerpt()).contains("暗门");
+                    assertThat(scene.evidence()).extracting(SourceEvidence::excerpt)
+                            .contains(
+                                    "林夏在旧剧场后台发现一扇暗门。",
+                                    "她在灰尘里摸到一枚冰凉的铜钥匙。"
+                            );
+                });
+    }
+
+    @Test
     void pipelineContextTracksStageTransitionsAndYamlOutput() throws Exception {
         PipelineContext context = PipelineContext.create(
                         "project_1",
@@ -112,6 +133,7 @@ class AiIntermediateModelSerializationTest {
                 .withScenePlan(scenePlan())
                 .withCinematicTreatment(cinematicTreatment())
                 .withDialogueDraft(dialogueDraft())
+                .withSourceTrace(sourceTrace())
                 .withGeneratedYaml("""
                         schema_version: "1.0"
                         kind: "screenplay_draft"
@@ -130,6 +152,7 @@ class AiIntermediateModelSerializationTest {
         assertThat(restored.scenePlan().scenes()).hasSize(1);
         assertThat(restored.cinematicTreatment().scenes()).hasSize(1);
         assertThat(restored.dialogueDraft().scenes()).hasSize(1);
+        assertThat(restored.sourceTrace().scenes()).hasSize(1);
         assertThat(restored.generatedYaml()).contains("screenplay_draft");
         assertThat(restored.validationStatus()).isEqualTo("valid");
     }
@@ -147,6 +170,7 @@ class AiIntermediateModelSerializationTest {
         assertThat(context.scenePlan()).isNull();
         assertThat(context.cinematicTreatment()).isNull();
         assertThat(context.dialogueDraft()).isNull();
+        assertThat(context.sourceTrace()).isNull();
     }
 
     @Test
@@ -164,6 +188,10 @@ class AiIntermediateModelSerializationTest {
                 .hasMessage("scenes 不能为空");
 
         assertThatThrownBy(() -> new DialogueDraft(List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("scenes 不能为空");
+
+        assertThatThrownBy(() -> new SourceTrace(List.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("scenes 不能为空");
 
@@ -313,6 +341,19 @@ class AiIntermediateModelSerializationTest {
                         "克制",
                         "林夏在旧剧场后台发现一扇暗门。"
                 ))
+        )));
+    }
+
+    private SourceTrace sourceTrace() {
+        return new SourceTrace(List.of(new SourceTrace.SceneTrace(
+                "scene_001",
+                1,
+                "chapter_1",
+                "林夏在旧剧场后台发现一扇暗门。",
+                List.of(
+                        evidence("林夏在旧剧场后台发现一扇暗门。"),
+                        evidence("她在灰尘里摸到一枚冰凉的铜钥匙。")
+                )
         )));
     }
 

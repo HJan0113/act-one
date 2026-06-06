@@ -37,6 +37,7 @@ public class ScriptAiPipelineService {
     private final ScenePlanningStage scenePlanningStage;
     private final CinematicTreatmentStage cinematicTreatmentStage;
     private final DialogueGenerationStage dialogueGenerationStage;
+    private final SourceTraceStage sourceTraceStage;
     private final ScriptYamlGenerationStage scriptYamlGenerationStage;
     private final YamlRepairStage yamlRepairStage;
 
@@ -48,6 +49,7 @@ public class ScriptAiPipelineService {
                                    ScenePlanningStage scenePlanningStage,
                                    CinematicTreatmentStage cinematicTreatmentStage,
                                    DialogueGenerationStage dialogueGenerationStage,
+                                   SourceTraceStage sourceTraceStage,
                                    ScriptYamlGenerationStage scriptYamlGenerationStage,
                                    YamlRepairStage yamlRepairStage) {
         this.chapterParser = Objects.requireNonNull(chapterParser, "NovelChapterParser 不能为空");
@@ -67,6 +69,7 @@ public class ScriptAiPipelineService {
                 dialogueGenerationStage,
                 "DialogueGenerationStage 不能为空"
         );
+        this.sourceTraceStage = Objects.requireNonNull(sourceTraceStage, "SourceTraceStage 不能为空");
         this.scriptYamlGenerationStage = Objects.requireNonNull(
                 scriptYamlGenerationStage,
                 "ScriptYamlGenerationStage 不能为空"
@@ -98,6 +101,7 @@ public class ScriptAiPipelineService {
             context = planScenes(context);
             context = visualizePsychology(context);
             context = generateDialogues(context);
+            context = traceSource(context, chapters);
             context = generateYaml(context);
             ScriptAiPipelineResult result = validateAndRepairIfNeeded(context, request);
             logPipelineComplete(result, pipelineStartedNanos);
@@ -166,6 +170,15 @@ public class ScriptAiPipelineService {
                 PipelineStage.DIALOGUE_GENERATION,
                 DEFAULT_RETRY,
                 () -> context.withDialogueDraft(dialogueGenerationStage.draft(context))
+        );
+    }
+
+    private PipelineContext traceSource(PipelineContext context, List<NovelChapter> chapters) {
+        return runStage(
+                context,
+                PipelineStage.SOURCE_TRACE,
+                DEFAULT_RETRY,
+                () -> context.withSourceTrace(sourceTraceStage.trace(context, chapters))
         );
     }
 

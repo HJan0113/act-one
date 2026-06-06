@@ -8,12 +8,15 @@ import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.ai.model.PipelineStage;
 import com.hjan.actone.script.ai.model.ScenePlan;
 import com.hjan.actone.script.ai.model.SourceEvidence;
+import com.hjan.actone.script.ai.model.SourceTrace;
 import com.hjan.actone.script.ai.pipeline.CinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
+import com.hjan.actone.script.ai.pipeline.DeterministicSourceTraceStage;
 import com.hjan.actone.script.ai.pipeline.DialogueGenerationStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.ScriptYamlGenerationStage;
+import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
 import com.hjan.actone.script.ai.pipeline.YamlRepairStage;
 import com.hjan.actone.script.model.NovelChapter;
 import com.hjan.actone.script.service.ScriptYamlValidationResult;
@@ -27,9 +30,11 @@ public class FakeScriptAiStages implements ChapterSummaryStage,
         ScenePlanningStage,
         CinematicTreatmentStage,
         DialogueGenerationStage,
+        SourceTraceStage,
         ScriptYamlGenerationStage,
         YamlRepairStage {
 
+    private final SourceTraceStage sourceTraceStage = new DeterministicSourceTraceStage();
     private final Map<PipelineStage, RuntimeException> failures = new EnumMap<>(PipelineStage.class);
     private String generatedYaml = ScriptAiTestFixtures.validYaml();
     private String repairedYaml = ScriptAiTestFixtures.validYaml();
@@ -130,7 +135,7 @@ public class FakeScriptAiStages implements ChapterSummaryStage,
                 "刺杀任务与真实目标不一致。",
                 List.of(new ScenePlan.Beat(
                         "林夜吹熄残烛，隐入阴影。",
-                        "他吹熄了身旁仅存的半截残烛。",
+                        "他吹熄了身旁仅存的半截残烛，将自己彻底融入深邃的阴影之中。",
                         List.of("character_001")
                 )),
                 "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。"
@@ -170,6 +175,12 @@ public class FakeScriptAiStages implements ChapterSummaryStage,
                         "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。"
                 ))
         )));
+    }
+
+    @Override
+    public SourceTrace trace(PipelineContext context, List<NovelChapter> chapters) {
+        failIfConfigured(PipelineStage.SOURCE_TRACE);
+        return sourceTraceStage.trace(context, chapters);
     }
 
     @Override

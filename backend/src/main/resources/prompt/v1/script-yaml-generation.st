@@ -26,6 +26,10 @@
 {{dialogue_draft}}
 </dialogue_draft>
 
+<source_trace>
+{{source_trace}}
+</source_trace>
+
 <schema_summary>
 {{schema_summary}}
 </schema_summary>
@@ -34,6 +38,6 @@
 1. 只输出 YAML 文本，不要输出 Markdown 代码围栏或解释文字。
 2. schema_version 固定为 "1.0"，kind 固定为 "screenplay_draft"。
 3. source.type 固定为 "novel"，source.generation_mode 固定为 "ai_pipeline"。
-4. characters、acts、scenes 必须是数组；scene 的 act_id、chapter_index、source_chapter_id 和 source_excerpt 必须合法。
+4. characters、acts、scenes 必须是数组；scene 的 act_id、chapter_index、source_chapter_id 和 source_excerpt 必须来自 source_trace，不得擅自改写来源字段。
 5. scene.action 优先使用 cinematic_treatment 中对应 scene 的 action，并保留 source_excerpt，不得改变原作关键事实。
 6. scene.dialogues 优先使用 dialogue_draft 中对应 scene 的 dialogues；speaker 必须对应已知人物名或“旁白”，避免所有角色使用同一种口吻。

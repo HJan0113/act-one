@@ -6,6 +6,7 @@ import com.hjan.actone.ai.service.LLMService;
 import com.hjan.actone.script.ai.pipeline.CinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.DialogueGenerationStage;
+import com.hjan.actone.script.ai.pipeline.DeterministicSourceTraceStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryStateMerger;
 import com.hjan.actone.script.ai.pipeline.LlmCinematicTreatmentStage;
@@ -14,6 +15,7 @@ import com.hjan.actone.script.ai.pipeline.LlmDialogueGenerationStage;
 import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
+import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -26,6 +28,12 @@ public class ScriptAiConfiguration {
     @ConditionalOnMissingBean(GlobalStoryStateMerger.class)
     public GlobalStoryStateMerger globalStoryStateMerger() {
         return new GlobalStoryStateMerger();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(SourceTraceStage.class)
+    public SourceTraceStage sourceTraceStage() {
+        return new DeterministicSourceTraceStage();
     }
 
     @Bean

@@ -9,6 +9,7 @@ import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.ai.model.PipelineStage;
 import com.hjan.actone.script.ai.model.ScenePlan;
 import com.hjan.actone.script.ai.model.SourceEvidence;
+import com.hjan.actone.script.ai.model.SourceTrace;
 import com.hjan.actone.script.model.NovelChapter;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.service.NovelChapterParser;
@@ -48,7 +49,8 @@ class ScriptAiPipelineServiceTest {
         assertThat(stages.cinematicContext.scenePlan().scenes()).hasSize(1);
         assertThat(stages.yamlContext.cinematicTreatment().scenes()).hasSize(1);
         assertThat(stages.dialogueContext.cinematicTreatment().scenes()).hasSize(1);
-        assertThat(stages.yamlContext.dialogueDraft().scenes()).hasSize(1);
+        assertThat(stages.sourceTraceContext.dialogueDraft().scenes()).hasSize(1);
+        assertThat(stages.yamlContext.sourceTrace().scenes()).hasSize(1);
         assertThat(stages.yamlContext.scenePlan().scenes()).hasSize(1);
         assertThat(stages.repairCalls).isZero();
     }
@@ -135,6 +137,7 @@ class ScriptAiPipelineServiceTest {
                 stages,
                 stages,
                 stages,
+                stages,
                 stages
         );
     }
@@ -213,9 +216,11 @@ class ScriptAiPipelineServiceTest {
             ScenePlanningStage,
             CinematicTreatmentStage,
             DialogueGenerationStage,
+            SourceTraceStage,
             ScriptYamlGenerationStage,
             YamlRepairStage {
 
+        private final SourceTraceStage sourceTraceStage = new DeterministicSourceTraceStage();
         private int summaryCalls;
         private int repairCalls;
         private RuntimeException summaryFailure;
@@ -225,6 +230,7 @@ class ScriptAiPipelineServiceTest {
         private PipelineContext sceneContext;
         private PipelineContext cinematicContext;
         private PipelineContext dialogueContext;
+        private PipelineContext sourceTraceContext;
         private PipelineContext yamlContext;
         private PipelineContext repairContext;
 
@@ -280,10 +286,10 @@ class ScriptAiPipelineServiceTest {
                     "是否进入旧剧场",
                     List.of(new ScenePlan.Beat(
                             "林夏推门进入。",
-                            "林夏推开旧剧场的门。",
+                            "林夏推开旧剧场的门，发现舞台中央留着一封没有署名的信。",
                             List.of("character_001")
                     )),
-                    "林夏推开旧剧场的门。"
+                    "林夏推开旧剧场的门，发现舞台中央留着一封没有署名的信。"
             )));
         }
 
@@ -299,7 +305,7 @@ class ScriptAiPipelineServiceTest {
                             "她害怕却不愿退缩。",
                             "林夏停在门口，指尖压皮信封，随后迈进黑暗的观众席。",
                             "动作与停顿",
-                            "林夏推开旧剧场的门。",
+                            "林夏推开旧剧场的门，发现舞台中央留着一封没有署名的信。",
                             List.of("character_001")
                     ))
             )));
@@ -317,9 +323,15 @@ class ScriptAiPipelineServiceTest {
                             "character_001",
                             "我进去。你在这里等我。",
                             "克制",
-                            "林夏推开旧剧场的门。"
+                            "林夏推开旧剧场的门，发现舞台中央留着一封没有署名的信。"
                     ))
             )));
+        }
+
+        @Override
+        public SourceTrace trace(PipelineContext context, List<NovelChapter> chapters) {
+            sourceTraceContext = context;
+            return sourceTraceStage.trace(context, chapters);
         }
 
         @Override

@@ -9,6 +9,7 @@ import com.hjan.actone.infra.ai.prompt.ClasspathPromptTemplateService;
 import com.hjan.actone.script.ai.pipeline.CinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.DialogueGenerationStage;
+import com.hjan.actone.script.ai.pipeline.DeterministicSourceTraceStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryStateMerger;
 import com.hjan.actone.script.ai.pipeline.LlmCinematicTreatmentStage;
@@ -17,6 +18,7 @@ import com.hjan.actone.script.ai.pipeline.LlmDialogueGenerationStage;
 import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
+import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -41,6 +43,7 @@ class ScriptAiConfigurationTest {
                     assertThat(context).hasSingleBean(ScenePlanningStage.class);
                     assertThat(context).hasSingleBean(CinematicTreatmentStage.class);
                     assertThat(context).hasSingleBean(DialogueGenerationStage.class);
+                    assertThat(context).hasSingleBean(SourceTraceStage.class);
                     assertThat(context.getBean(ChapterSummaryStage.class))
                             .isInstanceOf(LlmChapterSummaryStage.class);
                     assertThat(context.getBean(GlobalStoryExtractionStage.class))
@@ -51,6 +54,8 @@ class ScriptAiConfigurationTest {
                             .isInstanceOf(LlmCinematicTreatmentStage.class);
                     assertThat(context.getBean(DialogueGenerationStage.class))
                             .isInstanceOf(LlmDialogueGenerationStage.class);
+                    assertThat(context.getBean(SourceTraceStage.class))
+                            .isInstanceOf(DeterministicSourceTraceStage.class);
                 });
     }
 
@@ -58,6 +63,9 @@ class ScriptAiConfigurationTest {
     void doesNotRegisterChapterSummaryStageWithoutLlmService() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
+            assertThat(context).hasSingleBean(SourceTraceStage.class);
+            assertThat(context.getBean(SourceTraceStage.class))
+                    .isInstanceOf(DeterministicSourceTraceStage.class);
             assertThat(context).doesNotHaveBean(ChapterSummaryStage.class);
             assertThat(context).doesNotHaveBean(GlobalStoryExtractionStage.class);
             assertThat(context).doesNotHaveBean(ScenePlanningStage.class);

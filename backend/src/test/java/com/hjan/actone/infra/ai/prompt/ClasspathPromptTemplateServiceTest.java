@@ -122,6 +122,7 @@ class ClasspathPromptTemplateServiceTest {
             case "scene_plan" -> "{\"scenes\":[]}";
             case "cinematic_treatment" -> "{\"scenes\":[]}";
             case "dialogue_draft" -> "{\"scenes\":[]}";
+            case "source_trace" -> "{\"scenes\":[]}";
             case "project_title" -> "暗门";
             case "author" -> "测试作者";
             case "logline" -> "林夏追查旧剧场的秘密。";
