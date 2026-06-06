@@ -36,6 +36,7 @@ import {isAuthExpiredError} from "./services/apiClient";
 import {fetchCurrentUser, login as loginWithPassword, logout as logoutSession} from "./services/authService";
 import {readStoredAuth, removeStoredAuth, writeStoredAuth} from "./services/authStorage";
 import {
+    cancelGenerationTask as cancelScriptGenerationTask,
     createProjectFromText,
     exportDraftYaml as exportDraftYamlFile,
     getDraftDetail,
@@ -405,15 +406,23 @@ function App() {
       };
 
     try {
+        const activeProjectId = await ensureProject();
       const data = await requestWithAuth((token) =>
         streamGenerateScriptYaml(
           {
             author,
+            forceNewTask: true,
             logline,
+            projectId: activeProjectId,
             text: novelText,
             title
           },
             {
+                onCancel: (payload) => {
+                    updateTaskFromStream(payload, "canceled");
+                    setValidationStatus("pending");
+                    setYamlMessage(payload.message || "生成已停止，未写入新的 YAML 草稿。");
+                },
                 onError: (payload) => {
                     updateTaskFromStream(payload, "failed");
                     setYamlMessage(payload.message || "YAML 生成失败。");
@@ -495,18 +504,37 @@ function App() {
     }
   }
 
-    function stopGeneration() {
+    async function stopGeneration() {
         if (!generationAbortRef.current) return;
-        generationAbortRef.current.abort();
+        const controller = generationAbortRef.current;
+        const taskId = conversionTask.taskId;
         setYamlMessage("正在停止生成请求...");
         setConversionTask((current) => ({
             ...current,
             currentStage: "停止中",
             errorMessage: "",
-            message: "已发送停止请求，正在释放前端生成连接。",
+            message: isBackendTaskId(taskId) ? "已发送后端取消请求，正在释放生成任务。" : "正在释放前端生成连接。",
             progress: Math.max(current.progress, 20),
             status: "canceled"
         }));
+        try {
+            if (isBackendTaskId(taskId)) {
+                const data = await requestWithAuth((token) => cancelScriptGenerationTask(taskId, token));
+                setConversionTask((current) => ({
+                    ...current,
+                    currentStage: pipelineStageLabel(extractTaskStage(data.message)) || "已停止",
+                    errorMessage: "",
+                    message: data.message || "任务已取消，后续阶段结果会被忽略。",
+                    progress: nextTaskProgress(data.progress, current.progress),
+                    status: "canceled",
+                    taskId: data.taskId
+                }));
+            }
+        } catch (error) {
+            setYamlMessage(error instanceof Error ? error.message : "停止生成失败，已中止前端连接。");
+        } finally {
+            controller.abort();
+        }
     }
 
   async function copyYaml() {
@@ -1181,6 +1209,14 @@ function createLocalTaskId() {
     return `local-${Date.now().toString(36)}`;
 }
 
+function isBackendTaskId(taskId: string) {
+    return Boolean(taskId) && !taskId.startsWith("local-") && !taskId.startsWith("actone-");
+}
+
+function extractTaskStage(message?: string | null) {
+    return message?.match(/stage=([A-Z_]+)/)?.[1] || "";
+}
+
 const pipelineStageLabels: Record<string, string> = {
     CHAPTER_SUMMARY: "章节摘要",
     COMPLETED: "转换完成",
@@ -1211,7 +1247,7 @@ function nextTaskProgress(value: number | null | undefined, current: number) {
 }
 
 function isAbortError(error: unknown) {
-    return error instanceof DOMException && error.name === "AbortError";
+    return error instanceof DOMException && error.name === "AbortError" || error instanceof Error && error.name === "AbortError";
 }
 
 function createWorkflowSteps({

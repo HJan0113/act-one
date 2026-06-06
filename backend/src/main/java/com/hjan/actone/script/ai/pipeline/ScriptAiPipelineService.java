@@ -113,6 +113,8 @@ public class ScriptAiPipelineService {
             logPipelineComplete(result, pipelineStartedNanos);
             actualObserver.onComplete(result);
             return result;
+        } catch (ScriptAiPipelineCanceledException ex) {
+            throw ex;
         } catch (ScriptAiPipelineStageException ex) {
             ScriptAiPipelineResult result = fallback(
                     request,
@@ -366,6 +368,9 @@ public class ScriptAiPipelineService {
                            int retry,
                            ScriptAiPipelineObserver observer,
                            StageAction<T> action) {
+        if (observer.isCanceled()) {
+            throw new ScriptAiPipelineCanceledException(stage);
+        }
         long startedNanos = System.nanoTime();
         observer.onStageStart(context, stage);
         log.info(
@@ -378,6 +383,9 @@ public class ScriptAiPipelineService {
         );
         try {
             T result = action.execute();
+            if (observer.isCanceled()) {
+                throw new ScriptAiPipelineCanceledException(stage);
+            }
             observer.onStageSuccess(context, stage);
             log.info(
                     "event=actone_ai_stage_success taskId={} stage={} model={} retry={} durationMs={} chapterCount={}",
@@ -389,6 +397,8 @@ public class ScriptAiPipelineService {
                     context.chapterCount()
             );
             return result;
+        } catch (ScriptAiPipelineCanceledException ex) {
+            throw ex;
         } catch (RuntimeException ex) {
             observer.onStageFailure(context, stage, ex);
             log.warn(

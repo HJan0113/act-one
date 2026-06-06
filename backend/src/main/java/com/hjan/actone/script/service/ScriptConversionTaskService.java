@@ -97,6 +97,9 @@ public class ScriptConversionTaskService {
                                                    int progress,
                                                    String message) {
         ScriptConversionTaskDO task = requireOwnedTask(taskId);
+        if (isTerminal(task.getStatus())) {
+            return toResponse(task);
+        }
         task.setStatus(STATUS_RUNNING);
         task.setProgress(clamp(progress, MIN_PROGRESS, MAX_RUNNING_PROGRESS));
         task.setMessage(stageMessage(stage, defaultText(message, "阶段执行中")));
@@ -111,6 +114,9 @@ public class ScriptConversionTaskService {
     @Transactional(rollbackFor = Exception.class)
     public ScriptConversionTaskResponse markSuccess(String taskId, String draftId, String message) {
         ScriptConversionTaskDO task = requireOwnedTask(taskId);
+        if (isTerminal(task.getStatus())) {
+            return toResponse(task);
+        }
         task.setDraftId(trimToNull(draftId));
         task.setStatus(STATUS_SUCCESS);
         task.setProgress(COMPLETE_PROGRESS);
@@ -126,6 +132,9 @@ public class ScriptConversionTaskService {
                                                   PipelineStage stage,
                                                   String errorMessage) {
         ScriptConversionTaskDO task = requireOwnedTask(taskId);
+        if (isTerminal(task.getStatus())) {
+            return toResponse(task);
+        }
         String safeError = sanitize(errorMessage, "转换失败", MAX_ERROR_LENGTH);
         task.setStatus(STATUS_FAILED);
         task.setMessage(stageMessage(stage, "转换失败"));
@@ -140,6 +149,9 @@ public class ScriptConversionTaskService {
                                                     PipelineStage stage,
                                                     String message) {
         ScriptConversionTaskDO task = requireOwnedTask(taskId);
+        if (isTerminal(task.getStatus())) {
+            return toResponse(task);
+        }
         task.setStatus(STATUS_CANCELED);
         task.setMessage(stageMessage(stage, defaultText(message, "用户已取消")));
         task.setEndTime(LocalDateTime.now());
@@ -186,6 +198,10 @@ public class ScriptConversionTaskService {
                 task.getCreateTime(),
                 task.getUpdateTime()
         );
+    }
+
+    private boolean isTerminal(String status) {
+        return STATUS_SUCCESS.equals(status) || STATUS_FAILED.equals(status) || STATUS_CANCELED.equals(status);
     }
 
     private String stageMessage(PipelineStage stage, String message) {

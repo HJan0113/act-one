@@ -178,6 +178,26 @@ class ScriptConversionTaskServiceTest {
     }
 
     @Test
+    void terminalCanceledTaskCannotBeOverwrittenByLaterPipelineUpdates() {
+        ScriptConversionTaskDO task = task("task_1", "project_1");
+        task.setStatus(ScriptConversionTaskService.STATUS_CANCELED);
+        task.setProgress(32);
+        task.setMessage("stage=SCENE_PLANNING; 用户停止生成");
+        when(taskMapper.selectById("task_1")).thenReturn(task);
+
+        var running = service.markRunning("task_1", PipelineStage.SCRIPT_YAML_GENERATION, 88, "后台继续执行");
+        var success = service.markSuccess("task_1", "draft_1", "生成完成");
+        var failed = service.markFailed("task_1", PipelineStage.SCRIPT_YAML_GENERATION, "后台失败");
+
+        assertThat(running.status()).isEqualTo(ScriptConversionTaskService.STATUS_CANCELED);
+        assertThat(success.status()).isEqualTo(ScriptConversionTaskService.STATUS_CANCELED);
+        assertThat(failed.status()).isEqualTo(ScriptConversionTaskService.STATUS_CANCELED);
+        assertThat(success.draftId()).isNull();
+        assertThat(success.progress()).isEqualTo(32);
+        verify(taskMapper, never()).updateById(any(ScriptConversionTaskDO.class));
+    }
+
+    @Test
     void detailRejectsMissingTask() {
         when(taskMapper.selectById("missing")).thenReturn(null);
 

@@ -1,22 +1,30 @@
 package com.hjan.actone.script.service;
 
+import com.hjan.actone.common.context.LoginUser;
+import com.hjan.actone.common.context.UserContext;
 import com.hjan.actone.common.web.SseEmitterSender;
 import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.ai.model.PipelineStage;
+import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineCanceledException;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineObserver;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineResult;
+import com.hjan.actone.script.model.ScriptConversionTaskResponse;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
 import com.hjan.actone.script.model.ScriptYamlStreamEventType;
 import com.hjan.actone.script.model.ScriptYamlStreamPayload;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 public class ScriptYamlStreamService {
@@ -39,30 +47,79 @@ public class ScriptYamlStreamService {
         register(PipelineStage.COMPLETED, 100, 100);
     }
 
+    private final Map<String, RunningTask> runningTasks = new ConcurrentHashMap<>();
     private final ScriptYamlGenerationService generationService;
+    private final ScriptConversionTaskService conversionTaskService;
 
-    public ScriptYamlStreamService(ScriptYamlGenerationService generationService) {
+    public ScriptYamlStreamService(ScriptYamlGenerationService generationService,
+                                   ScriptConversionTaskService conversionTaskService) {
         this.generationService = generationService;
+        this.conversionTaskService = conversionTaskService;
     }
 
     public SseEmitter streamGenerateFromText(ScriptYamlGenerateRequest request) {
-        String taskId = "actone-" + UUID.randomUUID().toString().replace("-", "");
-        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
-        SseEmitterSender sender = new SseEmitterSender(emitter);
+        LoginUser loginUser = UserContext.get();
+        RunningTask runningTask = createRunningTask(request);
+        runningTasks.put(runningTask.taskId(), runningTask);
 
-        CompletableFuture.runAsync(() -> runGeneration(request, taskId, sender));
-        return emitter;
+        CompletableFuture.runAsync(() -> runGeneration(request, runningTask, loginUser));
+        return runningTask.emitter();
     }
 
-    private void runGeneration(ScriptYamlGenerateRequest request, String taskId, SseEmitterSender sender) {
-        send(sender, ScriptYamlStreamEventType.META, ScriptYamlStreamPayload.of(
-                taskId,
+    public ScriptConversionTaskResponse cancel(String taskId) {
+        RunningTask runningTask = runningTasks.get(taskId);
+        PipelineStage stage = runningTask == null ? PipelineStage.INIT : runningTask.currentStage();
+        ScriptConversionTaskResponse response = conversionTaskService.markCanceled(taskId, stage, "用户停止生成");
+        if (runningTask != null && ScriptConversionTaskService.STATUS_CANCELED.equals(response.status())) {
+            sendCancelAndDone(runningTask, stage, "生成已停止，后续阶段结果会被忽略。");
+        }
+        return response;
+    }
+
+    private RunningTask createRunningTask(ScriptYamlGenerateRequest request) {
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+        SseEmitterSender sender = new SseEmitterSender(emitter);
+        if (StringUtils.hasText(request.projectId())) {
+            ScriptConversionTaskResponse task = conversionTaskService.createOrReuse(
+                    request.projectId(),
+                    ScriptYamlDraftService.SCHEMA_VERSION,
+                    null,
+                    Boolean.TRUE.equals(request.forceNewTask())
+            );
+            return new RunningTask(task.taskId(), emitter, sender, true);
+        }
+        String taskId = "actone-" + UUID.randomUUID().toString().replace("-", "");
+        return new RunningTask(taskId, emitter, sender, false);
+    }
+
+    private void runGeneration(ScriptYamlGenerateRequest request, RunningTask runningTask, LoginUser loginUser) {
+        if (loginUser != null) {
+            UserContext.set(loginUser);
+        }
+        try {
+            runGenerationWithContext(request, runningTask);
+        } finally {
+            runningTasks.remove(runningTask.taskId());
+            UserContext.clear();
+        }
+    }
+
+    private void runGenerationWithContext(ScriptYamlGenerateRequest request, RunningTask runningTask) {
+        send(runningTask.sender(), ScriptYamlStreamEventType.META, ScriptYamlStreamPayload.of(
+                runningTask.taskId(),
                 PipelineStage.INIT.name(),
                 progress(PipelineStage.INIT, true),
                 "转换任务已创建"
         ));
-        send(sender, ScriptYamlStreamEventType.MESSAGE, ScriptYamlStreamPayload.of(
-                taskId,
+        markRunning(runningTask, PipelineStage.INIT, progress(PipelineStage.INIT, true), "转换任务已创建");
+
+        if (runningTask.isCanceled()) {
+            sendCancelAndDone(runningTask, PipelineStage.INIT, "生成已停止。");
+            return;
+        }
+
+        send(runningTask.sender(), ScriptYamlStreamEventType.MESSAGE, ScriptYamlStreamPayload.of(
+                runningTask.taskId(),
                 PipelineStage.INIT.name(),
                 progress(PipelineStage.INIT, false),
                 "正在准备小说章节解析与 AI Pipeline"
@@ -71,28 +128,81 @@ public class ScriptYamlStreamService {
         try {
             ScriptYamlGenerateResponse result = generationService.generateFromText(
                     request,
-                    new StreamObserver(taskId, sender)
+                    new StreamObserver(runningTask)
             );
-            send(sender, ScriptYamlStreamEventType.VALIDATION, ScriptYamlStreamPayload.validation(
-                    taskId,
+            if (runningTask.isCanceled()) {
+                sendCancelAndDone(runningTask, runningTask.currentStage(), "生成已停止。");
+                return;
+            }
+            send(runningTask.sender(), ScriptYamlStreamEventType.VALIDATION, ScriptYamlStreamPayload.validation(
+                    runningTask.taskId(),
                     PipelineStage.YAML_VALIDATION.name(),
                     98,
                     result.validationStatus(),
                     result.validationError(),
                     "valid".equalsIgnoreCase(result.validationStatus())
             ));
-            send(sender, ScriptYamlStreamEventType.FINISH, ScriptYamlStreamPayload.finish(taskId, result));
-            send(sender, ScriptYamlStreamEventType.DONE, "[DONE]");
-            sender.complete();
+            markSuccess(runningTask, result);
+            send(runningTask.sender(), ScriptYamlStreamEventType.FINISH, ScriptYamlStreamPayload.finish(runningTask.taskId(), result));
+            send(runningTask.sender(), ScriptYamlStreamEventType.DONE, "[DONE]");
+            runningTask.sender().complete();
+        } catch (ScriptAiPipelineCanceledException error) {
+            PipelineStage stage = error.stage() == null ? runningTask.currentStage() : error.stage();
+            markCanceled(runningTask, stage, "用户停止生成");
+            sendCancelAndDone(runningTask, stage, "生成已停止。");
         } catch (RuntimeException error) {
-            send(sender, ScriptYamlStreamEventType.ERROR, ScriptYamlStreamPayload.of(
-                    taskId,
-                    PipelineStage.INIT.name(),
+            PipelineStage stage = runningTask.currentStage();
+            markFailed(runningTask, stage, error);
+            send(runningTask.sender(), ScriptYamlStreamEventType.ERROR, ScriptYamlStreamPayload.of(
+                    runningTask.taskId(),
+                    stage.name(),
                     100,
                     safeMessage(error)
             ));
-            send(sender, ScriptYamlStreamEventType.DONE, "[DONE]");
-            sender.complete();
+            send(runningTask.sender(), ScriptYamlStreamEventType.DONE, "[DONE]");
+            runningTask.sender().complete();
+        }
+    }
+
+    private void sendCancelAndDone(RunningTask runningTask, PipelineStage stage, String message) {
+        if (!runningTask.cancel()) {
+            return;
+        }
+        send(runningTask.sender(), ScriptYamlStreamEventType.CANCEL, ScriptYamlStreamPayload.canceled(
+                runningTask.taskId(),
+                stage.name(),
+                Math.max(progress(stage, false), runningTask.progress()),
+                message
+        ));
+        send(runningTask.sender(), ScriptYamlStreamEventType.DONE, "[DONE]");
+        runningTask.sender().complete();
+    }
+
+    private void markRunning(RunningTask runningTask, PipelineStage stage, int progress, String message) {
+        runningTask.update(stage, progress);
+        if (runningTask.persistent()) {
+            conversionTaskService.markRunning(runningTask.taskId(), stage, progress, message);
+        }
+    }
+
+    private void markSuccess(RunningTask runningTask, ScriptYamlGenerateResponse result) {
+        runningTask.update(PipelineStage.COMPLETED, 100);
+        if (runningTask.persistent()) {
+            String message = "valid".equalsIgnoreCase(result.validationStatus()) ? "转换完成，Schema 校验通过" : "转换完成，需检查 Schema";
+            conversionTaskService.markSuccess(runningTask.taskId(), null, message);
+        }
+    }
+
+    private void markFailed(RunningTask runningTask, PipelineStage stage, RuntimeException error) {
+        if (runningTask.persistent()) {
+            conversionTaskService.markFailed(runningTask.taskId(), stage, safeMessage(error));
+        }
+    }
+
+    private void markCanceled(RunningTask runningTask, PipelineStage stage, String message) {
+        runningTask.cancelSilently();
+        if (runningTask.persistent()) {
+            conversionTaskService.markCanceled(runningTask.taskId(), stage, message);
         }
     }
 
@@ -114,35 +224,33 @@ public class ScriptYamlStreamService {
         sender.sendEvent(eventType.value(), payload);
     }
 
-    private static final class StreamObserver implements ScriptAiPipelineObserver {
+    private final class StreamObserver implements ScriptAiPipelineObserver {
 
-        private final String taskId;
-        private final SseEmitterSender sender;
+        private final RunningTask runningTask;
 
-        private StreamObserver(String taskId, SseEmitterSender sender) {
-            this.taskId = taskId;
-            this.sender = sender;
+        private StreamObserver(RunningTask runningTask) {
+            this.runningTask = runningTask;
         }
 
         @Override
         public void onPipelineStart(PipelineContext context) {
-            sendProgress(PipelineStage.INIT, false, "章节解析完成，开始执行 AI Pipeline");
+            mark(PipelineStage.INIT, false, "章节解析完成，开始执行 AI Pipeline");
         }
 
         @Override
         public void onStageStart(PipelineContext context, PipelineStage stage) {
-            sendProgress(stage, true, stage.name() + " 阶段开始");
+            mark(stage, true, stage.name() + " 阶段开始");
         }
 
         @Override
         public void onStageSuccess(PipelineContext context, PipelineStage stage) {
-            sendProgress(stage, false, stage.name() + " 阶段完成");
+            mark(stage, false, stage.name() + " 阶段完成");
         }
 
         @Override
         public void onStageFailure(PipelineContext context, PipelineStage stage, RuntimeException error) {
             send(ScriptYamlStreamEventType.MESSAGE, ScriptYamlStreamPayload.of(
-                    taskId,
+                    runningTask.taskId(),
                     stage.name(),
                     progress(stage, false),
                     stage.name() + " 阶段失败，准备进入显式降级"
@@ -151,8 +259,8 @@ public class ScriptYamlStreamService {
 
         @Override
         public void onValidation(PipelineContext context, ScriptYamlValidationResult validationResult) {
-            ScriptYamlStreamService.send(sender, ScriptYamlStreamEventType.VALIDATION, ScriptYamlStreamPayload.validation(
-                    taskId,
+            ScriptYamlStreamService.send(runningTask.sender(), ScriptYamlStreamEventType.VALIDATION, ScriptYamlStreamPayload.validation(
+                    runningTask.taskId(),
                     PipelineStage.YAML_VALIDATION.name(),
                     progress(PipelineStage.YAML_VALIDATION, false),
                     validationResult.status(),
@@ -164,7 +272,7 @@ public class ScriptYamlStreamService {
         @Override
         public void onFallback(PipelineContext context, PipelineStage fallbackStage, String reason) {
             send(ScriptYamlStreamEventType.MESSAGE, ScriptYamlStreamPayload.of(
-                    taskId,
+                    runningTask.taskId(),
                     fallbackStage.name(),
                     progress(fallbackStage, false),
                     reason
@@ -173,12 +281,18 @@ public class ScriptYamlStreamService {
 
         @Override
         public void onComplete(ScriptAiPipelineResult result) {
-            sendProgress(result.context().currentStage(), false, "AI Pipeline 执行完成");
+            mark(result.context().currentStage(), false, "AI Pipeline 执行完成");
         }
 
-        private void sendProgress(PipelineStage stage, boolean start, String message) {
+        @Override
+        public boolean isCanceled() {
+            return runningTask.isCanceled();
+        }
+
+        private void mark(PipelineStage stage, boolean start, String message) {
+            markRunning(runningTask, stage, progress(stage, start), message);
             send(ScriptYamlStreamEventType.PROGRESS, ScriptYamlStreamPayload.of(
-                    taskId,
+                    runningTask.taskId(),
                     stage.name(),
                     progress(stage, start),
                     message
@@ -186,7 +300,66 @@ public class ScriptYamlStreamService {
         }
 
         private void send(ScriptYamlStreamEventType eventType, Object payload) {
-            ScriptYamlStreamService.send(sender, eventType, payload);
+            ScriptYamlStreamService.send(runningTask.sender(), eventType, payload);
+        }
+    }
+
+    private static final class RunningTask {
+
+        private final AtomicBoolean canceled = new AtomicBoolean(false);
+        private final AtomicReference<PipelineStage> currentStage = new AtomicReference<>(PipelineStage.INIT);
+        private final AtomicReference<Integer> progress = new AtomicReference<>(0);
+        private final SseEmitter emitter;
+        private final boolean persistent;
+        private final SseEmitterSender sender;
+        private final String taskId;
+
+        private RunningTask(String taskId, SseEmitter emitter, SseEmitterSender sender, boolean persistent) {
+            this.taskId = taskId;
+            this.emitter = emitter;
+            this.sender = sender;
+            this.persistent = persistent;
+        }
+
+        private String taskId() {
+            return taskId;
+        }
+
+        private SseEmitter emitter() {
+            return emitter;
+        }
+
+        private SseEmitterSender sender() {
+            return sender;
+        }
+
+        private boolean persistent() {
+            return persistent;
+        }
+
+        private PipelineStage currentStage() {
+            return currentStage.get();
+        }
+
+        private int progress() {
+            return progress.get();
+        }
+
+        private void update(PipelineStage stage, int nextProgress) {
+            currentStage.set(stage);
+            progress.updateAndGet(current -> Math.max(current, nextProgress));
+        }
+
+        private boolean isCanceled() {
+            return canceled.get();
+        }
+
+        private boolean cancel() {
+            return canceled.compareAndSet(false, true);
+        }
+
+        private void cancelSilently() {
+            canceled.set(true);
         }
     }
 }

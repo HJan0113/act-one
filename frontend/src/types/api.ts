@@ -42,7 +42,9 @@ export type ChapterPreviewData = {
 
 export type ScriptYamlGenerateRequest = {
   author: string;
+  forceNewTask?: boolean;
   logline: string;
+  projectId?: string;
   text: string;
   title: string;
 };
@@ -65,6 +67,7 @@ export type ScriptYamlStreamEventName =
   | "message"
   | "validation"
   | "finish"
+  | "cancel"
   | "error"
   | "done";
 
@@ -83,6 +86,22 @@ export type ScriptProjectCreateRequest = {
   description: string;
   text: string;
   title: string;
+};
+
+export type ScriptConversionTaskData = {
+  createTime?: string;
+  draftId?: string | null;
+  endTime?: string | null;
+  errorMessage?: string | null;
+  message?: string | null;
+  modelId?: string | null;
+  progress?: number | null;
+  projectId: string;
+  schemaVersion?: string | null;
+  startTime?: string | null;
+  status: string;
+  taskId: string;
+  updateTime?: string;
 };
 
 export type ScriptProjectData = {

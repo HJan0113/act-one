@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -120,6 +121,35 @@ class ScriptAiPipelineServiceTest {
                 "complete:COMPLETED"
         );
         assertThat(events).doesNotContain("fallback:CHAPTER_SUMMARY");
+    }
+
+    @Test
+    void generateStopsBeforeNextStageWhenObserverIsCanceled() {
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline");
+        ScriptAiPipelineService service = service(stages);
+        AtomicBoolean canceled = new AtomicBoolean(false);
+
+        ScriptAiPipelineObserver observer = new ScriptAiPipelineObserver() {
+            @Override
+            public void onStageSuccess(PipelineContext context, PipelineStage stage) {
+                if (stage == PipelineStage.CHAPTER_SUMMARY) {
+                    canceled.set(true);
+                }
+            }
+
+            @Override
+            public boolean isCanceled() {
+                return canceled.get();
+            }
+        };
+
+        assertThatThrownBy(() -> service.generate(request(), observer))
+                .isInstanceOf(ScriptAiPipelineCanceledException.class)
+                .hasMessageContaining("GLOBAL_STORY_EXTRACTION");
+        assertThat(stages.summaryCalls).isEqualTo(3);
+        assertThat(stages.globalContext).isNull();
+        assertThat(stages.repairCalls).isZero();
     }
 
     @Test

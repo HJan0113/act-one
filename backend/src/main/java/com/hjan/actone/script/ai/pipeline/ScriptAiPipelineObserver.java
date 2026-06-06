@@ -29,4 +29,8 @@ public interface ScriptAiPipelineObserver {
 
     default void onComplete(ScriptAiPipelineResult result) {
     }
+
+    default boolean isCanceled() {
+        return false;
+    }
 }

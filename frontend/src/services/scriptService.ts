@@ -1,6 +1,7 @@
 import {readResponseError, requestApi, withAuthHeader} from "./apiClient";
 import type {
     ChapterPreviewData,
+    ScriptConversionTaskData,
     ScriptDraftDetail,
     ScriptDraftListItem,
     ScriptDraftSaveData,
@@ -15,6 +16,7 @@ import type {
 } from "../types/api";
 
 export type ScriptYamlStreamHandlers = {
+  onCancel?: (payload: ScriptYamlStreamPayload) => void;
   onDone?: (payload: ScriptYamlStreamPayload) => void;
   onError?: (payload: ScriptYamlStreamPayload) => void;
   onEvent?: (eventName: ScriptYamlStreamEventName, payload: ScriptYamlStreamPayload) => void;
@@ -82,6 +84,7 @@ export async function streamGenerateYaml(
   const decoder = new TextDecoder();
   let buffer = "";
   let finalResult: ScriptYamlData | undefined;
+  let streamCanceled = "";
   let streamError = "";
 
   const dispatchFrame = (frame: string) => {
@@ -97,6 +100,9 @@ export async function streamGenerateYaml(
     }
     if (parsed.eventName === "error") {
       streamError = payload.message || "YAML 生成失败。";
+    }
+    if (parsed.eventName === "cancel") {
+      streamCanceled = payload.message || "生成已停止。";
     }
   };
 
@@ -130,6 +136,9 @@ export async function streamGenerateYaml(
   if (streamError) {
     throw new Error(streamError);
   }
+  if (streamCanceled) {
+    throw createAbortError(streamCanceled);
+  }
   if (!finalResult) {
     throw new Error("YAML 流式生成未返回完成事件。");
   }
@@ -146,6 +155,17 @@ export function createProjectFromText(request: ScriptProjectCreateRequest, token
       token
     },
     "项目创建失败"
+  );
+}
+
+export function cancelGenerationTask(taskId: string, token?: string) {
+  return requestApi<ScriptConversionTaskData>(
+    `/api/script/drafts/tasks/${encodeURIComponent(taskId)}/cancel`,
+    {
+      method: "POST",
+      token
+    },
+    "停止生成失败"
   );
 }
 
@@ -216,6 +236,7 @@ function readDownloadFilename(response: Response, fallback: string) {
 }
 
 const streamEventNames = new Set<ScriptYamlStreamEventName>([
+  "cancel",
   "done",
   "error",
   "finish",
@@ -279,6 +300,9 @@ function emitStreamHandler(
   payload: ScriptYamlStreamPayload
 ) {
   switch (eventName) {
+    case "cancel":
+      handlers.onCancel?.(payload);
+      break;
     case "done":
       handlers.onDone?.(payload);
       break;
@@ -302,4 +326,8 @@ function emitStreamHandler(
       handlers.onMessage?.(payload);
       break;
   }
+}
+
+function createAbortError(message: string) {
+  return new DOMException(message, "AbortError");
 }

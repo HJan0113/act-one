@@ -45,4 +45,17 @@ public record ScriptYamlStreamPayload(
                 result
         );
     }
+
+    public static ScriptYamlStreamPayload canceled(String taskId, String stage, int progress, String message) {
+        return new ScriptYamlStreamPayload(
+                taskId,
+                stage,
+                progress,
+                message,
+                "canceled",
+                null,
+                false,
+                null
+        );
+    }
 }

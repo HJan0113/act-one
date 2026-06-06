@@ -7,6 +7,7 @@ public enum ScriptYamlStreamEventType {
     MESSAGE("message"),
     VALIDATION("validation"),
     FINISH("finish"),
+    CANCEL("cancel"),
     ERROR("error"),
     DONE("done");
 

@@ -6,6 +6,7 @@ import com.hjan.actone.script.model.ScriptDraftDetailResponse;
 import com.hjan.actone.script.model.ScriptDraftListItemResponse;
 import com.hjan.actone.script.model.ScriptDraftSaveRequest;
 import com.hjan.actone.script.model.ScriptDraftSaveResponse;
+import com.hjan.actone.script.model.ScriptConversionTaskResponse;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
 import com.hjan.actone.script.service.ScriptDraftService;
@@ -53,6 +54,11 @@ public class ScriptYamlDraftController {
     @PostMapping(value = "/yaml/from-text/stream", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter streamGenerateYamlFromText(@Valid @RequestBody ScriptYamlGenerateRequest request) {
         return scriptYamlStreamService.streamGenerateFromText(request);
+    }
+
+    @PostMapping("/tasks/{taskId}/cancel")
+    public Result<ScriptConversionTaskResponse> cancelTask(@PathVariable String taskId) {
+        return Results.success(scriptYamlStreamService.cancel(taskId));
     }
 
     @PostMapping
