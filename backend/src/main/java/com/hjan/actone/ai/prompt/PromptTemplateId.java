@@ -57,6 +57,12 @@ public enum PromptTemplateId {
             "prompt/v1/scene-refinement.st",
             List.of("scene_id", "instruction", "scene_yaml", "characters_yaml", "schema_summary")
     ),
+    DIALOGUE_VOICE_REWRITE(
+            "dialogue-voice-rewrite",
+            "1.0.0",
+            "prompt/v1/dialogue-voice-rewrite.st",
+            List.of("speaker", "instruction", "scenes_yaml", "characters_yaml", "relationships_yaml", "schema_summary")
+    ),
     YAML_REPAIR(
             "yaml-repair",
             "1.0.0",

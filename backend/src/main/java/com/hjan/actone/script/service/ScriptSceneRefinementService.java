@@ -20,6 +20,10 @@ import com.hjan.actone.script.dao.entity.ScriptProjectDO;
 import com.hjan.actone.script.dao.mapper.ScriptDraftMapper;
 import com.hjan.actone.script.dao.mapper.ScriptProjectMapper;
 import com.hjan.actone.script.model.ScriptDialoguePatch;
+import com.hjan.actone.script.model.ScriptDialogueScenePatch;
+import com.hjan.actone.script.model.ScriptDialogueVoicePatch;
+import com.hjan.actone.script.model.ScriptDialogueVoiceRewriteRequest;
+import com.hjan.actone.script.model.ScriptDialogueVoiceRewriteResponse;
 import com.hjan.actone.script.model.ScriptScenePatch;
 import com.hjan.actone.script.model.ScriptSceneRefineRequest;
 import com.hjan.actone.script.model.ScriptSceneRefineResponse;
@@ -100,6 +104,32 @@ public class ScriptSceneRefinementService {
         );
     }
 
+    public ScriptDialogueVoiceRewriteResponse rewriteDialogueVoice(ScriptDialogueVoiceRewriteRequest request) {
+        String draftId = requireText(request.draftId(), "草稿 ID 不能为空。");
+        String speaker = requireText(request.speaker(), "说话人不能为空。");
+        String instruction = requireText(request.instruction(), "口吻重写指令不能为空。");
+
+        ScriptDraftDO draft = loadOwnedDraft(draftId);
+        Map<String, Object> document = parseYamlDocument(draft.getYamlContent());
+        List<Map<String, Object>> targetScenes = findDialogueTargetScenes(document, speaker, request.sceneIds());
+        ScriptDialogueVoicePatch voicePatch = normalizeVoicePatch(
+                createVoicePatch(speaker, instruction, document, targetScenes),
+                speaker
+        );
+
+        applyVoicePatch(document, voicePatch);
+        String patchedYaml = dumpYaml(document);
+        ScriptYamlValidationResult validation = scriptYamlValidator.validate(patchedYaml);
+        return new ScriptDialogueVoiceRewriteResponse(
+                draft.getId(),
+                speaker,
+                voicePatch,
+                validation.cleanedYaml(),
+                validation.status(),
+                validation.errorMessage()
+        );
+    }
+
     private ScriptScenePatch createPatch(String sceneId,
                                          String instruction,
                                          Map<String, Object> document,
@@ -129,6 +159,66 @@ public class ScriptSceneRefinementService {
                 ChatResponseFormat.JSON_OBJECT
         ));
         return parsePatch(response);
+    }
+
+    private ScriptDialogueVoicePatch createVoicePatch(String speaker,
+                                                      String instruction,
+                                                      Map<String, Object> document,
+                                                      List<Map<String, Object>> targetScenes) {
+        LLMService llmService = llmServiceProvider.getIfAvailable();
+        if (llmService == null) {
+            return deterministicVoicePatch(speaker, instruction, targetScenes);
+        }
+
+        RenderedPrompt prompt = promptTemplateService.render(
+                PromptTemplateId.DIALOGUE_VOICE_REWRITE,
+                Map.of(
+                        "speaker", speaker,
+                        "instruction", instruction,
+                        "scenes_yaml", dumpYaml(targetScenes),
+                        "characters_yaml", dumpYaml(document.getOrDefault("characters", List.of())),
+                        "relationships_yaml", dumpYaml(document.getOrDefault("relationships", List.of())),
+                        "schema_summary", SCHEMA_SUMMARY
+                )
+        );
+        ChatResponse response = llmService.chat(new ChatRequest(
+                List.of(ChatMessage.user(prompt.content())),
+                null,
+                REFINEMENT_TEMPERATURE,
+                REFINEMENT_TOP_P,
+                REFINEMENT_MAX_TOKENS,
+                REFINEMENT_TIMEOUT,
+                ChatResponseFormat.JSON_OBJECT
+        ));
+        return parseVoicePatch(response);
+    }
+
+    private ScriptDialogueVoicePatch deterministicVoicePatch(String speaker,
+                                                             String instruction,
+                                                             List<Map<String, Object>> targetScenes) {
+        List<ScriptDialogueScenePatch> scenePatches = targetScenes.stream()
+                .map(scene -> new ScriptDialogueScenePatch(
+                        optionalText(scene, "id"),
+                        readDialoguePatches(scene).stream()
+                                .map(dialogue -> speaker.equals(dialogue.speaker())
+                                        ? new ScriptDialoguePatch(
+                                        dialogue.speaker(),
+                                        dialogue.line() + "（口吻指令：" + instruction + "）",
+                                        dialogue.emotion()
+                                )
+                                        : dialogue)
+                                .toList(),
+                        "AI 服务不可用，已生成规则兜底对白口吻补丁。",
+                        List.of("规则兜底未调用模型，请作者复核人物口吻。")
+                ))
+                .toList();
+        return new ScriptDialogueVoicePatch(
+                speaker,
+                speaker + "：" + instruction,
+                scenePatches,
+                "AI 服务不可用，已按规则生成多场景对白补丁。",
+                List.of("规则兜底未调用模型，请作者复核。")
+        );
     }
 
     private ScriptScenePatch deterministicPatch(String sceneId, String instruction, Map<String, Object> scene) {
@@ -168,6 +258,24 @@ public class ScriptSceneRefinementService {
         }
     }
 
+    private ScriptDialogueVoicePatch parseVoicePatch(ChatResponse response) {
+        if (response == null || !StringUtils.hasText(response.content())) {
+            throw new RemoteException("AI 对白口吻重写返回为空", BaseErrorCode.REMOTE_ERROR);
+        }
+        String json = response.content()
+                .replace("\uFEFF", "")
+                .replace("\r\n", "\n")
+                .replace('\r', '\n')
+                .strip();
+        json = LEADING_CODE_FENCE.matcher(json).replaceFirst("");
+        json = TRAILING_CODE_FENCE.matcher(json).replaceFirst("");
+        try {
+            return objectMapper.readValue(json, ScriptDialogueVoicePatch.class);
+        } catch (JsonProcessingException ex) {
+            throw new RemoteException("AI 对白口吻重写 JSON 解析失败", ex, BaseErrorCode.REMOTE_ERROR);
+        }
+    }
+
     private ScriptScenePatch normalizePatch(ScriptScenePatch patch, String sceneId) {
         if (patch == null) {
             throw new RemoteException("AI 局部精修 patch 为空", BaseErrorCode.REMOTE_ERROR);
@@ -189,6 +297,22 @@ public class ScriptSceneRefinementService {
         );
     }
 
+    private ScriptDialogueVoicePatch normalizeVoicePatch(ScriptDialogueVoicePatch patch, String speaker) {
+        if (patch == null || patch.scenePatches() == null || patch.scenePatches().isEmpty()) {
+            throw new RemoteException("AI 对白口吻重写 patch 为空", BaseErrorCode.REMOTE_ERROR);
+        }
+        if (StringUtils.hasText(patch.speaker()) && !speaker.equals(patch.speaker().trim())) {
+            throw new RemoteException("AI 对白口吻重写返回了错误 speaker：" + patch.speaker(), BaseErrorCode.REMOTE_ERROR);
+        }
+        return new ScriptDialogueVoicePatch(
+                speaker,
+                patch.voiceSample(),
+                patch.scenePatches(),
+                patch.summary(),
+                patch.riskWarnings() == null ? List.of() : patch.riskWarnings()
+        );
+    }
+
     private void applyPatch(Map<String, Object> scene, ScriptScenePatch patch) {
         putTextIfPresent(scene, "title", patch.title());
         putTextIfPresent(scene, "location", patch.location());
@@ -199,6 +323,18 @@ public class ScriptSceneRefinementService {
             scene.put("dialogues", toDialogueMaps(patch.dialogues()));
         }
         scene.put("ai_expansion", patch.aiExpansion());
+    }
+
+    private void applyVoicePatch(Map<String, Object> document, ScriptDialogueVoicePatch patch) {
+        for (ScriptDialogueScenePatch scenePatch : patch.scenePatches()) {
+            String sceneId = requireText(scenePatch.sceneId(), "scenePatches[].sceneId 不能为空。");
+            Map<String, Object> scene = findScene(document, sceneId);
+            if (scenePatch.dialogues() == null) {
+                throw new ClientException("scenePatches[" + sceneId + "].dialogues 不能为空。");
+            }
+            scene.put("dialogues", toDialogueMaps(scenePatch.dialogues()));
+            scene.put("ai_expansion", true);
+        }
     }
 
     private List<Map<String, Object>> toDialogueMaps(List<ScriptDialoguePatch> dialogues) {
@@ -214,6 +350,25 @@ public class ScriptSceneRefinementService {
             }
             value.put("line", line);
             values.add(value);
+        }
+        return values;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<ScriptDialoguePatch> readDialoguePatches(Map<String, Object> scene) {
+        Object dialogues = scene.get("dialogues");
+        if (!(dialogues instanceof List<?> dialogueList)) {
+            return List.of();
+        }
+        List<ScriptDialoguePatch> values = new ArrayList<>();
+        for (Object value : dialogueList) {
+            if (value instanceof Map<?, ?> dialogue) {
+                values.add(new ScriptDialoguePatch(
+                        optionalText(dialogue, "speaker"),
+                        optionalText(dialogue, "line"),
+                        optionalText(dialogue, "emotion")
+                ));
+            }
         }
         return values;
     }
@@ -243,6 +398,37 @@ public class ScriptSceneRefinementService {
             }
         }
         throw new ClientException("场景不存在：" + sceneId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> findDialogueTargetScenes(Map<String, Object> document,
+                                                               String speaker,
+                                                               List<String> sceneIds) {
+        Object scenes = document.get("scenes");
+        if (!(scenes instanceof List<?> sceneList)) {
+            throw new ClientException("YAML scenes 必须是数组。");
+        }
+        List<Map<String, Object>> selected = new ArrayList<>();
+        for (Object value : sceneList) {
+            if (!(value instanceof Map<?, ?> scene)) {
+                continue;
+            }
+            Map<String, Object> sceneMap = (Map<String, Object>) scene;
+            String sceneId = optionalText(sceneMap, "id");
+            boolean selectedById = sceneIds != null && !sceneIds.isEmpty() && sceneIds.contains(sceneId);
+            boolean selectedBySpeaker = (sceneIds == null || sceneIds.isEmpty()) && sceneContainsSpeaker(sceneMap, speaker);
+            if (selectedById || selectedBySpeaker) {
+                selected.add(sceneMap);
+            }
+        }
+        if (selected.isEmpty()) {
+            throw new ClientException("未找到包含说话人 “" + speaker + "” 的场景。");
+        }
+        return selected;
+    }
+
+    private boolean sceneContainsSpeaker(Map<String, Object> scene, String speaker) {
+        return readDialoguePatches(scene).stream().anyMatch(dialogue -> speaker.equals(dialogue.speaker()));
     }
 
     private String dumpYaml(Object value) {

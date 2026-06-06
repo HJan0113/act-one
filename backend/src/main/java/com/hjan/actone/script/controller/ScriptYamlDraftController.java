@@ -7,6 +7,8 @@ import com.hjan.actone.script.model.ScriptDraftListItemResponse;
 import com.hjan.actone.script.model.ScriptDraftSaveRequest;
 import com.hjan.actone.script.model.ScriptDraftSaveResponse;
 import com.hjan.actone.script.model.ScriptConversionTaskResponse;
+import com.hjan.actone.script.model.ScriptDialogueVoiceRewriteRequest;
+import com.hjan.actone.script.model.ScriptDialogueVoiceRewriteResponse;
 import com.hjan.actone.script.model.ScriptSceneRefineRequest;
 import com.hjan.actone.script.model.ScriptSceneRefineResponse;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
@@ -90,6 +92,18 @@ public class ScriptYamlDraftController {
                 draftId,
                 sceneId,
                 request.instruction()
+        )));
+    }
+
+    @PostMapping("/{draftId}/dialogues/voice-rewrite")
+    public Result<ScriptDialogueVoiceRewriteResponse> rewriteDialogueVoice(
+            @PathVariable String draftId,
+            @Valid @RequestBody ScriptDialogueVoiceRewriteRequest request) {
+        return Results.success(scriptSceneRefinementService.rewriteDialogueVoice(new ScriptDialogueVoiceRewriteRequest(
+                draftId,
+                request.speaker(),
+                request.instruction(),
+                request.sceneIds()
         )));
     }
 

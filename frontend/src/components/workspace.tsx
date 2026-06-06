@@ -854,9 +854,12 @@ function renderHighlightedSource(content: string, excerpt: string): ReactNode {
 }
 
 type CharacterWorkbenchProps = {
+  activeDraftId: string;
   characters: ScriptCharacterCard[];
   relationships: ScriptRelationship[];
+  rewritingVoice: boolean;
   scenes: ScriptTraceScene[];
+  onRewriteVoice: (speaker: string, instruction: string) => Promise<void> | void;
   yamlReady: boolean;
 };
 
@@ -875,11 +878,16 @@ type RelationshipView = {
 };
 
 export function CharacterWorkbench({
+  activeDraftId,
   characters,
+  onRewriteVoice,
   relationships,
+  rewritingVoice,
   scenes,
   yamlReady
 }: CharacterWorkbenchProps) {
+  const [voiceInstruction, setVoiceInstruction] = useState("");
+  const [voiceSpeaker, setVoiceSpeaker] = useState("");
   const candidateCharacters = characters.length > 0 ? characters : deriveCharacterCandidates(scenes);
   const usingCandidates = characters.length === 0 && candidateCharacters.length > 0;
   const characterStats = createCharacterStats(candidateCharacters, scenes);
@@ -887,6 +895,16 @@ export function CharacterWorkbench({
     relationships.length > 0
       ? relationships.map((relationship) => createRelationshipView(relationship, candidateCharacters))
       : inferRelationshipViews(candidateCharacters, scenes);
+  const selectedVoiceSpeaker = voiceSpeaker || candidateCharacters[0]?.name || "";
+  const canRewriteVoice = Boolean(activeDraftId && selectedVoiceSpeaker && voiceInstruction.trim() && !rewritingVoice);
+
+  async function submitVoiceRewrite() {
+    if (!canRewriteVoice) {
+      return;
+    }
+    await onRewriteVoice(selectedVoiceSpeaker, voiceInstruction.trim());
+    setVoiceInstruction("");
+  }
 
   return (
     <div className="character-workbench" aria-label="人物卡片与关系数据">
@@ -967,6 +985,47 @@ export function CharacterWorkbench({
         </div>
 
         <div className="relationship-list">
+          <section className="voice-rewrite-box" aria-label="对白口吻一致性与重写">
+            <div className="voice-rewrite-box__heading">
+              <span>口吻重写</span>
+              <strong>{activeDraftId ? "多场景 patch" : "需先保存草稿"}</strong>
+            </div>
+            <label>
+              <span>人物</span>
+              <select
+                disabled={!activeDraftId || rewritingVoice || candidateCharacters.length === 0}
+                onChange={(event) => setVoiceSpeaker(event.target.value)}
+                value={selectedVoiceSpeaker}
+              >
+                {candidateCharacters.length > 0 ? (
+                  candidateCharacters.map((character) => (
+                    <option key={characterIdentity(character)} value={character.name}>
+                      {character.name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">暂无人物</option>
+                )}
+              </select>
+            </label>
+            <textarea
+              disabled={!activeDraftId || rewritingVoice || candidateCharacters.length === 0}
+              maxLength={1000}
+              onChange={(event) => setVoiceInstruction(event.target.value)}
+              placeholder="例如：统一为冷静、短句、带观察细节的侦查口吻，不改变事实。"
+              value={voiceInstruction}
+            />
+            <ActionButton
+              disabled={!canRewriteVoice}
+              icon={<Sparkles aria-hidden="true" className={rewritingVoice ? "spin" : ""} size={15} />}
+              onClick={submitVoiceRewrite}
+              size="sm"
+              variant="primary"
+            >
+              重写对白
+            </ActionButton>
+          </section>
+
           {relationshipViews.length > 0 ? (
             relationshipViews.map((relationship) => (
               <article className="relationship-item" key={relationship.id}>

@@ -1,6 +1,8 @@
 import {readResponseError, requestApi, withAuthHeader} from "./apiClient";
 import type {
     ChapterPreviewData,
+    ScriptDialogueVoiceRewriteData,
+    ScriptDialogueVoiceRewriteRequest,
     ScriptConversionTaskData,
     ScriptDraftDetail,
     ScriptDraftListItem,
@@ -224,6 +226,19 @@ export function refineScene(request: ScriptSceneRefineRequest, token?: string) {
       token
     },
     "局部精修失败"
+  );
+}
+
+export function rewriteDialogueVoice(request: ScriptDialogueVoiceRewriteRequest, token?: string) {
+  return requestApi<ScriptDialogueVoiceRewriteData>(
+    `/api/script/drafts/${encodeURIComponent(request.draftId)}/dialogues/voice-rewrite`,
+    {
+      body: JSON.stringify(request),
+      headers: {"Content-Type": "application/json"},
+      method: "POST",
+      token
+    },
+    "对白口吻重写失败"
   );
 }
 

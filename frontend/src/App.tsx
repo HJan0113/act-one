@@ -47,6 +47,7 @@ import {
     listMyProjects,
     previewChapters as previewNovelChapters,
     refineScene as refineScriptScene,
+    rewriteDialogueVoice as rewriteScriptDialogueVoice,
     saveDraft as saveScriptDraft,
     streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
@@ -108,6 +109,7 @@ function App() {
   const [projectLoading, setProjectLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
   const [sceneRefinementLoading, setSceneRefinementLoading] = useState(false);
+  const [dialogueVoiceLoading, setDialogueVoiceLoading] = useState(false);
   const [yamlDraft, setYamlDraft] = useState("");
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
   const [activeTraceSceneId, setActiveTraceSceneId] = useState("");
@@ -830,6 +832,59 @@ function App() {
     }
   }
 
+  async function rewriteDialogueVoicePatch(speaker: string, instruction: string) {
+    if (!draftId) {
+      setYamlMessage("请先保存当前 YAML 草稿，再执行对白口吻重写。");
+      return;
+    }
+    setDialogueVoiceLoading(true);
+    setYamlMessage("正在生成对白口吻 patch...");
+    try {
+      const data = await requestWithAuth((token) =>
+        rewriteScriptDialogueVoice(
+          {
+            draftId,
+            instruction,
+            speaker
+          },
+          token
+        )
+      );
+      setYamlDraft(data.patchedYaml);
+      setDraftId("");
+      setValidationStatus(data.validationStatus || "edited");
+      setValidationError(data.validationError || "");
+      setGenerationMode(extractGenerationMode(data.patchedYaml));
+      setFallbackReason("");
+      setYamlMessage(
+        data.validationStatus === "valid"
+          ? `对白口吻已重写：${data.voicePatch.summary || data.voicePatch.voiceSample || "voice patch 已应用到当前编辑器，请保存为新草稿。"}`
+          : `对白口吻重写返回但校验未通过：${data.validationError || "请查看 Schema 校验。"}`
+      );
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: data.validationStatus === "valid" ? "对白口吻重写完成" : "对白口吻重写需修正",
+        errorMessage: data.validationError || "",
+        message: data.voicePatch.summary || data.voicePatch.voiceSample || "voice patch 已应用到 YAML 编辑器。",
+        progress: Math.max(current.progress, data.validationStatus === "valid" ? 96 : 88),
+        status: data.validationStatus === "valid" ? "success" : "failed"
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "对白口吻重写失败。";
+      setYamlMessage(errorMessage);
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: "对白口吻重写失败",
+        errorMessage,
+        message: "YAML 未被覆盖，可调整人物或指令后重试。",
+        progress: Math.max(current.progress, 70),
+        status: "failed"
+      }));
+    } finally {
+      setDialogueVoiceLoading(false);
+    }
+  }
+
   async function exportDraftYaml() {
     if (!canExport) return;
     setExportLoading(true);
@@ -1045,8 +1100,11 @@ function App() {
 
             {activeView === "characters" ? (
                 <CharacterWorkbench
+                    activeDraftId={draftId}
                     characters={characterCards}
+                    onRewriteVoice={rewriteDialogueVoicePatch}
                     relationships={relationships}
+                    rewritingVoice={dialogueVoiceLoading}
                     scenes={traceScenes}
                     yamlReady={Boolean(yamlDraft.trim())}
                 />

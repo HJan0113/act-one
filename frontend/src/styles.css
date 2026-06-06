@@ -1204,7 +1204,8 @@ h1 {
     font-size: var(--text-xs);
 }
 
-.scene-refine-box {
+.scene-refine-box,
+.voice-rewrite-box {
     display: grid;
     gap: var(--space-2);
     padding: var(--space-3);
@@ -1213,7 +1214,8 @@ h1 {
     background: var(--accent-soft);
 }
 
-.scene-refine-box__heading {
+.scene-refine-box__heading,
+.voice-rewrite-box__heading {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1221,13 +1223,34 @@ h1 {
 }
 
 .scene-refine-box__heading span,
-.scene-refine-box__heading strong {
+.scene-refine-box__heading strong,
+.voice-rewrite-box__heading span,
+.voice-rewrite-box__heading strong,
+.voice-rewrite-box label span {
     color: var(--accent-strong);
     font-size: var(--text-xs);
     font-weight: 900;
 }
 
-.scene-refine-box textarea {
+.voice-rewrite-box label {
+    display: grid;
+    gap: 6px;
+}
+
+.voice-rewrite-box select {
+    width: 100%;
+    min-height: 36px;
+    border: 1px solid rgba(39, 106, 95, 0.22);
+    border-radius: var(--radius-sm);
+    outline: 0;
+    background: var(--surface);
+    color: var(--ink);
+    padding: 0 var(--space-3);
+    font-size: var(--text-sm);
+}
+
+.scene-refine-box textarea,
+.voice-rewrite-box textarea {
     width: 100%;
     min-height: 96px;
     resize: vertical;
@@ -1241,12 +1264,16 @@ h1 {
     line-height: 1.6;
 }
 
-.scene-refine-box textarea:focus {
+.scene-refine-box textarea:focus,
+.voice-rewrite-box textarea:focus,
+.voice-rewrite-box select:focus {
     border-color: rgba(39, 106, 95, 0.76);
     box-shadow: 0 0 0 3px rgba(39, 106, 95, 0.13);
 }
 
-.scene-refine-box textarea:disabled {
+.scene-refine-box textarea:disabled,
+.voice-rewrite-box textarea:disabled,
+.voice-rewrite-box select:disabled {
     cursor: not-allowed;
     opacity: 0.58;
 }

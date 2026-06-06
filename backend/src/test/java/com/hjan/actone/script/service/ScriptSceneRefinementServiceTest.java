@@ -11,12 +11,15 @@ import com.hjan.actone.script.dao.entity.ScriptDraftDO;
 import com.hjan.actone.script.dao.entity.ScriptProjectDO;
 import com.hjan.actone.script.dao.mapper.ScriptDraftMapper;
 import com.hjan.actone.script.dao.mapper.ScriptProjectMapper;
+import com.hjan.actone.script.model.ScriptDialogueVoiceRewriteRequest;
 import com.hjan.actone.script.model.ScriptSceneRefineRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.DefaultResourceLoader;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -83,6 +86,53 @@ class ScriptSceneRefinementServiceTest {
                 .contains("增强悬疑感");
     }
 
+    @Test
+    void rewriteDialogueVoiceAppliesMultiSceneDialoguePatch() {
+        llmService.response = ChatResponse.text("""
+                {
+                  "speaker": "林夏",
+                  "voiceSample": "林夏：先别急，证据会自己说话。",
+                  "scenePatches": [
+                    {
+                      "sceneId": "scene_001",
+                      "dialogues": [
+                        {"speaker": "林夏", "emotion": "克制", "line": "先别急，门轴上的灰不对。"}
+                      ],
+                      "summary": "让林夏更克制敏锐。",
+                      "riskWarnings": []
+                    },
+                    {
+                      "sceneId": "scene_002",
+                      "dialogues": [
+                        {"speaker": "林夏", "emotion": "低声", "line": "雨声太整齐了，有人在遮脚步。"}
+                      ],
+                      "summary": "延续冷静侦查口吻。",
+                      "riskWarnings": []
+                    }
+                  ],
+                  "summary": "统一林夏冷静侦查的说话方式。",
+                  "riskWarnings": []
+                }
+                """);
+
+        var response = service.rewriteDialogueVoice(new ScriptDialogueVoiceRewriteRequest(
+                "draft_1",
+                "林夏",
+                "统一为冷静侦查口吻",
+                List.of("scene_001", "scene_002")
+        ));
+
+        assertThat(response.validationStatus()).isEqualTo("valid");
+        assertThat(response.voicePatch().voiceSample()).contains("证据会自己说话");
+        assertThat(response.patchedYaml())
+                .contains("先别急，门轴上的灰不对。")
+                .contains("雨声太整齐了，有人在遮脚步。")
+                .contains("ai_expansion: true");
+        assertThat(llmService.lastRequest.messages().get(0).content())
+                .contains("统一为冷静侦查口吻")
+                .contains("scene_002");
+    }
+
     private ScriptDraftDO draft(String draftId, String projectId) {
         ScriptDraftDO draft = new ScriptDraftDO();
         draft.setId(draftId);
@@ -133,7 +183,10 @@ class ScriptSceneRefinementServiceTest {
                     time: "夜晚"
                     scene_purpose: "建立冲突"
                     action: "林夏推门进入。"
-                    dialogues: []
+                    dialogues:
+                      - speaker: "林夏"
+                        emotion: "迟疑"
+                        line: "这里不对。"
                     source_excerpt: "林夏推开旧剧场的门。"
                   - id: "scene_002"
                     act_id: "act_1"
@@ -144,7 +197,10 @@ class ScriptSceneRefinementServiceTest {
                     time: "夜晚"
                     scene_purpose: "推进追踪"
                     action: "旧剧场外的雨声压住脚步。"
-                    dialogues: []
+                    dialogues:
+                      - speaker: "林夏"
+                        emotion: "警惕"
+                        line: "雨声盖住了什么。"
                     source_excerpt: "雨水打在铁门上。"
                 """;
     }
