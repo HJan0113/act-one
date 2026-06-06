@@ -25,6 +25,7 @@ import {
     type ProgressStep,
     ScriptPreviewPanel,
     Sidebar,
+    SourceTraceWorkbench,
     TaskConsole,
     type TaskStatus,
     type TaskSummary,
@@ -47,6 +48,7 @@ import {
     streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
 import type {AuthSession, ScriptDraftListItem, ScriptProjectListItem, ScriptYamlStreamPayload} from "./types/api";
+import {parseScriptYamlScenes} from "./utils/scriptYamlTrace";
 
 const placeholderYaml = `schema_version: "1.0"
 kind: "screenplay_draft"
@@ -104,6 +106,7 @@ function App() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [yamlDraft, setYamlDraft] = useState("");
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
+  const [activeTraceSceneId, setActiveTraceSceneId] = useState("");
   const [validationStatus, setValidationStatus] = useState("pending");
   const [validationError, setValidationError] = useState("");
   const [generationMode, setGenerationMode] = useState("");
@@ -119,6 +122,7 @@ function App() {
   const canExport = useMemo(() => draftId.length > 0 && !exportLoading, [draftId, exportLoading]);
   const canRefreshDrafts = useMemo(() => projectId.length > 0 && !draftLoading, [projectId, draftLoading]);
   const chapterOutline = useMemo(() => parseChapterOutline(novelText), [novelText]);
+  const traceScenes = useMemo(() => parseScriptYamlScenes(yamlDraft), [yamlDraft]);
   const selectedChapter = useMemo(
     () => chapterOutline.find((chapter) => chapter.index === activeChapterIndex) || chapterOutline[0],
     [activeChapterIndex, chapterOutline]
@@ -183,6 +187,19 @@ function App() {
         }),
         [conversionTask.status, isValid, novelText, previewLoading, yamlDraft, yamlLoading]
     );
+
+  useEffect(() => {
+    if (traceScenes.length === 0) {
+      if (activeTraceSceneId) {
+        setActiveTraceSceneId("");
+      }
+      return;
+    }
+
+    if (!traceScenes.some((scene) => scene.id === activeTraceSceneId)) {
+      setActiveTraceSceneId(traceScenes[0].id);
+    }
+  }, [activeTraceSceneId, traceScenes]);
 
   useEffect(() => {
     const token = authSession?.token;
@@ -954,6 +971,16 @@ function App() {
 
             {activeView === "result" ? scriptPanel : null}
 
+            {activeView === "trace" ? (
+                <SourceTraceWorkbench
+                    activeSceneId={activeTraceSceneId}
+                    chapters={chapterOutline}
+                    onSelectScene={setActiveTraceSceneId}
+                    scenes={traceScenes}
+                    yamlReady={Boolean(yamlDraft.trim())}
+                />
+            ) : null}
+
             {activeView === "archive" ? (
                 <div className="archive-grid">
                     <section className="studio-panel archive-panel" aria-label="我的项目">
@@ -1141,6 +1168,7 @@ function parseChapterOutline(text: string): ChapterOutline[] {
     const normalizedExcerpt = content.replace(/\s+/g, " ").slice(0, 160);
 
     return {
+      content,
       excerpt: normalizedExcerpt,
       id: `chapter-${index + 1}`,
       index: index + 1,

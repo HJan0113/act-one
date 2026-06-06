@@ -26,8 +26,10 @@ import {
 import {ActionButton} from "./ActionButton";
 import {EmptyState} from "./EmptyState";
 import {StatusBadge, type StatusTone} from "./StatusBadge";
+import type {ScriptTraceScene} from "../utils/scriptYamlTrace";
 
 export type ChapterOutline = {
+  content: string;
   excerpt: string;
   id: string;
   index: number;
@@ -83,7 +85,7 @@ export type ValidationCheck = {
   state: "fail" | "pass" | "pending" | "warn";
 };
 
-export type WorkspaceView = "archive" | "pipeline" | "result" | "source";
+export type WorkspaceView = "archive" | "pipeline" | "result" | "source" | "trace";
 
 type AppShellProps = {
     activeView: WorkspaceView;
@@ -173,6 +175,12 @@ const workspaceNavItems: Array<{
         icon: <Code2 size={18} aria-hidden="true"/>,
         id: "result",
         label: "结果"
+    },
+    {
+        detail: "源文对照",
+        icon: <ScrollText size={18} aria-hidden="true"/>,
+        id: "trace",
+        label: "追溯"
     },
     {
         detail: "项目与草稿",
@@ -580,6 +588,217 @@ export function InputPanel({
         )}
       </section>
     </section>
+  );
+}
+
+type SourceTraceWorkbenchProps = {
+  activeSceneId: string;
+  chapters: ChapterOutline[];
+  scenes: ScriptTraceScene[];
+  onSelectScene: (sceneId: string) => void;
+  yamlReady: boolean;
+};
+
+export function SourceTraceWorkbench({
+  activeSceneId,
+  chapters,
+  onSelectScene,
+  scenes,
+  yamlReady
+}: SourceTraceWorkbenchProps) {
+  const selectedScene = scenes.find((scene) => scene.id === activeSceneId) || scenes[0];
+  const selectedChapter = selectedScene
+    ? chapters.find(
+      (chapter) => chapter.id === selectedScene.sourceChapterId || chapter.index === selectedScene.chapterIndex
+    )
+    : undefined;
+  const sourceExcerpt = selectedScene?.sourceExcerpt.trim() || "";
+  const hasExactExcerpt = Boolean(selectedChapter?.content && sourceExcerpt && selectedChapter.content.includes(sourceExcerpt));
+
+  return (
+    <div className="trace-workbench" aria-label="源文追溯三栏对照">
+      <section className="studio-panel trace-panel trace-panel--source" aria-label="小说原文">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Novel Source</p>
+            <h2>小说原文</h2>
+          </div>
+          <StatusBadge label={hasExactExcerpt ? "摘录命中" : selectedChapter ? "章节定位" : "待定位"} tone={hasExactExcerpt ? "success" : selectedChapter ? "warning" : "neutral"} />
+        </div>
+
+        <div className="trace-column-body">
+          {selectedChapter ? (
+            <>
+              <div className="trace-source-card">
+                <span>{sourceChapterLabel(selectedChapter)}</span>
+                <strong>{selectedChapter.title}</strong>
+                <small>{selectedScene?.sourceChapterId || selectedChapter.id}</small>
+              </div>
+              {sourceExcerpt ? (
+                <blockquote className="trace-source-excerpt">
+                  <span>scene.source_excerpt</span>
+                  <p>{sourceExcerpt}</p>
+                </blockquote>
+              ) : null}
+              <article className="trace-source-text" aria-label="当前来源章节正文">
+                {renderHighlightedSource(selectedChapter.content, sourceExcerpt)}
+              </article>
+            </>
+          ) : (
+            <EmptyState
+              description="先导入小说并解析章节，或加载包含 chapter_index / source_chapter_id 的草稿。"
+              icon={<BookOpen size={18} />}
+              size="sm"
+              title="暂无可定位原文"
+            />
+          )}
+        </div>
+      </section>
+
+      <section className="studio-panel trace-panel trace-panel--yaml" aria-label="YAML 场景索引">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Structured Scenes</p>
+            <h2>YAML 场景</h2>
+          </div>
+          <StatusBadge label={scenes.length > 0 ? `${scenes.length} 场` : yamlReady ? "无场景" : "待生成"} tone={scenes.length > 0 ? "info" : "neutral"} />
+        </div>
+
+        <div className="trace-column-body">
+          {scenes.length > 0 ? (
+            <div className="trace-scene-list">
+              {scenes.map((scene) => (
+                <button
+                  className="trace-scene-card"
+                  data-active={scene.id === selectedScene?.id}
+                  key={scene.id}
+                  onClick={() => onSelectScene(scene.id)}
+                  type="button"
+                >
+                  <span className="trace-scene-card__index">{scene.id.replace(/^scene_?/, "") || scene.id}</span>
+                  <span className="trace-scene-card__body">
+                    <strong>{scene.title}</strong>
+                    <small>
+                      第 {scene.chapterIndex || "-"} 章 / {scene.location || "待补充"} / {scene.time || "待补充"}
+                    </small>
+                    <em>{scene.scenePurpose || "未写入场景目的"}</em>
+                  </span>
+                  <ChevronRight size={15} aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              description={yamlReady ? "当前 YAML 未解析到 scenes 列表，请检查缩进或字段名。" : "生成或加载 YAML 草稿后，这里会显示可点击 scene。"}
+              icon={<Code2 size={18} />}
+              size="sm"
+              title="暂无 YAML 场景"
+            />
+          )}
+        </div>
+      </section>
+
+      <section className="studio-panel trace-panel trace-panel--script" aria-label="可读剧本">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Readable Script</p>
+            <h2>可读剧本</h2>
+          </div>
+          <StatusBadge label={selectedScene?.aiExpansion === true ? "AI 扩写" : selectedScene ? "原文支撑" : "待选择"} tone={selectedScene?.aiExpansion === true ? "warning" : selectedScene ? "success" : "neutral"} />
+        </div>
+
+        <div className="trace-column-body">
+          {selectedScene ? (
+            <article className="trace-screenplay">
+              <header>
+                <span>{selectedScene.id}</span>
+                <h3>{selectedScene.title}</h3>
+                <p>
+                  {selectedScene.location || "待补充"} · {selectedScene.time || "待补充"}
+                </p>
+              </header>
+
+              {selectedScene.scenePurpose ? (
+                <section className="trace-script-note" aria-label="场景目的">
+                  <span>场景目的</span>
+                  <p>{selectedScene.scenePurpose}</p>
+                </section>
+              ) : null}
+
+              <section className="trace-script-action" aria-label="动作描述">
+                <span>Action</span>
+                <p>{selectedScene.action || "该场景暂无动作描述。"}</p>
+              </section>
+
+              <section className="trace-dialogues" aria-label="对白">
+                <div className="trace-dialogues__heading">
+                  <span>Dialogues</span>
+                  <strong>{selectedScene.dialogues.length}</strong>
+                </div>
+                {selectedScene.dialogues.length > 0 ? (
+                  selectedScene.dialogues.map((dialogue, index) => (
+                    <div className="trace-dialogue" key={`${dialogue.speaker}-${index}`}>
+                      <strong>{dialogue.speaker || "未知说话人"}</strong>
+                      <p>{dialogue.line || "未填写对白"}</p>
+                      {dialogue.emotion ? <small>{dialogue.emotion}</small> : null}
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted-copy">该场景暂无对白，可在后续对白精修阶段补齐。</p>
+                )}
+              </section>
+
+              <footer className="trace-script-footer">
+                <span>角色</span>
+                <strong>{sceneCharactersLabel(selectedScene)}</strong>
+              </footer>
+            </article>
+          ) : (
+            <EmptyState
+              description="选择一个 YAML scene 后，会在这里渲染成可读剧本格式。"
+              icon={<ScrollText size={18} />}
+              size="sm"
+              title="暂无可读场景"
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function sourceChapterLabel(chapter: ChapterOutline) {
+  return `第 ${String(chapter.index).padStart(2, "0")} 章 / ${chapter.wordCount} 字`;
+}
+
+function sceneCharactersLabel(scene: ScriptTraceScene) {
+  if (scene.characters.length > 0) {
+    return scene.characters.join("、");
+  }
+  const speakers = Array.from(new Set(scene.dialogues.map((dialogue) => dialogue.speaker).filter(Boolean)));
+  return speakers.length > 0 ? speakers.join("、") : "待补充";
+}
+
+function renderHighlightedSource(content: string, excerpt: string): ReactNode {
+  const body = content.trim();
+  if (!body) {
+    return <p className="muted-copy">当前章节暂无正文内容。</p>;
+  }
+
+  const target = excerpt.trim();
+  const start = target ? body.indexOf(target) : -1;
+  if (start < 0) {
+    return <p>{body}</p>;
+  }
+
+  const before = body.slice(0, start);
+  const after = body.slice(start + target.length);
+  return (
+    <p>
+      {before}
+      <mark>{target}</mark>
+      {after}
+    </p>
   );
 }
 
