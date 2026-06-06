@@ -13,7 +13,6 @@ import com.hjan.actone.script.service.NovelChapterParser;
 import com.hjan.actone.script.service.ScriptYamlDraftService;
 import com.hjan.actone.script.service.ScriptYamlValidationResult;
 import com.hjan.actone.script.service.ScriptYamlValidator;
-import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -133,7 +132,7 @@ public class ScriptAiPipelineService {
         } catch (RuntimeException ex) {
             throw new ScriptAiPipelineStageException(PipelineStage.SCRIPT_YAML_GENERATION, ex);
         }
-        if (!StringUtils.hasText(yaml)) {
+        if (!hasText(yaml)) {
             throw new ScriptAiPipelineStageException(
                     PipelineStage.SCRIPT_YAML_GENERATION,
                     new IllegalStateException("AI YAML 生成结果为空")
@@ -156,7 +155,7 @@ public class ScriptAiPipelineService {
         } catch (RuntimeException ex) {
             throw new ScriptAiPipelineStageException(PipelineStage.YAML_REPAIR, ex);
         }
-        if (!StringUtils.hasText(repairedYaml)) {
+        if (!hasText(repairedYaml)) {
             return fallback(request, context, "AI YAML 校验失败且修复结果为空，已显式降级为规则版脚手架");
         }
         context = context.withRepairedYaml(repairedYaml);
@@ -215,12 +214,16 @@ public class ScriptAiPipelineService {
     }
 
     private String resolveTitle(String title, List<NovelChapter> chapters) {
-        if (StringUtils.hasText(title)) {
+        if (hasText(title)) {
             return title.trim();
         }
-        if (!chapters.isEmpty() && StringUtils.hasText(chapters.get(0).title())) {
+        if (!chapters.isEmpty() && hasText(chapters.get(0).title())) {
             return chapters.get(0).title();
         }
         return "未命名剧本";
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }
