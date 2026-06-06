@@ -18,6 +18,9 @@ public interface ScriptAiPipelineObserver {
     default void onStageSuccess(PipelineContext context, PipelineStage stage) {
     }
 
+    default void onStageResult(PipelineContext context, PipelineStage stage, Object result) {
+    }
+
     default void onStageFailure(PipelineContext context, PipelineStage stage, RuntimeException error) {
     }
 

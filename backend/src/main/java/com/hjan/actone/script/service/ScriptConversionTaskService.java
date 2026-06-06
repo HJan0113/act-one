@@ -14,9 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
@@ -37,6 +40,8 @@ public class ScriptConversionTaskService {
             Pattern.compile("(?i)(api[-_ ]?key\\s*[=:]\\s*)\\S+");
     private static final Pattern AUTHORIZATION_PATTERN =
             Pattern.compile("(?i)(authorization\\s*[=:]\\s*)\\S+");
+    private static final Pattern MESSAGE_METADATA_PATTERN =
+            Pattern.compile("([A-Za-z][A-Za-z0-9]*)=([^;]+)");
 
     private final ScriptConversionTaskMapper taskMapper;
     private final ScriptProjectMapper projectMapper;
@@ -131,13 +136,61 @@ public class ScriptConversionTaskService {
     public ScriptConversionTaskResponse markFailed(String taskId,
                                                   PipelineStage stage,
                                                   String errorMessage) {
+        return markFailed(taskId, stage, errorMessage, RuntimeException.class.getSimpleName(), true);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ScriptConversionTaskResponse markFailed(String taskId,
+                                                  PipelineStage stage,
+                                                  RuntimeException error) {
+        RuntimeException actualError = Objects.requireNonNull(error, "RuntimeException 不能为空");
+        return markFailed(
+                taskId,
+                stage,
+                actualError.getMessage(),
+                actualError.getClass().getSimpleName(),
+                isRetryable(actualError)
+        );
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ScriptConversionTaskResponse retryFailed(String taskId) {
+        ScriptConversionTaskDO task = requireOwnedTask(taskId);
+        if (!STATUS_FAILED.equals(task.getStatus())) {
+            throw new ClientException("只有失败任务可以重试。");
+        }
+        ScriptConversionTaskResponse failed = toResponse(task);
+        if (!Boolean.TRUE.equals(failed.retryable())) {
+            throw new ClientException("当前失败不可重试，请检查输入或配置后新建任务。");
+        }
+        PipelineStage resumeStage = parseStage(failed.resumeStage()).orElse(PipelineStage.INIT);
+        task.setStatus(STATUS_PENDING);
+        task.setProgress(MIN_PROGRESS);
+        task.setMessage(stageMessage(
+                resumeStage,
+                "retryOf=" + defaultText(failed.failedStage(), PipelineStage.INIT.name()) + "; 从安全阶段继续"
+        ));
+        task.setErrorMessage(null);
+        task.setStartTime(null);
+        task.setEndTime(null);
+        taskMapper.updateById(task);
+        return toResponse(task);
+    }
+
+    private ScriptConversionTaskResponse markFailed(String taskId,
+                                                    PipelineStage stage,
+                                                    String errorMessage,
+                                                    String errorType,
+                                                    boolean retryable) {
         ScriptConversionTaskDO task = requireOwnedTask(taskId);
         if (isTerminal(task.getStatus())) {
             return toResponse(task);
         }
         String safeError = sanitize(errorMessage, "转换失败", MAX_ERROR_LENGTH);
+        PipelineStage safeStage = stage == null ? PipelineStage.INIT : stage;
+        PipelineStage resumeStage = resolveResumeStage(safeStage);
         task.setStatus(STATUS_FAILED);
-        task.setMessage(stageMessage(stage, "转换失败"));
+        task.setMessage(failureMessage(safeStage, errorType, retryable, resumeStage));
         task.setErrorMessage(safeError);
         task.setEndTime(LocalDateTime.now());
         taskMapper.updateById(task);
@@ -183,6 +236,8 @@ public class ScriptConversionTaskService {
     }
 
     private ScriptConversionTaskResponse toResponse(ScriptConversionTaskDO task) {
+        Map<String, String> metadata = parseMessageMetadata(task.getMessage());
+        boolean failed = STATUS_FAILED.equals(task.getStatus());
         return new ScriptConversionTaskResponse(
                 task.getId(),
                 task.getProjectId(),
@@ -191,6 +246,10 @@ public class ScriptConversionTaskService {
                 task.getProgress(),
                 task.getMessage(),
                 task.getErrorMessage(),
+                failed ? metadata.get("stage") : null,
+                failed ? metadata.get("errorType") : null,
+                failed ? Boolean.valueOf(metadata.getOrDefault("retryable", "false")) : null,
+                failed ? metadata.get("resumeStage") : null,
                 task.getSchemaVersion(),
                 task.getModelId(),
                 task.getStartTime(),
@@ -207,6 +266,58 @@ public class ScriptConversionTaskService {
     private String stageMessage(PipelineStage stage, String message) {
         PipelineStage safeStage = Objects.requireNonNull(stage, "PipelineStage 不能为空");
         return sanitize("stage=" + safeStage.name() + "; " + defaultText(message, ""), "", MAX_MESSAGE_LENGTH);
+    }
+
+    private String failureMessage(PipelineStage stage, String errorType, boolean retryable, PipelineStage resumeStage) {
+        return stageMessage(
+                stage,
+                "errorType=" + defaultText(errorType, RuntimeException.class.getSimpleName())
+                        + "; retryable=" + retryable
+                        + "; resumeStage=" + resumeStage.name()
+                        + "; 转换失败"
+        );
+    }
+
+    private PipelineStage resolveResumeStage(PipelineStage failedStage) {
+        return switch (failedStage) {
+            case INIT, CHAPTER_SUMMARY -> PipelineStage.CHAPTER_SUMMARY;
+            case GLOBAL_STORY_EXTRACTION -> PipelineStage.GLOBAL_STORY_EXTRACTION;
+            case SCENE_PLANNING -> PipelineStage.SCENE_PLANNING;
+            case PSYCHOLOGICAL_VISUALIZATION,
+                 DIALOGUE_GENERATION,
+                 SOURCE_TRACE,
+                 SCRIPT_YAML_GENERATION,
+                 YAML_VALIDATION,
+                 YAML_REPAIR,
+                 COMPLETED -> PipelineStage.PSYCHOLOGICAL_VISUALIZATION;
+        };
+    }
+
+    private boolean isRetryable(RuntimeException error) {
+        return !(error instanceof ClientException || error instanceof IllegalArgumentException);
+    }
+
+    private Optional<PipelineStage> parseStage(String stageName) {
+        if (!StringUtils.hasText(stageName)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(PipelineStage.valueOf(stageName.trim()));
+        } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    private Map<String, String> parseMessageMetadata(String message) {
+        Map<String, String> metadata = new HashMap<>();
+        if (!StringUtils.hasText(message)) {
+            return metadata;
+        }
+        Matcher matcher = MESSAGE_METADATA_PATTERN.matcher(message);
+        while (matcher.find()) {
+            metadata.put(matcher.group(1), matcher.group(2).trim());
+        }
+        return metadata;
     }
 
     private String requireText(String value, String message) {

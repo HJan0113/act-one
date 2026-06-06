@@ -13,10 +13,11 @@ public record ScriptYamlGenerateRequest(
         @NotBlank(message = "小说正文不能为空")
         String text,
         String projectId,
-        Boolean forceNewTask
+        Boolean forceNewTask,
+        String resumeTaskId
 ) {
 
     public ScriptYamlGenerateRequest(String title, String author, String logline, String text) {
-        this(title, author, logline, text, null, null);
+        this(title, author, logline, text, null, null, null);
     }
 }

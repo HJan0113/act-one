@@ -373,9 +373,13 @@ function App() {
 
   async function generateYaml() {
     if (!canGenerate) return;
+      const resumeTaskId =
+          conversionTask.status === "failed" && isBackendTaskId(conversionTask.taskId)
+              ? conversionTask.taskId
+              : "";
       const controller = new AbortController();
       const taskId = createLocalTaskId();
-      let streamTaskId = taskId;
+      let streamTaskId = resumeTaskId || taskId;
       generationAbortRef.current = controller;
       setActiveView("pipeline");
     setYamlLoading(true);
@@ -384,10 +388,10 @@ function App() {
       setConversionTask({
           currentStage: "AI Pipeline 编排",
           errorMessage: "",
-          message: "流式生成已提交，正在等待后端 meta / progress 事件。",
+          message: resumeTaskId ? "正在从失败任务的安全阶段继续。" : "流式生成已提交，正在等待后端 meta / progress 事件。",
           progress: 4,
           status: "running",
-          taskId
+          taskId: streamTaskId
       });
 
       const updateTaskFromStream = (payload: ScriptYamlStreamPayload, status: TaskStatus = "running") => {
@@ -411,9 +415,10 @@ function App() {
         streamGenerateScriptYaml(
           {
             author,
-            forceNewTask: true,
+            forceNewTask: !resumeTaskId,
             logline,
             projectId: activeProjectId,
+            resumeTaskId: resumeTaskId || undefined,
             text: novelText,
             title
           },

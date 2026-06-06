@@ -82,9 +82,18 @@ public class ScriptAiPipelineService {
     }
 
     public ScriptAiPipelineResult generate(ScriptYamlGenerateRequest request, ScriptAiPipelineObserver observer) {
+        return generate(request, observer, ScriptAiPipelineResumeState.empty());
+    }
+
+    public ScriptAiPipelineResult generate(ScriptYamlGenerateRequest request,
+                                           ScriptAiPipelineObserver observer,
+                                           ScriptAiPipelineResumeState resumeState) {
         long pipelineStartedNanos = System.nanoTime();
         Objects.requireNonNull(request, "ScriptYamlGenerateRequest 不能为空");
         ScriptAiPipelineObserver actualObserver = observer == null ? ScriptAiPipelineObserver.NOOP : observer;
+        ScriptAiPipelineResumeState actualResumeState = resumeState == null
+                ? ScriptAiPipelineResumeState.empty()
+                : resumeState;
         List<NovelChapter> chapters = chapterParser.parse(request.text());
         if (chapters.size() < NovelChapterParser.MIN_CHAPTER_COUNT) {
             throw new ClientException("至少需要 3 个章节，当前识别到 " + chapters.size() + " 个。");
@@ -100,11 +109,18 @@ public class ScriptAiPipelineService {
         );
         logPipelineStart(context, request);
         actualObserver.onPipelineStart(context);
+        context = applyResumeState(context, actualResumeState, actualObserver);
 
         try {
-            context = summarizeChapters(context, chapters, actualObserver);
-            context = extractGlobalStoryState(context, actualObserver);
-            context = planScenes(context, actualObserver);
+            if (context.chapterSummaries().isEmpty()) {
+                context = summarizeChapters(context, chapters, actualObserver);
+            }
+            if (!actualResumeState.hasGlobalStoryState()) {
+                context = extractGlobalStoryState(context, actualObserver);
+            }
+            if (!actualResumeState.hasScenePlan()) {
+                context = planScenes(context, actualObserver);
+            }
             context = visualizePsychology(context, actualObserver);
             context = generateDialogues(context, actualObserver);
             context = traceSource(context, chapters, actualObserver);
@@ -138,6 +154,41 @@ public class ScriptAiPipelineService {
             actualObserver.onComplete(result);
             return result;
         }
+    }
+
+    private PipelineContext applyResumeState(PipelineContext context,
+                                             ScriptAiPipelineResumeState resumeState,
+                                             ScriptAiPipelineObserver observer) {
+        PipelineContext nextContext = context;
+        if (resumeState.hasChapterSummaries()) {
+            nextContext = nextContext.withChapterSummaries(resumeState.chapterSummaries());
+            notifyRestoredStage(context, PipelineStage.CHAPTER_SUMMARY, nextContext, observer);
+        }
+        if (resumeState.hasGlobalStoryState()) {
+            nextContext = nextContext.withGlobalStoryState(resumeState.globalStoryState());
+            notifyRestoredStage(context, PipelineStage.GLOBAL_STORY_EXTRACTION, nextContext, observer);
+        }
+        if (resumeState.hasScenePlan()) {
+            nextContext = nextContext.withScenePlan(resumeState.scenePlan());
+            notifyRestoredStage(context, PipelineStage.SCENE_PLANNING, nextContext, observer);
+        }
+        return nextContext;
+    }
+
+    private void notifyRestoredStage(PipelineContext originalContext,
+                                     PipelineStage stage,
+                                     PipelineContext restoredContext,
+                                     ScriptAiPipelineObserver observer) {
+        observer.onStageResult(originalContext, stage, restoredContext);
+        observer.onStageSuccess(restoredContext, stage);
+        log.info(
+                "event=actone_ai_stage_restored taskId={} stage={} model={} retry={} chapterCount={}",
+                restoredContext.taskId(),
+                stage,
+                UNKNOWN_MODEL,
+                DEFAULT_RETRY,
+                restoredContext.chapterCount()
+        );
     }
 
     private PipelineContext summarizeChapters(PipelineContext context,
@@ -383,6 +434,7 @@ public class ScriptAiPipelineService {
         );
         try {
             T result = action.execute();
+            observer.onStageResult(context, stage, result);
             if (observer.isCanceled()) {
                 throw new ScriptAiPipelineCanceledException(stage);
             }

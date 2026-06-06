@@ -153,6 +153,43 @@ class ScriptAiPipelineServiceTest {
     }
 
     @Test
+    void generateContinuesFromCachedScenePlanWhenResumeStateExists() {
+        List<NovelChapter> chapters = chapterParser.parse(request().text());
+        FakeStages cachedStages = new FakeStages();
+        List<ChapterSummary> cachedSummaries = chapters.stream()
+                .map(cachedStages::summarize)
+                .toList();
+        PipelineContext cachedContext = PipelineContext.create(
+                        null,
+                        "测试剧本",
+                        "作者A",
+                        "主角在旧剧场面对三次选择。",
+                        chapters.size()
+                )
+                .withChapterSummaries(cachedSummaries)
+                .withGlobalStoryState(GlobalStoryState.empty());
+        ScenePlan cachedScenePlan = cachedStages.plan(cachedContext);
+
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline");
+        ScriptAiPipelineService service = service(stages);
+
+        ScriptAiPipelineResult result = service.generate(
+                request(),
+                ScriptAiPipelineObserver.NOOP,
+                new ScriptAiPipelineResumeState(cachedSummaries, GlobalStoryState.empty(), cachedScenePlan)
+        );
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.fallback()).isFalse();
+        assertThat(stages.summaryCalls).isZero();
+        assertThat(stages.globalContext).isNull();
+        assertThat(stages.sceneContext).isNull();
+        assertThat(stages.cinematicContext.scenePlan()).isEqualTo(cachedScenePlan);
+        assertThat(stages.cinematicContext.chapterSummaries()).hasSize(3);
+    }
+
+    @Test
     void generateRepairsInvalidAiYamlBeforeReturningResult() {
         FakeStages stages = new FakeStages();
         stages.generatedYaml = invalidYaml();

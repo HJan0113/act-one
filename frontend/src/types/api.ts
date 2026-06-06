@@ -45,6 +45,7 @@ export type ScriptYamlGenerateRequest = {
   forceNewTask?: boolean;
   logline: string;
   projectId?: string;
+  resumeTaskId?: string;
   text: string;
   title: string;
 };
@@ -93,10 +94,14 @@ export type ScriptConversionTaskData = {
   draftId?: string | null;
   endTime?: string | null;
   errorMessage?: string | null;
+  errorType?: string | null;
+  failedStage?: string | null;
   message?: string | null;
   modelId?: string | null;
   progress?: number | null;
   projectId: string;
+  resumeStage?: string | null;
+  retryable?: boolean | null;
   schemaVersion?: string | null;
   startTime?: string | null;
   status: string;

@@ -61,8 +61,12 @@ export type TaskSummary = {
     canCancel: boolean;
     currentStage: string;
     errorMessage: string;
+    errorType?: string;
+    failedStage?: string;
     message: string;
     progress: number;
+    resumeStage?: string;
+    retryable?: boolean | null;
     status: TaskStatus;
     taskId: string;
 };
@@ -262,6 +266,12 @@ export function TaskConsole({onCancel, summary}: TaskConsoleProps) {
                 </div>
                 <progress aria-label="AI 转换进度" className="task-meter" max={100} value={summary.progress}/>
                 <p>{summary.errorMessage || summary.message}</p>
+                {summary.status === "failed" ? (
+                    <div className="task-console__recovery">
+                        <span>{summary.failedStage || "失败阶段未知"}</span>
+                        <span>{summary.retryable === false ? "不可重试" : `可从 ${summary.resumeStage || "安全阶段"} 继续`}</span>
+                    </div>
+                ) : null}
                 <div className="task-console__meta">
                     <span>{summary.taskId || "未创建任务"}</span>
                     <ActionButton
