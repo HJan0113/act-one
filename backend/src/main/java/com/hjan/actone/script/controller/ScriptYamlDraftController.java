@@ -7,9 +7,12 @@ import com.hjan.actone.script.model.ScriptDraftListItemResponse;
 import com.hjan.actone.script.model.ScriptDraftSaveRequest;
 import com.hjan.actone.script.model.ScriptDraftSaveResponse;
 import com.hjan.actone.script.model.ScriptConversionTaskResponse;
+import com.hjan.actone.script.model.ScriptSceneRefineRequest;
+import com.hjan.actone.script.model.ScriptSceneRefineResponse;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
 import com.hjan.actone.script.service.ScriptDraftService;
+import com.hjan.actone.script.service.ScriptSceneRefinementService;
 import com.hjan.actone.script.service.ScriptYamlGenerationService;
 import com.hjan.actone.script.service.ScriptYamlStreamService;
 import jakarta.validation.Valid;
@@ -36,13 +39,16 @@ public class ScriptYamlDraftController {
     private final ScriptYamlGenerationService scriptYamlGenerationService;
     private final ScriptYamlStreamService scriptYamlStreamService;
     private final ScriptDraftService scriptDraftService;
+    private final ScriptSceneRefinementService scriptSceneRefinementService;
 
     public ScriptYamlDraftController(ScriptYamlGenerationService scriptYamlGenerationService,
                                      ScriptYamlStreamService scriptYamlStreamService,
-                                     ScriptDraftService scriptDraftService) {
+                                     ScriptDraftService scriptDraftService,
+                                     ScriptSceneRefinementService scriptSceneRefinementService) {
         this.scriptYamlGenerationService = scriptYamlGenerationService;
         this.scriptYamlStreamService = scriptYamlStreamService;
         this.scriptDraftService = scriptDraftService;
+        this.scriptSceneRefinementService = scriptSceneRefinementService;
     }
 
     @PostMapping("/yaml/from-text")
@@ -74,6 +80,17 @@ public class ScriptYamlDraftController {
     @GetMapping("/{draftId}")
     public Result<ScriptDraftDetailResponse> detail(@PathVariable String draftId) {
         return Results.success(scriptDraftService.detail(draftId));
+    }
+
+    @PostMapping("/{draftId}/scenes/{sceneId}/refine")
+    public Result<ScriptSceneRefineResponse> refineScene(@PathVariable String draftId,
+                                                         @PathVariable String sceneId,
+                                                         @Valid @RequestBody ScriptSceneRefineRequest request) {
+        return Results.success(scriptSceneRefinementService.refine(new ScriptSceneRefineRequest(
+                draftId,
+                sceneId,
+                request.instruction()
+        )));
     }
 
     @GetMapping(value = "/{draftId}/export.yaml", produces = "application/x-yaml")

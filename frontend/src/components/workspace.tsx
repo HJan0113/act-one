@@ -1,4 +1,4 @@
-import type {ChangeEvent, ReactNode} from "react";
+import {useState, type ChangeEvent, type ReactNode} from "react";
 import {
     Activity,
     BookOpen,
@@ -604,20 +604,27 @@ export function InputPanel({
 }
 
 type SourceTraceWorkbenchProps = {
+  activeDraftId: string;
   activeSceneId: string;
   chapters: ChapterOutline[];
+  refining: boolean;
   scenes: ScriptTraceScene[];
+  onRefineScene: (sceneId: string, instruction: string) => Promise<void> | void;
   onSelectScene: (sceneId: string) => void;
   yamlReady: boolean;
 };
 
 export function SourceTraceWorkbench({
+  activeDraftId,
   activeSceneId,
   chapters,
+  onRefineScene,
   onSelectScene,
+  refining,
   scenes,
   yamlReady
 }: SourceTraceWorkbenchProps) {
+  const [refineInstruction, setRefineInstruction] = useState("");
   const selectedScene = scenes.find((scene) => scene.id === activeSceneId) || scenes[0];
   const selectedChapter = selectedScene
     ? chapters.find(
@@ -626,6 +633,15 @@ export function SourceTraceWorkbench({
     : undefined;
   const sourceExcerpt = selectedScene?.sourceExcerpt.trim() || "";
   const hasExactExcerpt = Boolean(selectedChapter?.content && sourceExcerpt && selectedChapter.content.includes(sourceExcerpt));
+  const canRefine = Boolean(activeDraftId && selectedScene && refineInstruction.trim() && !refining);
+
+  async function submitRefinement() {
+    if (!selectedScene || !canRefine) {
+      return;
+    }
+    await onRefineScene(selectedScene.id, refineInstruction.trim());
+    setRefineInstruction("");
+  }
 
   return (
     <div className="trace-workbench" aria-label="源文追溯三栏对照">
@@ -764,6 +780,29 @@ export function SourceTraceWorkbench({
                 <span>角色</span>
                 <strong>{sceneCharactersLabel(selectedScene)}</strong>
               </footer>
+
+              <section className="scene-refine-box" aria-label="局部命令式精修">
+                <div className="scene-refine-box__heading">
+                  <span>局部精修</span>
+                  <strong>{activeDraftId ? "基于已保存草稿" : "需先保存草稿"}</strong>
+                </div>
+                <textarea
+                  disabled={!activeDraftId || refining}
+                  maxLength={1000}
+                  onChange={(event) => setRefineInstruction(event.target.value)}
+                  placeholder="例如：增强悬疑感，保留事实不变，补一句压低声音的对白。"
+                  value={refineInstruction}
+                />
+                <ActionButton
+                  disabled={!canRefine}
+                  icon={<Sparkles aria-hidden="true" className={refining ? "spin" : ""} size={15} />}
+                  onClick={submitRefinement}
+                  size="sm"
+                  variant="primary"
+                >
+                  生成 patch
+                </ActionButton>
+              </section>
             </article>
           ) : (
             <EmptyState

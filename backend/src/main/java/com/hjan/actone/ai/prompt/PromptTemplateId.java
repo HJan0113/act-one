@@ -51,6 +51,12 @@ public enum PromptTemplateId {
                     "schema_summary"
             )
     ),
+    SCENE_REFINEMENT(
+            "scene-refinement",
+            "1.0.0",
+            "prompt/v1/scene-refinement.st",
+            List.of("scene_id", "instruction", "scene_yaml", "characters_yaml", "schema_summary")
+    ),
     YAML_REPAIR(
             "yaml-repair",
             "1.0.0",

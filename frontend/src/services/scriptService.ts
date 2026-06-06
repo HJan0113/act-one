@@ -9,6 +9,8 @@ import type {
     ScriptProjectCreateRequest,
     ScriptProjectData,
     ScriptProjectListItem,
+    ScriptSceneRefineData,
+    ScriptSceneRefineRequest,
     ScriptYamlData,
     ScriptYamlGenerateRequest,
     ScriptYamlStreamEventName,
@@ -209,6 +211,19 @@ export function getDraftDetail(draftId: string, token?: string) {
       token
     },
     "草稿加载失败"
+  );
+}
+
+export function refineScene(request: ScriptSceneRefineRequest, token?: string) {
+  return requestApi<ScriptSceneRefineData>(
+    `/api/script/drafts/${encodeURIComponent(request.draftId)}/scenes/${encodeURIComponent(request.sceneId)}/refine`,
+    {
+      body: JSON.stringify(request),
+      headers: {"Content-Type": "application/json"},
+      method: "POST",
+      token
+    },
+    "局部精修失败"
   );
 }
 

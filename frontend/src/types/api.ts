@@ -168,3 +168,37 @@ export type ScriptDraftDetail = ScriptDraftListItem & {
   validationError?: string | null;
   yaml: string;
 };
+
+export type ScriptDialoguePatchData = {
+  emotion?: string | null;
+  line: string;
+  speaker: string;
+};
+
+export type ScriptScenePatchData = {
+  action?: string | null;
+  aiExpansion?: boolean | null;
+  dialogues?: ScriptDialoguePatchData[] | null;
+  location?: string | null;
+  riskWarnings?: string[] | null;
+  sceneId: string;
+  scenePurpose?: string | null;
+  summary?: string | null;
+  time?: string | null;
+  title?: string | null;
+};
+
+export type ScriptSceneRefineRequest = {
+  draftId: string;
+  instruction: string;
+  sceneId: string;
+};
+
+export type ScriptSceneRefineData = {
+  draftId: string;
+  patchedYaml: string;
+  sceneId: string;
+  scenePatch: ScriptScenePatchData;
+  validationError?: string | null;
+  validationStatus: string;
+};

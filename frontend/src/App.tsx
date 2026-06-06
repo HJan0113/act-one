@@ -46,6 +46,7 @@ import {
     listDrafts as listProjectDrafts,
     listMyProjects,
     previewChapters as previewNovelChapters,
+    refineScene as refineScriptScene,
     saveDraft as saveScriptDraft,
     streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
@@ -106,6 +107,7 @@ function App() {
   const [exportLoading, setExportLoading] = useState(false);
   const [projectLoading, setProjectLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
+  const [sceneRefinementLoading, setSceneRefinementLoading] = useState(false);
   const [yamlDraft, setYamlDraft] = useState("");
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
   const [activeTraceSceneId, setActiveTraceSceneId] = useState("");
@@ -775,6 +777,59 @@ function App() {
     }
   }
 
+  async function refineScenePatch(sceneId: string, instruction: string) {
+    if (!draftId) {
+      setYamlMessage("请先保存当前 YAML 草稿，再执行局部精修。");
+      return;
+    }
+    setSceneRefinementLoading(true);
+    setYamlMessage("正在生成局部 scene patch...");
+    try {
+      const data = await requestWithAuth((token) =>
+        refineScriptScene(
+          {
+            draftId,
+            instruction,
+            sceneId
+          },
+          token
+        )
+      );
+      setYamlDraft(data.patchedYaml);
+      setDraftId("");
+      setValidationStatus(data.validationStatus || "edited");
+      setValidationError(data.validationError || "");
+      setGenerationMode(extractGenerationMode(data.patchedYaml));
+      setFallbackReason("");
+      setYamlMessage(
+        data.validationStatus === "valid"
+          ? `局部精修已生成：${data.scenePatch.summary || "scene patch 已应用到当前编辑器，请保存为新草稿。"}`
+          : `局部精修已返回但校验未通过：${data.validationError || "请查看 Schema 校验。"}`
+      );
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: data.validationStatus === "valid" ? "局部精修完成" : "局部精修需修正",
+        errorMessage: data.validationError || "",
+        message: data.scenePatch.summary || "scene patch 已应用到 YAML 编辑器。",
+        progress: Math.max(current.progress, data.validationStatus === "valid" ? 96 : 88),
+        status: data.validationStatus === "valid" ? "success" : "failed"
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "局部精修失败。";
+      setYamlMessage(errorMessage);
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: "局部精修失败",
+        errorMessage,
+        message: "YAML 未被覆盖，可调整指令后重试。",
+        progress: Math.max(current.progress, 70),
+        status: "failed"
+      }));
+    } finally {
+      setSceneRefinementLoading(false);
+    }
+  }
+
   async function exportDraftYaml() {
     if (!canExport) return;
     setExportLoading(true);
@@ -977,9 +1032,12 @@ function App() {
 
             {activeView === "trace" ? (
                 <SourceTraceWorkbench
+                    activeDraftId={draftId}
                     activeSceneId={activeTraceSceneId}
                     chapters={chapterOutline}
+                    onRefineScene={refineScenePatch}
                     onSelectScene={setActiveTraceSceneId}
+                    refining={sceneRefinementLoading}
                     scenes={traceScenes}
                     yamlReady={Boolean(yamlDraft.trim())}
                 />
