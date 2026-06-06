@@ -2,6 +2,7 @@ package com.hjan.actone.script.ai.pipeline;
 
 import com.hjan.actone.common.exception.ClientException;
 import com.hjan.actone.script.ai.model.ChapterSummary;
+import com.hjan.actone.script.ai.model.CinematicTreatment;
 import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.ai.model.PipelineStage;
@@ -43,6 +44,8 @@ class ScriptAiPipelineServiceTest {
         assertThat(stages.summaryCalls).isEqualTo(3);
         assertThat(stages.globalContext.chapterSummaries()).hasSize(3);
         assertThat(stages.sceneContext.globalStoryState()).isEqualTo(GlobalStoryState.empty());
+        assertThat(stages.cinematicContext.scenePlan().scenes()).hasSize(1);
+        assertThat(stages.yamlContext.cinematicTreatment().scenes()).hasSize(1);
         assertThat(stages.yamlContext.scenePlan().scenes()).hasSize(1);
         assertThat(stages.repairCalls).isZero();
     }
@@ -127,6 +130,7 @@ class ScriptAiPipelineServiceTest {
                 stages,
                 stages,
                 stages,
+                stages,
                 stages
         );
     }
@@ -203,6 +207,7 @@ class ScriptAiPipelineServiceTest {
     private static class FakeStages implements ChapterSummaryStage,
             GlobalStoryExtractionStage,
             ScenePlanningStage,
+            CinematicTreatmentStage,
             ScriptYamlGenerationStage,
             YamlRepairStage {
 
@@ -213,6 +218,7 @@ class ScriptAiPipelineServiceTest {
         private String repairedYaml;
         private PipelineContext globalContext;
         private PipelineContext sceneContext;
+        private PipelineContext cinematicContext;
         private PipelineContext yamlContext;
         private PipelineContext repairContext;
 
@@ -272,6 +278,24 @@ class ScriptAiPipelineServiceTest {
                             List.of("character_001")
                     )),
                     "林夏推开旧剧场的门。"
+            )));
+        }
+
+        @Override
+        public CinematicTreatment visualize(PipelineContext context) {
+            cinematicContext = context;
+            return new CinematicTreatment(List.of(new CinematicTreatment.SceneTreatment(
+                    "scene_001",
+                    1,
+                    "chapter_1",
+                    "林夏推开门后停住，手指压皮信封，视线越过空荡舞台。",
+                    List.of(new CinematicTreatment.Transformation(
+                            "她害怕却不愿退缩。",
+                            "林夏停在门口，指尖压皮信封，随后迈进黑暗的观众席。",
+                            "动作与停顿",
+                            "林夏推开旧剧场的门。",
+                            List.of("character_001")
+                    ))
             )));
         }
 

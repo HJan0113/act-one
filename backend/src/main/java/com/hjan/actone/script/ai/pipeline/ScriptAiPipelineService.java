@@ -35,6 +35,7 @@ public class ScriptAiPipelineService {
     private final ChapterSummaryStage chapterSummaryStage;
     private final GlobalStoryExtractionStage globalStoryExtractionStage;
     private final ScenePlanningStage scenePlanningStage;
+    private final CinematicTreatmentStage cinematicTreatmentStage;
     private final ScriptYamlGenerationStage scriptYamlGenerationStage;
     private final YamlRepairStage yamlRepairStage;
 
@@ -44,6 +45,7 @@ public class ScriptAiPipelineService {
                                    ChapterSummaryStage chapterSummaryStage,
                                    GlobalStoryExtractionStage globalStoryExtractionStage,
                                    ScenePlanningStage scenePlanningStage,
+                                   CinematicTreatmentStage cinematicTreatmentStage,
                                    ScriptYamlGenerationStage scriptYamlGenerationStage,
                                    YamlRepairStage yamlRepairStage) {
         this.chapterParser = Objects.requireNonNull(chapterParser, "NovelChapterParser 不能为空");
@@ -55,6 +57,10 @@ public class ScriptAiPipelineService {
                 "GlobalStoryExtractionStage 不能为空"
         );
         this.scenePlanningStage = Objects.requireNonNull(scenePlanningStage, "ScenePlanningStage 不能为空");
+        this.cinematicTreatmentStage = Objects.requireNonNull(
+                cinematicTreatmentStage,
+                "CinematicTreatmentStage 不能为空"
+        );
         this.scriptYamlGenerationStage = Objects.requireNonNull(
                 scriptYamlGenerationStage,
                 "ScriptYamlGenerationStage 不能为空"
@@ -84,6 +90,7 @@ public class ScriptAiPipelineService {
             context = summarizeChapters(context, chapters);
             context = extractGlobalStoryState(context);
             context = planScenes(context);
+            context = visualizePsychology(context);
             context = generateYaml(context);
             ScriptAiPipelineResult result = validateAndRepairIfNeeded(context, request);
             logPipelineComplete(result, pipelineStartedNanos);
@@ -134,6 +141,15 @@ public class ScriptAiPipelineService {
                 PipelineStage.SCENE_PLANNING,
                 DEFAULT_RETRY,
                 () -> context.withScenePlan(scenePlanningStage.plan(context))
+        );
+    }
+
+    private PipelineContext visualizePsychology(PipelineContext context) {
+        return runStage(
+                context,
+                PipelineStage.PSYCHOLOGICAL_VISUALIZATION,
+                DEFAULT_RETRY,
+                () -> context.withCinematicTreatment(cinematicTreatmentStage.visualize(context))
         );
     }
 

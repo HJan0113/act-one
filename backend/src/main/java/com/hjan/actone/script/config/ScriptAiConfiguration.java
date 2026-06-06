@@ -3,9 +3,11 @@ package com.hjan.actone.script.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hjan.actone.ai.prompt.PromptTemplateService;
 import com.hjan.actone.ai.service.LLMService;
+import com.hjan.actone.script.ai.pipeline.CinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryStateMerger;
+import com.hjan.actone.script.ai.pipeline.LlmCinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.LlmChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
@@ -50,5 +52,14 @@ public class ScriptAiConfiguration {
                                                  PromptTemplateService promptTemplateService,
                                                  ObjectMapper objectMapper) {
         return new LlmScenePlanningStage(llmService, promptTemplateService, objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnBean({LLMService.class, PromptTemplateService.class, ObjectMapper.class})
+    @ConditionalOnMissingBean(CinematicTreatmentStage.class)
+    public CinematicTreatmentStage cinematicTreatmentStage(LLMService llmService,
+                                                           PromptTemplateService promptTemplateService,
+                                                           ObjectMapper objectMapper) {
+        return new LlmCinematicTreatmentStage(llmService, promptTemplateService, objectMapper);
     }
 }

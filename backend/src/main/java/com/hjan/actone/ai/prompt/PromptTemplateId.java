@@ -22,6 +22,12 @@ public enum PromptTemplateId {
             "prompt/v1/scene-planning.st",
             List.of("chapter_summaries", "global_story_state")
     ),
+    CINEMATIC_TREATMENT(
+            "cinematic-treatment",
+            "1.0.0",
+            "prompt/v1/cinematic-treatment.st",
+            List.of("chapter_summaries", "global_story_state", "scene_plan")
+    ),
     SCRIPT_YAML_GENERATION(
             "script-yaml-generation",
             "1.0.0",
@@ -33,6 +39,7 @@ public enum PromptTemplateId {
                     "chapter_count",
                     "global_story_state",
                     "scene_plans",
+                    "cinematic_treatment",
                     "schema_summary"
             )
     ),

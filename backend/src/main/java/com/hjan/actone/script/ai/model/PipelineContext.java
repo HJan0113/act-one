@@ -14,6 +14,7 @@ public record PipelineContext(
         List<ChapterSummary> chapterSummaries,
         GlobalStoryState globalStoryState,
         ScenePlan scenePlan,
+        CinematicTreatment cinematicTreatment,
         String generatedYaml,
         String repairedYaml,
         String validationStatus,
@@ -56,6 +57,7 @@ public record PipelineContext(
                 null,
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -72,6 +74,7 @@ public record PipelineContext(
                 summaries,
                 globalStoryState,
                 scenePlan,
+                cinematicTreatment,
                 generatedYaml,
                 repairedYaml,
                 validationStatus,
@@ -91,6 +94,7 @@ public record PipelineContext(
                 chapterSummaries,
                 state,
                 scenePlan,
+                cinematicTreatment,
                 generatedYaml,
                 repairedYaml,
                 validationStatus,
@@ -110,6 +114,27 @@ public record PipelineContext(
                 chapterSummaries,
                 globalStoryState,
                 plan,
+                cinematicTreatment,
+                generatedYaml,
+                repairedYaml,
+                validationStatus,
+                validationError
+        );
+    }
+
+    public PipelineContext withCinematicTreatment(CinematicTreatment treatment) {
+        return new PipelineContext(
+                taskId,
+                projectId,
+                projectTitle,
+                author,
+                logline,
+                chapterCount,
+                PipelineStage.PSYCHOLOGICAL_VISUALIZATION,
+                chapterSummaries,
+                globalStoryState,
+                scenePlan,
+                treatment,
                 generatedYaml,
                 repairedYaml,
                 validationStatus,
@@ -129,6 +154,7 @@ public record PipelineContext(
                 chapterSummaries,
                 globalStoryState,
                 scenePlan,
+                cinematicTreatment,
                 yaml,
                 repairedYaml,
                 validationStatus,
@@ -148,6 +174,7 @@ public record PipelineContext(
                 chapterSummaries,
                 globalStoryState,
                 scenePlan,
+                cinematicTreatment,
                 generatedYaml,
                 repairedYaml,
                 status,
@@ -167,6 +194,7 @@ public record PipelineContext(
                 chapterSummaries,
                 globalStoryState,
                 scenePlan,
+                cinematicTreatment,
                 generatedYaml,
                 yaml,
                 validationStatus,
@@ -186,6 +214,7 @@ public record PipelineContext(
                 chapterSummaries,
                 globalStoryState,
                 scenePlan,
+                cinematicTreatment,
                 generatedYaml,
                 repairedYaml,
                 validationStatus,

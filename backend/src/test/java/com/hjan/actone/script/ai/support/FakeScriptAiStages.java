@@ -1,11 +1,13 @@
 package com.hjan.actone.script.ai.support;
 
 import com.hjan.actone.script.ai.model.ChapterSummary;
+import com.hjan.actone.script.ai.model.CinematicTreatment;
 import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.ai.model.PipelineStage;
 import com.hjan.actone.script.ai.model.ScenePlan;
 import com.hjan.actone.script.ai.model.SourceEvidence;
+import com.hjan.actone.script.ai.pipeline.CinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
@@ -21,6 +23,7 @@ import java.util.Map;
 public class FakeScriptAiStages implements ChapterSummaryStage,
         GlobalStoryExtractionStage,
         ScenePlanningStage,
+        CinematicTreatmentStage,
         ScriptYamlGenerationStage,
         YamlRepairStage {
 
@@ -128,6 +131,24 @@ public class FakeScriptAiStages implements ChapterSummaryStage,
                         List.of("character_001")
                 )),
                 "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。"
+        )));
+    }
+
+    @Override
+    public CinematicTreatment visualize(PipelineContext context) {
+        failIfConfigured(PipelineStage.PSYCHOLOGICAL_VISUALIZATION);
+        return new CinematicTreatment(List.of(new CinematicTreatment.SceneTreatment(
+                "scene_001",
+                1,
+                "chapter_1",
+                "林夜吹熄残烛，指节扣紧刀柄；哭声传来时，他停住脚步，刀尖慢慢垂下。",
+                List.of(new CinematicTreatment.Transformation(
+                        "他从冷漠执行者转向主动选择。",
+                        "哭声传来，林夜扣紧刀柄的手停在半空，刀尖慢慢垂下。",
+                        "动作与停顿",
+                        "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。",
+                        List.of("character_001")
+                ))
         )));
     }
 

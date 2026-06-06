@@ -6,9 +6,11 @@ import com.hjan.actone.ai.model.ChatResponse;
 import com.hjan.actone.ai.prompt.PromptTemplateService;
 import com.hjan.actone.ai.service.LLMService;
 import com.hjan.actone.infra.ai.prompt.ClasspathPromptTemplateService;
+import com.hjan.actone.script.ai.pipeline.CinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryStateMerger;
+import com.hjan.actone.script.ai.pipeline.LlmCinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.LlmChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
@@ -35,12 +37,15 @@ class ScriptAiConfigurationTest {
                     assertThat(context).hasSingleBean(ChapterSummaryStage.class);
                     assertThat(context).hasSingleBean(GlobalStoryExtractionStage.class);
                     assertThat(context).hasSingleBean(ScenePlanningStage.class);
+                    assertThat(context).hasSingleBean(CinematicTreatmentStage.class);
                     assertThat(context.getBean(ChapterSummaryStage.class))
                             .isInstanceOf(LlmChapterSummaryStage.class);
                     assertThat(context.getBean(GlobalStoryExtractionStage.class))
                             .isInstanceOf(LlmGlobalStoryExtractionStage.class);
                     assertThat(context.getBean(ScenePlanningStage.class))
                             .isInstanceOf(LlmScenePlanningStage.class);
+                    assertThat(context.getBean(CinematicTreatmentStage.class))
+                            .isInstanceOf(LlmCinematicTreatmentStage.class);
                 });
     }
 
@@ -51,6 +56,7 @@ class ScriptAiConfigurationTest {
             assertThat(context).doesNotHaveBean(ChapterSummaryStage.class);
             assertThat(context).doesNotHaveBean(GlobalStoryExtractionStage.class);
             assertThat(context).doesNotHaveBean(ScenePlanningStage.class);
+            assertThat(context).doesNotHaveBean(CinematicTreatmentStage.class);
         });
     }
 

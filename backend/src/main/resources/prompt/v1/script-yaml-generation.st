@@ -18,6 +18,10 @@
 {{scene_plans}}
 </scene_plans>
 
+<cinematic_treatment>
+{{cinematic_treatment}}
+</cinematic_treatment>
+
 <schema_summary>
 {{schema_summary}}
 </schema_summary>
@@ -27,5 +31,5 @@
 2. schema_version 固定为 "1.0"，kind 固定为 "screenplay_draft"。
 3. source.type 固定为 "novel"，source.generation_mode 固定为 "ai_pipeline"。
 4. characters、acts、scenes 必须是数组；scene 的 act_id、chapter_index、source_chapter_id 和 source_excerpt 必须合法。
-5. 把心理描写转换为可表演的动作、表情、停顿、道具、环境变化或必要对白，但不得改变原作关键事实。
+5. scene.action 优先使用 cinematic_treatment 中对应 scene 的 action，并保留 source_excerpt，不得改变原作关键事实。
 6. dialogues 中 speaker 必须对应已知人物名或“旁白”，避免所有角色使用同一种口吻。

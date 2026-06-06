@@ -119,6 +119,8 @@ class ClasspathPromptTemplateServiceTest {
             case "chapter_summaries" -> "[{\"chapterId\":\"chapter_3\"}]";
             case "global_story_state" -> "{\"characters\":[]}";
             case "scene_plans" -> "{\"scenes\":[]}";
+            case "scene_plan" -> "{\"scenes\":[]}";
+            case "cinematic_treatment" -> "{\"scenes\":[]}";
             case "project_title" -> "暗门";
             case "author" -> "测试作者";
             case "logline" -> "林夏追查旧剧场的秘密。";

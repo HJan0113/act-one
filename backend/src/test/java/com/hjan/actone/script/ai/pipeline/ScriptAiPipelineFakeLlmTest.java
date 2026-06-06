@@ -130,6 +130,7 @@ class ScriptAiPipelineFakeLlmTest {
                 stages,
                 stages,
                 stages,
+                stages,
                 stages
         );
     }

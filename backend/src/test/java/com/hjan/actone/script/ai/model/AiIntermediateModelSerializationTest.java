@@ -55,6 +55,29 @@ class AiIntermediateModelSerializationTest {
     }
 
     @Test
+    void cinematicTreatmentRoundTripsJsonAndKeepsRewriteComparison() throws Exception {
+        CinematicTreatment treatment = cinematicTreatment();
+
+        String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(treatment);
+        CinematicTreatment restored = objectMapper.readValue(json, CinematicTreatment.class);
+
+        assertThat(restored).isEqualTo(treatment);
+        assertThat(restored.scenes()).singleElement()
+                .satisfies(scene -> {
+                    assertThat(scene.sceneId()).isEqualTo("scene_001");
+                    assertThat(scene.action()).contains("钥匙");
+                    assertThat(scene.transformations()).singleElement()
+                            .satisfies(transformation -> {
+                                assertThat(transformation.originalText()).contains("害怕");
+                                assertThat(transformation.visualizedText()).contains("停在暗门前");
+                                assertThat(transformation.characterIds()).containsExactly("character_001");
+                            });
+                });
+        assertThatThrownBy(() -> restored.scenes().add(treatment.scenes().get(0)))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
     void pipelineContextTracksStageTransitionsAndYamlOutput() throws Exception {
         PipelineContext context = PipelineContext.create(
                         "project_1",
@@ -66,6 +89,7 @@ class AiIntermediateModelSerializationTest {
                 .withChapterSummaries(List.of(chapterSummary()))
                 .withGlobalStoryState(globalStoryState())
                 .withScenePlan(scenePlan())
+                .withCinematicTreatment(cinematicTreatment())
                 .withGeneratedYaml("""
                         schema_version: "1.0"
                         kind: "screenplay_draft"
@@ -82,6 +106,7 @@ class AiIntermediateModelSerializationTest {
         assertThat(restored.chapterSummaries()).hasSize(1);
         assertThat(restored.globalStoryState().characters()).hasSize(1);
         assertThat(restored.scenePlan().scenes()).hasSize(1);
+        assertThat(restored.cinematicTreatment().scenes()).hasSize(1);
         assertThat(restored.generatedYaml()).contains("screenplay_draft");
         assertThat(restored.validationStatus()).isEqualTo("valid");
     }
@@ -97,6 +122,7 @@ class AiIntermediateModelSerializationTest {
         assertThat(context.chapterSummaries()).isEmpty();
         assertThat(context.globalStoryState()).isEqualTo(GlobalStoryState.empty());
         assertThat(context.scenePlan()).isNull();
+        assertThat(context.cinematicTreatment()).isNull();
     }
 
     @Test
@@ -106,6 +132,10 @@ class AiIntermediateModelSerializationTest {
                 .hasMessage("chapterIndex 必须大于 0");
 
         assertThatThrownBy(() -> new ScenePlan(List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("scenes 不能为空");
+
+        assertThatThrownBy(() -> new CinematicTreatment(List.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("scenes 不能为空");
 
@@ -224,6 +254,22 @@ class AiIntermediateModelSerializationTest {
                         List.of("character_001")
                 )),
                 "林夏在旧剧场后台发现一扇暗门。"
+        )));
+    }
+
+    private CinematicTreatment cinematicTreatment() {
+        return new CinematicTreatment(List.of(new CinematicTreatment.SceneTreatment(
+                "scene_001",
+                1,
+                "chapter_1",
+                "林夏摸到铜钥匙，停在暗门前，回头看向空荡后台。",
+                List.of(new CinematicTreatment.Transformation(
+                        "她害怕却不愿退缩。",
+                        "林夏停在暗门前，指尖捏紧铜钥匙，深吸一口气。",
+                        "动作与道具",
+                        "她在灰尘里摸到一枚冰凉的铜钥匙。",
+                        List.of("character_001")
+                ))
         )));
     }
 
