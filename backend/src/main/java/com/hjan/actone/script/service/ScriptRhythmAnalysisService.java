@@ -18,6 +18,7 @@ import com.hjan.actone.script.dao.entity.ScriptDraftDO;
 import com.hjan.actone.script.dao.entity.ScriptProjectDO;
 import com.hjan.actone.script.dao.mapper.ScriptDraftMapper;
 import com.hjan.actone.script.dao.mapper.ScriptProjectMapper;
+import com.hjan.actone.script.model.ScriptCharacterDensityMetric;
 import com.hjan.actone.script.model.ScriptRhythmAnalysisResponse;
 import com.hjan.actone.script.model.ScriptRhythmOverallMetrics;
 import com.hjan.actone.script.model.ScriptSceneRhythmMetric;
@@ -95,14 +96,18 @@ public class ScriptRhythmAnalysisService {
     public ScriptRhythmAnalysisResponse analyze(String draftId) {
         String normalizedDraftId = requireText(draftId, "草稿 ID 不能为空。");
         ScriptDraftDO draft = loadOwnedDraft(normalizedDraftId);
-        List<ScriptSceneRhythmMetric> ruleMetrics = calculateRuleMetrics(parseScenes(draft.getYamlContent()));
+        List<Map<String, Object>> scenes = parseScenes(draft.getYamlContent());
+        List<ScriptSceneRhythmMetric> ruleMetrics = calculateRuleMetrics(scenes);
         RhythmAssessmentResult assessment = assessWithAi(ruleMetrics);
+        List<ScriptCharacterDensityMetric> density = calculateCharacterDensity(
+                parseCharacters(draft.getYamlContent()), scenes);
         return new ScriptRhythmAnalysisResponse(
                 draft.getId(),
                 assessment.mode(),
                 calculateOverall(assessment.scenes()),
                 assessment.scenes(),
-                assessment.suggestions()
+                assessment.suggestions(),
+                density
         );
     }
 
@@ -223,6 +228,126 @@ public class ScriptRhythmAnalysisService {
         } catch (YAMLException ex) {
             throw new ClientException("草稿 YAML 无法解析，不能执行节奏分析。", ex, BaseErrorCode.CLIENT_ERROR);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> parseCharacters(String yamlContent) {
+        try {
+            Object parsed = new Yaml(new SafeConstructor(new LoaderOptions())).load(yamlContent);
+            if (!(parsed instanceof Map<?, ?> document)) {
+                return List.of();
+            }
+            Object characters = document.get("characters");
+            if (!(characters instanceof List<?> charList)) {
+                return List.of();
+            }
+            return (List<Map<String, Object>>) charList;
+        } catch (YAMLException ex) {
+            return List.of();
+        }
+    }
+
+    private List<ScriptCharacterDensityMetric> calculateCharacterDensity(
+            List<Map<String, Object>> characters, List<Map<String, Object>> scenes) {
+        List<ScriptCharacterDensityMetric> metrics = new ArrayList<>();
+        for (Map<String, Object> character : characters) {
+            String id = optionalText(character, "id");
+            String name = optionalText(character, "name");
+            String displayName = StringUtils.hasText(name) ? name : id;
+            if (!StringUtils.hasText(displayName)) {
+                continue;
+            }
+            List<String> appearsIn = new ArrayList<>();
+            int dialogueCount = 0;
+            for (Map<String, Object> scene : scenes) {
+                String sceneId = optionalText(scene, "id");
+                if (sceneContainsCharacter(scene, id, name)) {
+                    appearsIn.add(sceneId);
+                    dialogueCount += countCharacterDialogues(scene, id, name);
+                }
+            }
+            metrics.add(new ScriptCharacterDensityMetric(
+                    displayName, StringUtils.hasText(id) ? id : displayName,
+                    appearsIn.size(), dialogueCount, List.copyOf(appearsIn)));
+        }
+        if (metrics.isEmpty() && !scenes.isEmpty()) {
+            metrics.addAll(inferCharacterDensityFromSpeakers(scenes));
+        }
+        return metrics;
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean sceneContainsCharacter(Map<String, Object> scene, String characterId, String characterName) {
+        Object characters = scene.get("characters");
+        if (characters instanceof List<?> charList) {
+            for (Object value : charList) {
+                String text = value == null ? "" : String.valueOf(value).trim();
+                if (text.equals(characterId) || text.equals(characterName)) {
+                    return true;
+                }
+            }
+        }
+        Object dialogues = scene.get("dialogues");
+        if (dialogues instanceof List<?> dialogueList) {
+            for (Object value : dialogueList) {
+                if (value instanceof Map<?, ?> dialogue) {
+                    String speaker = optionalText(dialogue, "speaker");
+                    if (speaker.equals(characterId) || speaker.equals(characterName)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    @SuppressWarnings("unchecked")
+    private int countCharacterDialogues(Map<String, Object> scene, String characterId, String characterName) {
+        Object dialogues = scene.get("dialogues");
+        if (!(dialogues instanceof List<?> dialogueList)) {
+            return 0;
+        }
+        int count = 0;
+        for (Object value : dialogueList) {
+            if (value instanceof Map<?, ?> dialogue) {
+                String speaker = optionalText(dialogue, "speaker");
+                if (speaker.equals(characterId) || speaker.equals(characterName)) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<ScriptCharacterDensityMetric> inferCharacterDensityFromSpeakers(List<Map<String, Object>> scenes) {
+        Map<String, List<String>> speakerScenes = new LinkedHashMap<>();
+        Map<String, Integer> speakerDialogueCount = new LinkedHashMap<>();
+        for (Map<String, Object> scene : scenes) {
+            String sceneId = optionalText(scene, "id");
+            Object dialogues = scene.get("dialogues");
+            if (!(dialogues instanceof List<?> dialogueList)) {
+                continue;
+            }
+            for (Object value : dialogueList) {
+                if (value instanceof Map<?, ?> dialogue) {
+                    String speaker = optionalText(dialogue, "speaker");
+                    if (StringUtils.hasText(speaker) && !"旁白".equals(speaker)) {
+                        speakerScenes.computeIfAbsent(speaker, k -> new ArrayList<>()).add(sceneId);
+                        speakerDialogueCount.merge(speaker, 1, Integer::sum);
+                    }
+                }
+            }
+        }
+        List<ScriptCharacterDensityMetric> metrics = new ArrayList<>();
+        for (Map.Entry<String, List<String>> entry : speakerScenes.entrySet()) {
+            metrics.add(new ScriptCharacterDensityMetric(
+                    entry.getKey(), entry.getKey(),
+                    (int) entry.getValue().stream().distinct().count(),
+                    speakerDialogueCount.getOrDefault(entry.getKey(), 0),
+                    entry.getValue().stream().distinct().toList()));
+        }
+        return metrics;
     }
 
     private List<String> readDialogueLines(Map<?, ?> scene) {

@@ -2926,3 +2926,258 @@ h1 {
     padding: var(--space-3) var(--space-4);
   }
 }
+
+/* ── Heatmap & Character Density ── */
+.heatmap-workbench {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: 1fr 1fr;
+}
+
+.heatmap-body { padding: var(--space-3) var(--space-4); }
+
+.heatmap-legend {
+  align-items: center;
+  display: flex;
+  font-size: 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.heatmap-legend__gradient {
+  display: flex;
+  gap: 2px;
+}
+
+.heatmap-legend__tick {
+  border-radius: 3px;
+  height: 12px;
+  width: 24px;
+}
+
+.heatmap-legend__tick[data-level="1"] { background: #d4e6b5; }
+.heatmap-legend__tick[data-level="2"] { background: #a3d977; }
+.heatmap-legend__tick[data-level="3"] { background: #f5c842; }
+.heatmap-legend__tick[data-level="4"] { background: #f39c35; }
+.heatmap-legend__tick[data-level="5"] { background: #e0453a; }
+
+.heatmap-grid {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  min-height: 80px;
+}
+
+.heatmap-cell {
+  align-items: flex-end;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: flex-end;
+  min-height: 72px;
+  padding: 4px 3px 2px;
+  transition: transform 120ms;
+}
+
+.heatmap-cell:hover { transform: scale(1.06); box-shadow: var(--shadow-md); }
+
+.heatmap-cell[data-level="1"] .heatmap-cell__bar { background: #d4e6b5; }
+.heatmap-cell[data-level="2"] .heatmap-cell__bar { background: #a3d977; }
+.heatmap-cell[data-level="3"] .heatmap-cell__bar { background: #f5c842; }
+.heatmap-cell[data-level="4"] .heatmap-cell__bar { background: #f39c35; }
+.heatmap-cell[data-level="5"] .heatmap-cell__bar { background: #e0453a; }
+
+.heatmap-cell__index {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.heatmap-cell__bar {
+  border-radius: 3px 3px 0 0;
+  min-height: 4px;
+  width: 100%;
+}
+
+.heatmap-cell__label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.density-body { padding: var(--space-3) var(--space-4); }
+
+.density-row {
+  margin-bottom: var(--space-3);
+}
+
+.density-row__head {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.density-row__head strong { font-size: 14px; }
+.density-row__head span { color: var(--muted); font-size: 12px; }
+
+.density-row__bar {
+  background: var(--bg);
+  border-radius: 4px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.density-row__bar span {
+  background: #5588cc;
+  border-radius: 4px;
+  display: block;
+  height: 100%;
+  transition: width 300ms;
+}
+
+/* ── Storyboard / Shot Cards ── */
+.trace-full-workbench {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: 1fr 360px;
+}
+
+.trace-side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.storyboard-section {
+  background: var(--frame);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.storyboard-heading {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+}
+
+.storyboard-heading strong { font-size: 13px; color: var(--muted); }
+
+.storyboard-body {
+  padding: var(--space-4);
+}
+
+.shot-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.shot-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: var(--space-3);
+}
+
+.shot-card header {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.shot-card__id {
+  background: var(--frame);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+}
+
+.shot-card strong { font-size: 14px; }
+.shot-card dl { display: grid; gap: 4px; margin-bottom: var(--space-2); }
+.shot-card dl div { display: grid; font-size: 13px; gap: 4px; grid-template-columns: 48px 1fr; }
+.shot-card dt { color: var(--muted); }
+.shot-card dd { font-weight: 500; }
+.shot-card > p { color: var(--muted); font-size: 13px; font-style: italic; }
+
+.storyboard-suggestions {
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+}
+
+.storyboard-suggestions p {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+/* ── Readable Script Preview ── */
+.readable-script-body {
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5);
+}
+
+.readable-scene {
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+}
+
+.readable-scene:last-child { border-bottom: none; }
+
+.readable-scene__header {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.readable-scene__number {
+  background: var(--brand);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  min-width: 36px;
+  padding: 5px 8px;
+  text-align: center;
+}
+
+.readable-scene__header h3 {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.readable-scene__header p { color: var(--muted); font-size: 13px; }
+.readable-scene__purpose { color: var(--muted); font-size: 13px; margin-bottom: var(--space-3); }
+.readable-scene__action { font-size: 15px; line-height: 1.7; margin-bottom: var(--space-3); white-space: pre-wrap; }
+
+.readable-scene__dialogues { margin-bottom: var(--space-3); }
+.readable-dialogue { margin-bottom: var(--space-2); padding-left: var(--space-3); }
+.readable-dialogue strong { font-size: 14px; margin-right: var(--space-2); }
+.readable-dialogue small { color: var(--muted); font-size: 12px; }
+.readable-dialogue p { font-size: 15px; margin-top: 2px; }
+
+.readable-scene__footer {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  font-size: 12px;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.readable-scene__footer span { color: var(--muted); }
+.readable-scene__footer small { color: var(--muted); }

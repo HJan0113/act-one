@@ -74,6 +74,12 @@ public enum PromptTemplateId {
             "1.0.0",
             "prompt/v1/yaml-repair.st",
             List.of("invalid_yaml", "validation_errors", "schema_summary", "chapter_count")
+    ),
+    STORYBOARD_SUGGESTION(
+            "storyboard-suggestion",
+            "1.0.0",
+            "prompt/v1/storyboard-suggestion.st",
+            List.of("scene_yaml", "characters_yaml", "shot_count")
     );
 
     private final String id;

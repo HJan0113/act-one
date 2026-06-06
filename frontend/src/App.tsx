@@ -21,15 +21,18 @@ import {
     AppShell,
     ChapterList,
     type ChapterOutline,
+    ConflictHeatmapPanel,
     ConsistencyWorkbench,
     ConversionProgress,
     InputPanel,
     type ProgressStep,
     RhythmAnalysisPanel,
     ScriptPreviewPanel,
+    ScriptReadableView,
     CharacterWorkbench,
     Sidebar,
     SourceTraceWorkbench,
+    StoryboardPanel,
     type ScriptStyleVariant,
     scriptStyleVariantOptions,
     StyleVariantPanel,
@@ -49,6 +52,8 @@ import {
     cancelGenerationTask as cancelScriptGenerationTask,
     createProjectFromText,
     exportDraftYaml as exportDraftYamlFile,
+    fetchDemoNovel,
+    generateSceneStoryboard,
     getDraftDetail,
     listDrafts as listProjectDrafts,
     listMyProjects,
@@ -58,7 +63,7 @@ import {
     saveDraft as saveScriptDraft,
     streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
-import type {AuthSession, ScriptDraftListItem, ScriptProjectListItem, ScriptYamlStreamPayload} from "./types/api";
+import type {AuthSession, ScriptDraftListItem, ScriptDemoNovelData, ScriptProjectListItem, ScriptStoryboardData, ScriptYamlStreamPayload} from "./types/api";
 import type {ScriptDialogueVoiceRewriteData, ScriptRhythmAnalysisData, ScriptSceneRefineData} from "./types/api";
 import {parseScriptYamlCharacters, parseScriptYamlRelationships, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
 
@@ -121,6 +126,9 @@ function App() {
   const [styleVariantLoading, setStyleVariantLoading] = useState<ScriptStyleVariant | "">("");
   const [rhythmLoading, setRhythmLoading] = useState(false);
   const [rhythmAnalysis, setRhythmAnalysis] = useState<ScriptRhythmAnalysisData | null>(null);
+  const [storyboardLoading, setStoryboardLoading] = useState(false);
+  const [storyboard, setStoryboard] = useState<ScriptStoryboardData | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
   const [aiChangeSummary, setAiChangeSummary] = useState<AiChangeSummary | null>(null);
   const [yamlDraft, setYamlDraft] = useState("");
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
@@ -1043,6 +1051,37 @@ function App() {
     }
   }
 
+  async function loadDemoNovel() {
+    setDemoLoading(true);
+    try {
+      const data = await requestWithAuth((token) => fetchDemoNovel(token));
+      setTitle(data.title);
+      setAuthor(data.author);
+      setLogline(data.logline);
+      handleNovelTextChange(data.text);
+      setMessage("已加载演示小说《星轨回音》，共 10 章赛博朋克风格正文。请点击「解析章节」开始。");
+      setActiveView("source");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "演示样例加载失败。");
+    } finally {
+      setDemoLoading(false);
+    }
+  }
+
+  async function generateStoryboard(sceneId: string) {
+    if (!draftId || !sceneId || storyboardLoading) return;
+    setStoryboardLoading(true);
+    setStoryboard(null);
+    try {
+      const data = await requestWithAuth((token) => generateSceneStoryboard(draftId, sceneId, token));
+      setStoryboard(data);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "分镜建议生成失败。");
+    } finally {
+      setStoryboardLoading(false);
+    }
+  }
+
   if (!authSession) {
     return (
       <LoginGate
@@ -1112,6 +1151,14 @@ function App() {
         <TopBar
           actions={
             <>
+              <ActionButton
+                disabled={demoLoading}
+                icon={demoLoading ? <Loader2 aria-hidden="true" className="spin" size={16} /> : <Wand2 aria-hidden="true" size={16} />}
+                onClick={loadDemoNovel}
+                variant="quiet"
+              >
+                一键演示
+              </ActionButton>
               <ActionButton
                 disabled={!canPreview}
                 icon={previewLoading ? <Loader2 aria-hidden="true" className="spin" size={16} /> : <Play aria-hidden="true" size={16} />}
@@ -1232,6 +1279,7 @@ function App() {
                             analysis={rhythmAnalysis}
                             loading={rhythmLoading}
                             onAnalyze={analyzeRhythm}
+                            onViewHeatmap={() => { setActiveView("heatmap"); }}
                             yamlReady={Boolean(yamlDraft.trim())}
                         />
                         <AiChangeSummaryPanel summary={aiChangeSummary}/>
@@ -1240,14 +1288,40 @@ function App() {
             ) : null}
 
             {activeView === "trace" ? (
-                <SourceTraceWorkbench
-                    activeDraftId={draftId}
-                    activeSceneId={activeTraceSceneId}
-                    chapters={chapterOutline}
-                    onRefineScene={refineScenePatch}
-                    onSelectScene={setActiveTraceSceneId}
-                    refining={sceneRefinementLoading}
+                <div className="trace-full-workbench">
+                    <SourceTraceWorkbench
+                        activeDraftId={draftId}
+                        activeSceneId={activeTraceSceneId}
+                        chapters={chapterOutline}
+                        onRefineScene={refineScenePatch}
+                        onSelectScene={(sceneId) => { setActiveTraceSceneId(sceneId); setStoryboard(null); }}
+                        refining={sceneRefinementLoading}
+                        scenes={traceScenes}
+                        yamlReady={Boolean(yamlDraft.trim())}
+                    />
+                    <div className="trace-side-panel">
+                        <StoryboardPanel
+                            activeDraftId={draftId}
+                            generating={storyboardLoading}
+                            onGenerate={generateStoryboard}
+                            selectedScene={traceScenes.find((s) => s.id === activeTraceSceneId) || traceScenes[0] || null}
+                            storyboard={storyboard}
+                        />
+                    </div>
+                </div>
+            ) : null}
+
+            {activeView === "preview" ? (
+                <ScriptReadableView
                     scenes={traceScenes}
+                    yamlReady={Boolean(yamlDraft.trim())}
+                />
+            ) : null}
+
+            {activeView === "heatmap" ? (
+                <ConflictHeatmapPanel
+                    analysis={rhythmAnalysis}
+                    onSelectScene={(sceneId) => { setActiveTraceSceneId(sceneId); setActiveView("trace"); }}
                     yamlReady={Boolean(yamlDraft.trim())}
                 />
             ) : null}

@@ -200,6 +200,7 @@ export type ScriptSceneRhythmMetric = {
 
 export type ScriptRhythmAnalysisData = {
   assessmentMode: string;
+  characterDensity: ScriptCharacterDensityMetric[];
   draftId: string;
   overall: ScriptRhythmOverallMetrics;
   scenes: ScriptSceneRhythmMetric[];
@@ -269,4 +270,39 @@ export type ScriptDialogueVoiceRewriteData = {
   validationError?: string | null;
   validationStatus: string;
   voicePatch: ScriptDialogueVoicePatchData;
+};
+
+export type ScriptCharacterDensityMetric = {
+  characterId: string;
+  characterName: string;
+  dialogueCount: number;
+  sceneCount: number;
+  sceneIds: string[];
+};
+
+export type ShotSuggestion = {
+  action: string;
+  description: string;
+  emotion: string;
+  keyProp: string;
+  shotId: string;
+  shotType: string;
+  sound: string;
+  subject: string;
+  tone: string;
+};
+
+export type ScriptStoryboardData = {
+  assessmentMode: string;
+  draftId: string;
+  sceneId: string;
+  shots: ShotSuggestion[];
+  suggestions: string[];
+};
+
+export type ScriptDemoNovelData = {
+  author: string;
+  logline: string;
+  text: string;
+  title: string;
 };

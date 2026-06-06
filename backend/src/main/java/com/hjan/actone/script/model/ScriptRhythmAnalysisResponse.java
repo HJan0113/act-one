@@ -7,6 +7,7 @@ public record ScriptRhythmAnalysisResponse(
         String assessmentMode,
         ScriptRhythmOverallMetrics overall,
         List<ScriptSceneRhythmMetric> scenes,
-        List<String> suggestions
+        List<String> suggestions,
+        List<ScriptCharacterDensityMetric> characterDensity
 ) {
 }

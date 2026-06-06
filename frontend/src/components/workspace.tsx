@@ -28,7 +28,7 @@ import {
 import {ActionButton} from "./ActionButton";
 import {EmptyState} from "./EmptyState";
 import {StatusBadge, type StatusTone} from "./StatusBadge";
-import type {ScriptRhythmAnalysisData, ScriptSceneRhythmMetric} from "../types/api";
+import type {ScriptCharacterDensityMetric, ScriptRhythmAnalysisData, ScriptSceneRhythmMetric, ScriptStoryboardData, ShotSuggestion} from "../types/api";
 import type {ScriptCharacterCard, ScriptRelationship, ScriptTraceScene} from "../utils/scriptYamlTrace";
 
 export type ChapterOutline = {
@@ -134,7 +134,7 @@ export const scriptStyleVariantOptions: Array<{
   }
 ];
 
-export type WorkspaceView = "archive" | "characters" | "consistency" | "pipeline" | "result" | "source" | "trace";
+export type WorkspaceView = "archive" | "characters" | "consistency" | "heatmap" | "pipeline" | "preview" | "result" | "source" | "trace";
 
 type AppShellProps = {
     activeView: WorkspaceView;
@@ -242,6 +242,18 @@ const workspaceNavItems: Array<{
         icon: <ShieldCheck size={18} aria-hidden="true"/>,
         id: "consistency",
         label: "校验"
+    },
+    {
+        detail: "可读全剧本",
+        icon: <ScrollText size={18} aria-hidden="true"/>,
+        id: "preview",
+        label: "预览"
+    },
+    {
+        detail: "冲突与热度",
+        icon: <Activity size={18} aria-hidden="true"/>,
+        id: "heatmap",
+        label: "热力"
     },
     {
         detail: "项目与草稿",
@@ -1707,6 +1719,7 @@ type RhythmAnalysisPanelProps = {
   analysis: ScriptRhythmAnalysisData | null;
   loading: boolean;
   onAnalyze: () => void;
+  onViewHeatmap?: () => void;
   yamlReady: boolean;
 };
 
@@ -1715,6 +1728,7 @@ export function RhythmAnalysisPanel({
   analysis,
   loading,
   onAnalyze,
+  onViewHeatmap,
   yamlReady
 }: RhythmAnalysisPanelProps) {
   const canAnalyze = Boolean(activeDraftId) && !loading;
@@ -1727,6 +1741,16 @@ export function RhythmAnalysisPanel({
         </div>
         <div className="panel-actions">
           <StatusBadge label={analysisModeLabel(analysis?.assessmentMode)} tone={analysis?.assessmentMode === "ai_assisted" ? "success" : "info"} />
+          {analysis && onViewHeatmap ? (
+            <ActionButton
+              icon={<Activity aria-hidden="true" size={15} />}
+              onClick={onViewHeatmap}
+              size="sm"
+              variant="quiet"
+            >
+              热力图
+            </ActionButton>
+          ) : null}
           <ActionButton
             disabled={!canAnalyze}
             icon={loading ? <RefreshCcw aria-hidden="true" className="spin" size={15} /> : <Activity aria-hidden="true" size={15} />}
@@ -2127,6 +2151,253 @@ export function SchemaValidationPanel({ checks, error, status, yamlReady }: Sche
           </div>
         ))}
       </div>
+    </section>
+  );
+}
+
+type ScriptReadableViewProps = {
+  scenes: ScriptTraceScene[];
+  yamlReady: boolean;
+};
+
+export function ScriptReadableView({ scenes, yamlReady }: ScriptReadableViewProps) {
+  return (
+    <section className="studio-panel readable-script-panel" aria-label="可读剧本预览">
+      <div className="panel-heading">
+        <div>
+          <p className="panel-kicker">Readable Screenplay</p>
+          <h2>可读剧本预览</h2>
+        </div>
+        <StatusBadge label={scenes.length > 0 ? `${scenes.length} 场` : yamlReady ? "无场景" : "待生成"} tone={scenes.length > 0 ? "success" : "neutral"} />
+      </div>
+      <div className="readable-script-body">
+        {scenes.length > 0 ? (
+          scenes.map((scene) => (
+            <article className="readable-scene" key={scene.id}>
+              <header className="readable-scene__header">
+                <span className="readable-scene__number">{scene.id.replace(/^scene_?/, "")}</span>
+                <div>
+                  <h3>{scene.title}</h3>
+                  <p>{scene.location || "待补充"} · {scene.time || "待补充"}</p>
+                </div>
+                {scene.aiExpansion ? <StatusBadge label="AI 扩写" tone="warning" /> : null}
+              </header>
+              {scene.scenePurpose ? (
+                <p className="readable-scene__purpose"><em>目的：{scene.scenePurpose}</em></p>
+              ) : null}
+              {scene.action ? (
+                <p className="readable-scene__action">{scene.action}</p>
+              ) : null}
+              {scene.dialogues.length > 0 ? (
+                <div className="readable-scene__dialogues">
+                  {scene.dialogues.map((dialogue, index) => (
+                    <div className="readable-dialogue" key={`${dialogue.speaker}-${index}`}>
+                      <strong>{dialogue.speaker || "未知"}</strong>
+                      {dialogue.emotion ? <small>（{dialogue.emotion}）</small> : null}
+                      <p>{dialogue.line || "..."}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <footer className="readable-scene__footer">
+                {scene.characters.length > 0 ? (
+                  <span>出场：{scene.characters.join("、")}</span>
+                ) : null}
+                {scene.sourceChapterId ? (
+                  <small>来源：{scene.sourceChapterId} / 第 {scene.chapterIndex || "-"} 章</small>
+                ) : null}
+              </footer>
+            </article>
+          ))
+        ) : (
+          <EmptyState
+            description={yamlReady ? "当前 YAML 未解析到 scenes，检查缩进或字段名。" : "生成或加载 YAML 后，这里会渲染完整的可读剧本格式。"}
+            icon={<ScrollText size={22} />}
+            size="md"
+            title="暂无剧本"
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+type ConflictHeatmapPanelProps = {
+  analysis: ScriptRhythmAnalysisData | null;
+  onSelectScene?: (sceneId: string) => void;
+  yamlReady: boolean;
+};
+
+export function ConflictHeatmapPanel({ analysis, onSelectScene, yamlReady }: ConflictHeatmapPanelProps) {
+  const maxConflict = analysis ? Math.max(1, ...analysis.scenes.map((scene) => scene.conflictScore)) : 5;
+  const maxDensity = analysis
+    ? Math.max(1, ...analysis.characterDensity.map((char) => char.sceneCount))
+    : 1;
+
+  return (
+    <div className="heatmap-workbench" aria-label="冲突热力图与角色出场密度">
+      <section className="studio-panel heatmap-panel" aria-label="场景冲突热力图">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Conflict Heatmap</p>
+            <h2>冲突热力图</h2>
+          </div>
+          <StatusBadge label={analysis ? `${analysis.scenes.length} 场` : yamlReady ? "可分析" : "待生成"} tone={analysis ? "info" : "neutral"} />
+        </div>
+        <div className="heatmap-body">
+          {analysis && analysis.scenes.length > 0 ? (
+            <>
+              <div className="heatmap-legend">
+                <span>低冲突</span>
+                <div className="heatmap-legend__gradient">
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <span key={level} className="heatmap-legend__tick" data-level={level} />
+                  ))}
+                </div>
+                <span>高冲突</span>
+              </div>
+              <div className="heatmap-grid">
+                {analysis.scenes.map((scene) => (
+                  <button
+                    className="heatmap-cell"
+                    data-level={scene.conflictScore}
+                    key={scene.sceneId}
+                    onClick={() => onSelectScene?.(scene.sceneId)}
+                    title={`${scene.title || scene.sceneId} — 冲突 ${scene.conflictScore}/5 — 转折 ${scene.turningScore}/5 — ${scene.paceLevel}`}
+                    type="button"
+                  >
+                    <span className="heatmap-cell__index">{scene.sceneId.replace(/^scene_?/, "")}</span>
+                    <span className="heatmap-cell__bar" style={{ height: `${(scene.conflictScore / maxConflict) * 100}%` }} />
+                    <span className="heatmap-cell__label">{scene.conflictScore}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <EmptyState
+              description={yamlReady ? "保存草稿后执行节奏分析，即可查看按场景排列的冲突强度热力图。" : "生成或加载 YAML 草稿后可查看冲突热力图。"}
+              icon={<Activity size={18} />}
+              size="sm"
+              title="暂无冲突数据"
+            />
+          )}
+        </div>
+      </section>
+
+      <section className="studio-panel density-panel" aria-label="角色出场密度">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Character Density</p>
+            <h2>角色出场密度</h2>
+          </div>
+          <StatusBadge label={analysis ? `${analysis.characterDensity.length} 人` : "待分析"} tone={analysis ? "info" : "neutral"} />
+        </div>
+        <div className="density-body">
+          {analysis && analysis.characterDensity.length > 0 ? (
+            <div className="density-list">
+              {analysis.characterDensity.map((char) => (
+                <article className="density-row" key={char.characterId || char.characterName}>
+                  <div className="density-row__head">
+                    <strong>{char.characterName}</strong>
+                    <span>{char.sceneCount} 场 / {char.dialogueCount} 句对白</span>
+                  </div>
+                  <div className="density-row__bar" aria-label={`出场密度 ${char.sceneCount}/${analysis.scenes.length}`}>
+                    <span style={{ width: `${Math.min(100, (char.sceneCount / Math.max(1, analysis.scenes.length)) * 100)}%` }} />
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              description={yamlReady ? "YAML 中暂无角色卡或对白说话人数据，无法计算出场密度。" : "生成包含角色的 YAML 草稿后可查看角色出场密度。"}
+              icon={<ListChecks size={18} />}
+              size="sm"
+              title="暂无角色数据"
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+type StoryboardPanelProps = {
+  activeDraftId: string;
+  generating: boolean;
+  onGenerate: (sceneId: string) => void;
+  selectedScene: ScriptTraceScene | null;
+  storyboard: ScriptStoryboardData | null;
+};
+
+export function StoryboardPanel({
+  activeDraftId,
+  generating,
+  onGenerate,
+  selectedScene,
+  storyboard
+}: StoryboardPanelProps) {
+  const canGenerate = Boolean(activeDraftId && selectedScene && !generating);
+  const shots = storyboard?.shots || [];
+  const suggestions = storyboard?.suggestions || [];
+
+  return (
+    <section className="storyboard-section" aria-label="分镜与画面建议">
+      <div className="storyboard-heading">
+        <div>
+          <span>分镜建议</span>
+          <strong>{selectedScene ? selectedScene.title || selectedScene.id : "未选择场景"}</strong>
+        </div>
+        <ActionButton
+          disabled={!canGenerate}
+          icon={generating ? <RefreshCcw aria-hidden="true" className="spin" size={15} /> : <Film aria-hidden="true" size={15} />}
+          onClick={() => selectedScene && onGenerate(selectedScene.id)}
+          size="sm"
+          variant="secondary"
+        >
+          {generating ? "生成中" : "生成分镜"}
+        </ActionButton>
+      </div>
+
+      {storyboard ? (
+        <div className="storyboard-body">
+          <StatusBadge label={storyboard.assessmentMode === "ai_assisted" ? "AI 分镜" : "规则分镜"} tone={storyboard.assessmentMode === "ai_assisted" ? "success" : "info"} />
+          {shots.length > 0 ? (
+            <div className="shot-list">
+              {shots.map((shot) => (
+                <article className="shot-card" key={shot.shotId}>
+                  <header>
+                    <span className="shot-card__id">{shot.shotId}</span>
+                    <strong>{shot.shotType}</strong>
+                    <StatusBadge label={shot.emotion || "中性"} tone="info" />
+                  </header>
+                  <dl>
+                    <div><dt>主体</dt><dd>{shot.subject || "—"}</dd></div>
+                    <div><dt>动作</dt><dd>{shot.action || "—"}</dd></div>
+                    <div><dt>道具</dt><dd>{shot.keyProp || "—"}</dd></div>
+                    <div><dt>声音</dt><dd>{shot.sound || "—"}</dd></div>
+                    <div><dt>色调</dt><dd>{shot.tone || "—"}</dd></div>
+                  </dl>
+                  <p>{shot.description}</p>
+                </article>
+              ))}
+            </div>
+          ) : null}
+          {suggestions.length > 0 ? (
+            <div className="storyboard-suggestions">
+              {suggestions.map((suggestion) => (
+                <p key={suggestion}>{suggestion}</p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <EmptyState
+          description={canGenerate ? "点击生成分镜，AI 将为当前场景生成镜头类型、主体、动作、声音和色调建议。" : "需要先保存草稿并选择一个场景。"}
+          icon={<Film size={18} />}
+          size="sm"
+          title="点击生成按钮获取分镜建议"
+        />
+      )}
     </section>
   );
 }

@@ -1,6 +1,7 @@
 import {readResponseError, requestApi, withAuthHeader} from "./apiClient";
 import type {
     ChapterPreviewData,
+    ScriptDemoNovelData,
     ScriptDialogueVoiceRewriteData,
     ScriptDialogueVoiceRewriteRequest,
     ScriptConversionTaskData,
@@ -14,6 +15,7 @@ import type {
     ScriptProjectListItem,
     ScriptSceneRefineData,
     ScriptSceneRefineRequest,
+    ScriptStoryboardData,
     ScriptYamlData,
     ScriptYamlGenerateRequest,
     ScriptYamlStreamEventName,
@@ -250,6 +252,25 @@ export function rewriteDialogueVoice(request: ScriptDialogueVoiceRewriteRequest,
       token
     },
     "对白口吻重写失败"
+  );
+}
+
+export function generateSceneStoryboard(draftId: string, sceneId: string, token?: string) {
+  return requestApi<ScriptStoryboardData>(
+    `/api/script/drafts/${encodeURIComponent(draftId)}/scenes/${encodeURIComponent(sceneId)}/storyboard`,
+    {
+      method: "POST",
+      token
+    },
+    "分镜建议生成失败"
+  );
+}
+
+export function fetchDemoNovel(token?: string) {
+  return requestApi<ScriptDemoNovelData>(
+    "/api/script/demo/novel",
+    { token },
+    "演示样例加载失败"
   );
 }
 
