@@ -12,6 +12,7 @@ import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineCanceledException;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineObserver;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineResult;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineResumeState;
+import com.hjan.actone.script.ai.pipeline.ScriptYamlFactConstraintChecker;
 import com.hjan.actone.script.model.ScriptConversionTaskResponse;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
@@ -48,8 +49,9 @@ public class ScriptYamlStreamService {
         register(PipelineStage.DIALOGUE_GENERATION, 58, 68);
         register(PipelineStage.SOURCE_TRACE, 70, 76);
         register(PipelineStage.CONSISTENCY_CHECK, 78, 82);
-        register(PipelineStage.SCRIPT_YAML_GENERATION, 84, 88);
-        register(PipelineStage.YAML_VALIDATION, 90, 93);
+        register(PipelineStage.SCRIPT_YAML_GENERATION, 84, 87);
+        register(PipelineStage.YAML_VALIDATION, 88, 90);
+        register(PipelineStage.FACT_CONSTRAINT_CHECK, 91, 93);
         register(PipelineStage.YAML_REPAIR, 94, 96);
         register(PipelineStage.COMPLETED, 100, 100);
     }
@@ -345,10 +347,11 @@ public class ScriptYamlStreamService {
 
         @Override
         public void onValidation(PipelineContext context, ScriptYamlValidationResult validationResult) {
+            PipelineStage validationStage = validationStage(validationResult);
             ScriptYamlStreamService.send(runningTask.sender(), ScriptYamlStreamEventType.VALIDATION, ScriptYamlStreamPayload.validation(
                     runningTask.taskId(),
-                    PipelineStage.YAML_VALIDATION.name(),
-                    progress(PipelineStage.YAML_VALIDATION, false),
+                    validationStage.name(),
+                    progress(validationStage, false),
                     validationResult.status(),
                     validationResult.errorMessage(),
                     validationResult.valid()
@@ -383,6 +386,15 @@ public class ScriptYamlStreamService {
                     progress(stage, start),
                     message
             ));
+        }
+
+        private PipelineStage validationStage(ScriptYamlValidationResult validationResult) {
+            String errorMessage = validationResult == null ? null : validationResult.errorMessage();
+            if (StringUtils.hasText(errorMessage)
+                    && errorMessage.startsWith(ScriptYamlFactConstraintChecker.ERROR_PREFIX)) {
+                return PipelineStage.FACT_CONSTRAINT_CHECK;
+            }
+            return PipelineStage.YAML_VALIDATION;
         }
 
         private void send(ScriptYamlStreamEventType eventType, Object payload) {

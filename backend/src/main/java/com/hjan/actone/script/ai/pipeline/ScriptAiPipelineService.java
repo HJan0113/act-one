@@ -42,6 +42,7 @@ public class ScriptAiPipelineService {
     private final YamlRepairStage yamlRepairStage;
     private final GlobalStoryStateMerger globalStoryStateMerger;
     private final PipelineConsistencyChecker consistencyChecker;
+    private final ScriptYamlFactConstraintChecker factConstraintChecker;
 
     public ScriptAiPipelineService(NovelChapterParser chapterParser,
                                    ScriptYamlValidator yamlValidator,
@@ -67,7 +68,8 @@ public class ScriptAiPipelineService {
                 scriptYamlGenerationStage,
                 yamlRepairStage,
                 new GlobalStoryStateMerger(),
-                new PipelineConsistencyChecker()
+                new PipelineConsistencyChecker(),
+                new ScriptYamlFactConstraintChecker()
         );
     }
 
@@ -84,6 +86,38 @@ public class ScriptAiPipelineService {
                                    YamlRepairStage yamlRepairStage,
                                    GlobalStoryStateMerger globalStoryStateMerger,
                                    PipelineConsistencyChecker consistencyChecker) {
+        this(
+                chapterParser,
+                yamlValidator,
+                ruleBasedDraftService,
+                chapterSummaryStage,
+                globalStoryExtractionStage,
+                scenePlanningStage,
+                cinematicTreatmentStage,
+                dialogueGenerationStage,
+                sourceTraceStage,
+                scriptYamlGenerationStage,
+                yamlRepairStage,
+                globalStoryStateMerger,
+                consistencyChecker,
+                new ScriptYamlFactConstraintChecker()
+        );
+    }
+
+    public ScriptAiPipelineService(NovelChapterParser chapterParser,
+                                   ScriptYamlValidator yamlValidator,
+                                   ScriptYamlDraftService ruleBasedDraftService,
+                                   ChapterSummaryStage chapterSummaryStage,
+                                   GlobalStoryExtractionStage globalStoryExtractionStage,
+                                   ScenePlanningStage scenePlanningStage,
+                                   CinematicTreatmentStage cinematicTreatmentStage,
+                                   DialogueGenerationStage dialogueGenerationStage,
+                                   SourceTraceStage sourceTraceStage,
+                                   ScriptYamlGenerationStage scriptYamlGenerationStage,
+                                   YamlRepairStage yamlRepairStage,
+                                   GlobalStoryStateMerger globalStoryStateMerger,
+                                   PipelineConsistencyChecker consistencyChecker,
+                                   ScriptYamlFactConstraintChecker factConstraintChecker) {
         this.chapterParser = Objects.requireNonNull(chapterParser, "NovelChapterParser 不能为空");
         this.yamlValidator = Objects.requireNonNull(yamlValidator, "ScriptYamlValidator 不能为空");
         this.ruleBasedDraftService = Objects.requireNonNull(ruleBasedDraftService, "ScriptYamlDraftService 不能为空");
@@ -109,6 +143,10 @@ public class ScriptAiPipelineService {
         this.yamlRepairStage = Objects.requireNonNull(yamlRepairStage, "YamlRepairStage 不能为空");
         this.globalStoryStateMerger = Objects.requireNonNull(globalStoryStateMerger, "GlobalStoryStateMerger 不能为空");
         this.consistencyChecker = Objects.requireNonNull(consistencyChecker, "PipelineConsistencyChecker 不能为空");
+        this.factConstraintChecker = Objects.requireNonNull(
+                factConstraintChecker,
+                "ScriptYamlFactConstraintChecker 不能为空"
+        );
     }
 
     public ScriptAiPipelineResult generate(ScriptYamlGenerateRequest request) {
@@ -160,7 +198,7 @@ public class ScriptAiPipelineService {
             context = traceSource(context, chapters, actualObserver);
             context = checkConsistency(context, chapters, actualObserver);
             context = generateYaml(context, actualObserver);
-            ScriptAiPipelineResult result = validateAndRepairIfNeeded(context, request, actualObserver);
+            ScriptAiPipelineResult result = validateAndRepairIfNeeded(context, request, chapters, actualObserver);
             logPipelineComplete(result, pipelineStartedNanos);
             actualObserver.onComplete(result);
             return result;
@@ -321,8 +359,15 @@ public class ScriptAiPipelineService {
 
     private ScriptAiPipelineResult validateAndRepairIfNeeded(PipelineContext context,
                                                              ScriptYamlGenerateRequest request,
+                                                             List<NovelChapter> chapters,
                                                              ScriptAiPipelineObserver observer) {
-        ScriptYamlValidationResult validationResult = validateYaml(context, context.generatedYaml(), DEFAULT_RETRY, observer);
+        ScriptYamlValidationResult validationResult = validateYamlAndFacts(
+                context,
+                context.generatedYaml(),
+                chapters,
+                DEFAULT_RETRY,
+                observer
+        );
         context = context.withValidation(validationResult.status(), validationResult.errorMessage());
         if (validationResult.valid()) {
             return success(context.completed(), validationResult.cleanedYaml(), validationResult);
@@ -347,7 +392,7 @@ public class ScriptAiPipelineService {
         }
         context = context.withRepairedYaml(repairedYaml);
 
-        ScriptYamlValidationResult repairedValidation = validateYaml(context, repairedYaml, 1, observer);
+        ScriptYamlValidationResult repairedValidation = validateYamlAndFacts(context, repairedYaml, chapters, 1, observer);
         context = context.withValidation(repairedValidation.status(), repairedValidation.errorMessage());
         if (repairedValidation.valid()) {
             return success(context.completed(), repairedValidation.cleanedYaml(), repairedValidation);
@@ -355,7 +400,7 @@ public class ScriptAiPipelineService {
         return fallback(
                 request,
                 context,
-                PipelineStage.YAML_VALIDATION,
+                validationFailureStage(repairedValidation),
                 "AI YAML 校验失败且自动修复未通过，已显式降级为规则版脚手架",
                 observer
         );
@@ -466,6 +511,55 @@ public class ScriptAiPipelineService {
                 hasText(validationResult.errorMessage())
         );
         return validationResult;
+    }
+
+    private ScriptYamlValidationResult validateYamlAndFacts(PipelineContext context,
+                                                            String yaml,
+                                                            List<NovelChapter> chapters,
+                                                            int retry,
+                                                            ScriptAiPipelineObserver observer) {
+        ScriptYamlValidationResult validationResult = validateYaml(context, yaml, retry, observer);
+        if (!validationResult.valid()) {
+            return validationResult;
+        }
+        return validateFacts(context, validationResult.cleanedYaml(), chapters, retry, observer);
+    }
+
+    private ScriptYamlValidationResult validateFacts(PipelineContext context,
+                                                     String yaml,
+                                                     List<NovelChapter> chapters,
+                                                     int retry,
+                                                     ScriptAiPipelineObserver observer) {
+        ScriptYamlValidationResult validationResult = runStage(
+                context,
+                PipelineStage.FACT_CONSTRAINT_CHECK,
+                retry,
+                observer,
+                () -> factConstraintChecker.validate(context, yaml, chapters)
+        );
+        if (!validationResult.valid()) {
+            observer.onValidation(context, validationResult);
+        }
+        log.info(
+                "event=actone_ai_yaml_fact_constraint_result taskId={} stage={} model={} retry={} validationStatus={} valid={} errorPresent={}",
+                context.taskId(),
+                PipelineStage.FACT_CONSTRAINT_CHECK,
+                UNKNOWN_MODEL,
+                retry,
+                validationResult.status(),
+                validationResult.valid(),
+                hasText(validationResult.errorMessage())
+        );
+        return validationResult;
+    }
+
+    private PipelineStage validationFailureStage(ScriptYamlValidationResult validationResult) {
+        if (validationResult != null
+                && hasText(validationResult.errorMessage())
+                && validationResult.errorMessage().startsWith(ScriptYamlFactConstraintChecker.ERROR_PREFIX)) {
+            return PipelineStage.FACT_CONSTRAINT_CHECK;
+        }
+        return PipelineStage.YAML_VALIDATION;
     }
 
     private <T> T runStage(PipelineContext context,

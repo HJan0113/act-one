@@ -23,6 +23,7 @@ import com.hjan.actone.script.ai.pipeline.PipelineConsistencyChecker;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineService;
+import com.hjan.actone.script.ai.pipeline.ScriptYamlFactConstraintChecker;
 import com.hjan.actone.script.ai.pipeline.ScriptYamlGenerationStage;
 import com.hjan.actone.script.ai.pipeline.YamlRepairStage;
 import com.hjan.actone.script.service.NovelChapterParser;
@@ -48,6 +49,7 @@ class ScriptAiConfigurationTest {
                 .run(context -> {
                     assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
                     assertThat(context).hasSingleBean(PipelineConsistencyChecker.class);
+                    assertThat(context).hasSingleBean(ScriptYamlFactConstraintChecker.class);
                     assertThat(context).hasSingleBean(ChapterSummaryStage.class);
                     assertThat(context).hasSingleBean(GlobalStoryExtractionStage.class);
                     assertThat(context).hasSingleBean(ScenePlanningStage.class);
@@ -91,6 +93,7 @@ class ScriptAiConfigurationTest {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
             assertThat(context).hasSingleBean(PipelineConsistencyChecker.class);
+            assertThat(context).hasSingleBean(ScriptYamlFactConstraintChecker.class);
             assertThat(context).hasSingleBean(SourceTraceStage.class);
             assertThat(context.getBean(SourceTraceStage.class))
                     .isInstanceOf(DeterministicSourceTraceStage.class);

@@ -34,8 +34,9 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
             顶层必须包含 schema_version、kind、metadata、source、characters、acts、scenes。
             schema_version 固定为 "1.0"，kind 固定为 "screenplay_draft"。
             source.type 固定为 "novel"，source.generation_mode 固定为 "ai_pipeline"。
-            scenes 每项必须包含 id、act_id、chapter_index、source_chapter_id、title、location、time、scene_purpose、action、dialogues、source_excerpt。
+            scenes 每项必须包含 id、act_id、chapter_index、source_chapter_id、title、location、time、scene_purpose、action、dialogues、source_excerpt、ai_expansion。
             dialogues 每项应包含 speaker、line，可包含 emotion。
+            ai_expansion 为 boolean；当 action 或 dialogues 含源文摘录外的影视化/对白改写时必须为 true。
             """;
 
     private final LLMService llmService;

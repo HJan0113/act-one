@@ -156,6 +156,8 @@ class ScriptAiPipelineServiceTest {
                 "start:YAML_VALIDATION",
                 "success:YAML_VALIDATION",
                 "validation:valid",
+                "start:FACT_CONSTRAINT_CHECK",
+                "success:FACT_CONSTRAINT_CHECK",
                 "complete:COMPLETED"
         );
         assertThat(events).doesNotContain("fallback:CHAPTER_SUMMARY");
@@ -244,6 +246,24 @@ class ScriptAiPipelineServiceTest {
         assertThat(result.context().repairedYaml()).contains("generation_mode: \"ai_pipeline\"");
         assertThat(stages.repairCalls).isEqualTo(1);
         assertThat(stages.repairContext.validationStatus()).isEqualTo("invalid");
+    }
+
+    @Test
+    void generateRepairsFactConstraintFailureBeforeReturningResult() {
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline").replaceAll("(?m)^\\s*ai_expansion: false\\R", "");
+        stages.repairedYaml = validYaml("ai_pipeline");
+        ScriptAiPipelineService service = service(stages);
+
+        ScriptAiPipelineResult result = service.generate(request());
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.fallback()).isFalse();
+        assertThat(result.generationMode()).isEqualTo(ScriptAiGenerationMode.AI_PIPELINE);
+        assertThat(stages.repairCalls).isEqualTo(1);
+        assertThat(stages.repairContext.validationError())
+                .contains(ScriptYamlFactConstraintChecker.ERROR_PREFIX)
+                .contains("ai_expansion");
     }
 
     @Test
@@ -363,6 +383,7 @@ class ScriptAiPipelineServiceTest {
                     time: "深夜"
                     scene_purpose: "建立主角目标"
                     action: "林夏推开旧剧场的门。"
+                    ai_expansion: false
                     dialogues: []
                     source_excerpt: "林夏推开旧剧场的门。"
                 """.formatted(generationMode);

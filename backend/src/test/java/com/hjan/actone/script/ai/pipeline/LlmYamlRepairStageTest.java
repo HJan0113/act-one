@@ -59,6 +59,7 @@ class LlmYamlRepairStageTest {
                             .contains("<schema_summary>")
                             .contains("<invalid_yaml>")
                             .contains("acts 至少需要 1 个幕")
+                            .contains("ai_expansion")
                             .contains("chapter_count")
                             .contains("generation_mode: \"ai_pipeline\"")
                             .doesNotContain("{{validation_errors}}", "{{schema_summary}}", "{{invalid_yaml}}");
@@ -169,6 +170,7 @@ class LlmYamlRepairStageTest {
                     time: "雨夜子时"
                     scene_purpose: "建立刺杀任务。"
                     action: "林夜吹熄残烛。"
+                    ai_expansion: true
                     dialogues: []
                     source_excerpt: "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。"
                 """;

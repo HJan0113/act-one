@@ -289,6 +289,7 @@ public class ScriptConversionTaskService {
                  CONSISTENCY_CHECK,
                  SCRIPT_YAML_GENERATION,
                  YAML_VALIDATION,
+                 FACT_CONSTRAINT_CHECK,
                  YAML_REPAIR,
                  COMPLETED -> PipelineStage.PSYCHOLOGICAL_VISUALIZATION;
         };

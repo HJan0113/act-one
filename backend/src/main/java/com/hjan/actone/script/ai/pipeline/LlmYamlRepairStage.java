@@ -33,8 +33,9 @@ public class LlmYamlRepairStage implements YamlRepairStage {
             顶层必须包含 schema_version、kind、metadata、source、characters、acts、scenes。
             schema_version 固定为 "1.0"，kind 固定为 "screenplay_draft"。
             source.type 固定为 "novel"，source.generation_mode 固定为 "ai_pipeline"。
-            scenes 每项必须包含 id、act_id、chapter_index、source_chapter_id、title、location、time、scene_purpose、action、dialogues、source_excerpt。
+            scenes 每项必须包含 id、act_id、chapter_index、source_chapter_id、title、location、time、scene_purpose、action、dialogues、source_excerpt、ai_expansion。
             act_id 必须引用 acts 中存在的 id；chapter_index 不得超过 source.chapter_count。
+            ai_expansion 为 boolean；action 或 dialogues 超出来源证据时必须为 true，不超出时为 false。
             """;
 
     private final LLMService llmService;

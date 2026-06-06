@@ -1227,6 +1227,7 @@ const pipelineStageLabels: Record<string, string> = {
     COMPLETED: "转换完成",
     CONSISTENCY_CHECK: "一致性校验",
     DIALOGUE_GENERATION: "对白生成",
+    FACT_CONSTRAINT_CHECK: "事实约束",
     GLOBAL_STORY_EXTRACTION: "全局故事抽取",
     INIT: "任务初始化",
     PSYCHOLOGICAL_VISUALIZATION: "心理影视化",

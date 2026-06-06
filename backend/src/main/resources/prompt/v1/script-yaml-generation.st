@@ -41,3 +41,5 @@
 4. characters、acts、scenes 必须是数组；scene 的 act_id、chapter_index、source_chapter_id 和 source_excerpt 必须来自 source_trace，不得擅自改写来源字段。
 5. scene.action 优先使用 cinematic_treatment 中对应 scene 的 action，并保留 source_excerpt，不得改变原作关键事实。
 6. scene.dialogues 优先使用 dialogue_draft 中对应 scene 的 dialogues；speaker 必须对应已知人物名或“旁白”，避免所有角色使用同一种口吻。
+7. 每个 scene 必须输出布尔字段 ai_expansion；当 action 或 dialogues 包含源文摘录外的影视化动作、压缩、转场或对白改写时设为 true；只有完全由 source_trace 原文摘录直接支撑时才设为 false。
+8. 不得新增 global_story_state 中不存在的人物、地点或关键事件；若需要创作性改写，只能基于对应 scene 的 source_trace，并通过 ai_expansion 标记。

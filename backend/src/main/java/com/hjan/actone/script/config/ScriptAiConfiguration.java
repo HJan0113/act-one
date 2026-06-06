@@ -21,6 +21,7 @@ import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineService;
 import com.hjan.actone.script.ai.pipeline.ScriptYamlGenerationStage;
+import com.hjan.actone.script.ai.pipeline.ScriptYamlFactConstraintChecker;
 import com.hjan.actone.script.ai.pipeline.YamlRepairStage;
 import com.hjan.actone.script.service.NovelChapterParser;
 import com.hjan.actone.script.service.ScriptYamlDraftService;
@@ -49,6 +50,12 @@ public class ScriptAiConfiguration {
     @ConditionalOnMissingBean(PipelineConsistencyChecker.class)
     public PipelineConsistencyChecker pipelineConsistencyChecker() {
         return new PipelineConsistencyChecker();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(ScriptYamlFactConstraintChecker.class)
+    public ScriptYamlFactConstraintChecker scriptYamlFactConstraintChecker() {
+        return new ScriptYamlFactConstraintChecker();
     }
 
     @Bean
@@ -127,7 +134,8 @@ public class ScriptAiConfiguration {
             ScriptYamlGenerationStage.class,
             YamlRepairStage.class,
             GlobalStoryStateMerger.class,
-            PipelineConsistencyChecker.class
+            PipelineConsistencyChecker.class,
+            ScriptYamlFactConstraintChecker.class
     })
     @ConditionalOnMissingBean(ScriptAiPipelineService.class)
     public ScriptAiPipelineService scriptAiPipelineService(NovelChapterParser chapterParser,
@@ -142,7 +150,8 @@ public class ScriptAiConfiguration {
                                                            ScriptYamlGenerationStage scriptYamlGenerationStage,
                                                            YamlRepairStage yamlRepairStage,
                                                            GlobalStoryStateMerger globalStoryStateMerger,
-                                                           PipelineConsistencyChecker consistencyChecker) {
+                                                           PipelineConsistencyChecker consistencyChecker,
+                                                           ScriptYamlFactConstraintChecker factConstraintChecker) {
         return new ScriptAiPipelineService(
                 chapterParser,
                 yamlValidator,
@@ -156,7 +165,8 @@ public class ScriptAiConfiguration {
                 scriptYamlGenerationStage,
                 yamlRepairStage,
                 globalStoryStateMerger,
-                consistencyChecker
+                consistencyChecker,
+                factConstraintChecker
         );
     }
 }
