@@ -11,6 +11,8 @@ import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryStateMerger;
 import com.hjan.actone.script.ai.pipeline.LlmChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
+import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
+import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -32,10 +34,13 @@ class ScriptAiConfigurationTest {
                     assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
                     assertThat(context).hasSingleBean(ChapterSummaryStage.class);
                     assertThat(context).hasSingleBean(GlobalStoryExtractionStage.class);
+                    assertThat(context).hasSingleBean(ScenePlanningStage.class);
                     assertThat(context.getBean(ChapterSummaryStage.class))
                             .isInstanceOf(LlmChapterSummaryStage.class);
                     assertThat(context.getBean(GlobalStoryExtractionStage.class))
                             .isInstanceOf(LlmGlobalStoryExtractionStage.class);
+                    assertThat(context.getBean(ScenePlanningStage.class))
+                            .isInstanceOf(LlmScenePlanningStage.class);
                 });
     }
 
@@ -45,6 +50,7 @@ class ScriptAiConfigurationTest {
             assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
             assertThat(context).doesNotHaveBean(ChapterSummaryStage.class);
             assertThat(context).doesNotHaveBean(GlobalStoryExtractionStage.class);
+            assertThat(context).doesNotHaveBean(ScenePlanningStage.class);
         });
     }
 

@@ -8,6 +8,8 @@ import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryStateMerger;
 import com.hjan.actone.script.ai.pipeline.LlmChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
+import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
+import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -39,5 +41,14 @@ public class ScriptAiConfiguration {
                                                                  ObjectMapper objectMapper,
                                                                  GlobalStoryStateMerger globalStoryStateMerger) {
         return new LlmGlobalStoryExtractionStage(llmService, promptTemplateService, objectMapper, globalStoryStateMerger);
+    }
+
+    @Bean
+    @ConditionalOnBean({LLMService.class, PromptTemplateService.class, ObjectMapper.class})
+    @ConditionalOnMissingBean(ScenePlanningStage.class)
+    public ScenePlanningStage scenePlanningStage(LLMService llmService,
+                                                 PromptTemplateService promptTemplateService,
+                                                 ObjectMapper objectMapper) {
+        return new LlmScenePlanningStage(llmService, promptTemplateService, objectMapper);
     }
 }
