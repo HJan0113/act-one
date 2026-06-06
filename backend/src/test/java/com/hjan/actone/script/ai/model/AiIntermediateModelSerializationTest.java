@@ -77,6 +77,8 @@ class AiIntermediateModelSerializationTest {
         PipelineContext restored = objectMapper.readValue(json, PipelineContext.class);
 
         assertThat(restored.currentStage()).isEqualTo(PipelineStage.COMPLETED);
+        assertThat(restored.taskId()).isEqualTo(context.taskId());
+        assertThat(restored.taskId()).startsWith("task_");
         assertThat(restored.chapterSummaries()).hasSize(1);
         assertThat(restored.globalStoryState().characters()).hasSize(1);
         assertThat(restored.scenePlan().scenes()).hasSize(1);
@@ -89,6 +91,7 @@ class AiIntermediateModelSerializationTest {
         PipelineContext context = PipelineContext.create("project_1", "暗门", null, "  ", 3);
 
         assertThat(context.currentStage()).isEqualTo(PipelineStage.INIT);
+        assertThat(context.taskId()).startsWith("task_");
         assertThat(context.author()).isNull();
         assertThat(context.logline()).isNull();
         assertThat(context.chapterSummaries()).isEmpty();

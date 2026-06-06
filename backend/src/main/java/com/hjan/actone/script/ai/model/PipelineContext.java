@@ -1,8 +1,10 @@
 package com.hjan.actone.script.ai.model;
 
 import java.util.List;
+import java.util.UUID;
 
 public record PipelineContext(
+        String taskId,
         String projectId,
         String projectTitle,
         String author,
@@ -19,6 +21,8 @@ public record PipelineContext(
 ) {
 
     public PipelineContext {
+        taskId = ModelValidation.optionalText(taskId);
+        taskId = taskId == null ? newTaskId() : taskId;
         projectId = ModelValidation.optionalText(projectId);
         projectTitle = ModelValidation.requireText(projectTitle, "projectTitle");
         author = ModelValidation.optionalText(author);
@@ -39,6 +43,7 @@ public record PipelineContext(
                                          String logline,
                                          Integer chapterCount) {
         return new PipelineContext(
+                newTaskId(),
                 projectId,
                 projectTitle,
                 author,
@@ -57,6 +62,7 @@ public record PipelineContext(
 
     public PipelineContext withChapterSummaries(List<ChapterSummary> summaries) {
         return new PipelineContext(
+                taskId,
                 projectId,
                 projectTitle,
                 author,
@@ -75,6 +81,7 @@ public record PipelineContext(
 
     public PipelineContext withGlobalStoryState(GlobalStoryState state) {
         return new PipelineContext(
+                taskId,
                 projectId,
                 projectTitle,
                 author,
@@ -93,6 +100,7 @@ public record PipelineContext(
 
     public PipelineContext withScenePlan(ScenePlan plan) {
         return new PipelineContext(
+                taskId,
                 projectId,
                 projectTitle,
                 author,
@@ -111,6 +119,7 @@ public record PipelineContext(
 
     public PipelineContext withGeneratedYaml(String yaml) {
         return new PipelineContext(
+                taskId,
                 projectId,
                 projectTitle,
                 author,
@@ -129,6 +138,7 @@ public record PipelineContext(
 
     public PipelineContext withValidation(String status, String error) {
         return new PipelineContext(
+                taskId,
                 projectId,
                 projectTitle,
                 author,
@@ -147,6 +157,7 @@ public record PipelineContext(
 
     public PipelineContext withRepairedYaml(String yaml) {
         return new PipelineContext(
+                taskId,
                 projectId,
                 projectTitle,
                 author,
@@ -165,6 +176,7 @@ public record PipelineContext(
 
     public PipelineContext completed() {
         return new PipelineContext(
+                taskId,
                 projectId,
                 projectTitle,
                 author,
@@ -179,5 +191,9 @@ public record PipelineContext(
                 validationStatus,
                 validationError
         );
+    }
+
+    private static String newTaskId() {
+        return "task_" + UUID.randomUUID().toString().replace("-", "");
     }
 }

@@ -13,15 +13,21 @@ import com.hjan.actone.script.service.NovelChapterParser;
 import com.hjan.actone.script.service.ScriptYamlDraftService;
 import com.hjan.actone.script.service.ScriptYamlValidationResult;
 import com.hjan.actone.script.service.ScriptYamlValidator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 public class ScriptAiPipelineService {
 
+    private static final Logger log = LoggerFactory.getLogger(ScriptAiPipelineService.class);
     private static final String RULE_BASED_SCAFFOLD_MODE = "generation_mode: \"rule_based_scaffold\"";
     private static final String RULE_BASED_FALLBACK_MODE = "generation_mode: \"rule_based_fallback\"";
+    private static final String UNKNOWN_MODEL = "n/a";
+    private static final int DEFAULT_RETRY = 0;
 
     private final NovelChapterParser chapterParser;
     private final ScriptYamlValidator yamlValidator;
@@ -57,6 +63,7 @@ public class ScriptAiPipelineService {
     }
 
     public ScriptAiPipelineResult generate(ScriptYamlGenerateRequest request) {
+        long pipelineStartedNanos = System.nanoTime();
         Objects.requireNonNull(request, "ScriptYamlGenerateRequest 不能为空");
         List<NovelChapter> chapters = chapterParser.parse(request.text());
         if (chapters.size() < NovelChapterParser.MIN_CHAPTER_COUNT) {
@@ -71,101 +78,111 @@ public class ScriptAiPipelineService {
                 request.logline(),
                 chapters.size()
         );
+        logPipelineStart(context, request);
 
         try {
             context = summarizeChapters(context, chapters);
             context = extractGlobalStoryState(context);
             context = planScenes(context);
             context = generateYaml(context);
-            return validateAndRepairIfNeeded(context, request);
+            ScriptAiPipelineResult result = validateAndRepairIfNeeded(context, request);
+            logPipelineComplete(result, pipelineStartedNanos);
+            return result;
         } catch (ScriptAiPipelineStageException ex) {
-            return fallback(
+            ScriptAiPipelineResult result = fallback(
                     request,
                     context,
+                    ex.stage(),
                     "AI 阶段 " + ex.stage() + " 执行失败，已显式降级为规则版脚手架"
             );
+            logPipelineComplete(result, pipelineStartedNanos);
+            return result;
         } catch (RuntimeException ex) {
-            return fallback(
+            ScriptAiPipelineResult result = fallback(
                     request,
                     context,
+                    context.currentStage(),
                     "AI 阶段 " + context.currentStage() + " 执行失败，已显式降级为规则版脚手架"
             );
+            logPipelineComplete(result, pipelineStartedNanos);
+            return result;
         }
     }
 
     private PipelineContext summarizeChapters(PipelineContext context, List<NovelChapter> chapters) {
-        List<ChapterSummary> summaries = new ArrayList<>(chapters.size());
-        for (NovelChapter chapter : chapters) {
-            try {
+        return runStage(context, PipelineStage.CHAPTER_SUMMARY, DEFAULT_RETRY, () -> {
+            List<ChapterSummary> summaries = new ArrayList<>(chapters.size());
+            for (NovelChapter chapter : chapters) {
                 summaries.add(chapterSummaryStage.summarize(chapter));
-            } catch (RuntimeException ex) {
-                throw new ScriptAiPipelineStageException(PipelineStage.CHAPTER_SUMMARY, ex);
             }
-        }
-        return context.withChapterSummaries(summaries);
+            return context.withChapterSummaries(summaries);
+        });
     }
 
     private PipelineContext extractGlobalStoryState(PipelineContext context) {
-        GlobalStoryState state;
-        try {
-            state = globalStoryExtractionStage.extract(context);
-        } catch (RuntimeException ex) {
-            throw new ScriptAiPipelineStageException(PipelineStage.GLOBAL_STORY_EXTRACTION, ex);
-        }
-        return context.withGlobalStoryState(state);
+        return runStage(
+                context,
+                PipelineStage.GLOBAL_STORY_EXTRACTION,
+                DEFAULT_RETRY,
+                () -> context.withGlobalStoryState(globalStoryExtractionStage.extract(context))
+        );
     }
 
     private PipelineContext planScenes(PipelineContext context) {
-        ScenePlan plan;
-        try {
-            plan = scenePlanningStage.plan(context);
-        } catch (RuntimeException ex) {
-            throw new ScriptAiPipelineStageException(PipelineStage.SCENE_PLANNING, ex);
-        }
-        return context.withScenePlan(plan);
+        return runStage(
+                context,
+                PipelineStage.SCENE_PLANNING,
+                DEFAULT_RETRY,
+                () -> context.withScenePlan(scenePlanningStage.plan(context))
+        );
     }
 
     private PipelineContext generateYaml(PipelineContext context) {
-        String yaml;
-        try {
-            yaml = scriptYamlGenerationStage.generate(context);
-        } catch (RuntimeException ex) {
-            throw new ScriptAiPipelineStageException(PipelineStage.SCRIPT_YAML_GENERATION, ex);
-        }
-        if (!hasText(yaml)) {
-            throw new ScriptAiPipelineStageException(
-                    PipelineStage.SCRIPT_YAML_GENERATION,
-                    new IllegalStateException("AI YAML 生成结果为空")
-            );
-        }
-        return context.withGeneratedYaml(yaml);
+        return runStage(context, PipelineStage.SCRIPT_YAML_GENERATION, DEFAULT_RETRY, () -> {
+            String yaml = scriptYamlGenerationStage.generate(context);
+            if (!hasText(yaml)) {
+                throw new IllegalStateException("AI YAML 生成结果为空");
+            }
+            return context.withGeneratedYaml(yaml);
+        });
     }
 
     private ScriptAiPipelineResult validateAndRepairIfNeeded(PipelineContext context,
                                                              ScriptYamlGenerateRequest request) {
-        ScriptYamlValidationResult validationResult = yamlValidator.validate(context.generatedYaml());
+        ScriptYamlValidationResult validationResult = validateYaml(context, context.generatedYaml(), DEFAULT_RETRY);
         context = context.withValidation(validationResult.status(), validationResult.errorMessage());
         if (validationResult.valid()) {
             return success(context.completed(), validationResult.cleanedYaml(), validationResult);
         }
 
-        String repairedYaml;
-        try {
-            repairedYaml = yamlRepairStage.repair(context, validationResult);
-        } catch (RuntimeException ex) {
-            throw new ScriptAiPipelineStageException(PipelineStage.YAML_REPAIR, ex);
-        }
+        PipelineContext repairContext = context;
+        String repairedYaml = runStage(
+                repairContext,
+                PipelineStage.YAML_REPAIR,
+                DEFAULT_RETRY,
+                () -> yamlRepairStage.repair(repairContext, validationResult)
+        );
         if (!hasText(repairedYaml)) {
-            return fallback(request, context, "AI YAML 校验失败且修复结果为空，已显式降级为规则版脚手架");
+            return fallback(
+                    request,
+                    context,
+                    PipelineStage.YAML_REPAIR,
+                    "AI YAML 校验失败且修复结果为空，已显式降级为规则版脚手架"
+            );
         }
         context = context.withRepairedYaml(repairedYaml);
 
-        ScriptYamlValidationResult repairedValidation = yamlValidator.validate(repairedYaml);
+        ScriptYamlValidationResult repairedValidation = validateYaml(context, repairedYaml, 1);
         context = context.withValidation(repairedValidation.status(), repairedValidation.errorMessage());
         if (repairedValidation.valid()) {
             return success(context.completed(), repairedValidation.cleanedYaml(), repairedValidation);
         }
-        return fallback(request, context, "AI YAML 校验失败且自动修复未通过，已显式降级为规则版脚手架");
+        return fallback(
+                request,
+                context,
+                PipelineStage.YAML_VALIDATION,
+                "AI YAML 校验失败且自动修复未通过，已显式降级为规则版脚手架"
+        );
     }
 
     private ScriptAiPipelineResult success(PipelineContext context,
@@ -186,14 +203,24 @@ public class ScriptAiPipelineService {
 
     private ScriptAiPipelineResult fallback(ScriptYamlGenerateRequest request,
                                             PipelineContext context,
+                                            PipelineStage fallbackStage,
                                             String reason) {
+        long startedNanos = System.nanoTime();
+        log.warn(
+                "event=actone_ai_pipeline_fallback taskId={} stage={} model={} retry={} reason={}",
+                context.taskId(),
+                fallbackStage,
+                UNKNOWN_MODEL,
+                DEFAULT_RETRY,
+                reason
+        );
         ScriptYamlGenerateResponse scaffold = ruleBasedDraftService.generateFromText(request);
         String fallbackYaml = markFallback(scaffold.yaml());
         ScriptYamlValidationResult validationResult = yamlValidator.validate(fallbackYaml);
         PipelineContext fallbackContext = context.withGeneratedYaml(fallbackYaml)
                 .withValidation(validationResult.status(), validationResult.errorMessage())
                 .completed();
-        return new ScriptAiPipelineResult(
+        ScriptAiPipelineResult result = new ScriptAiPipelineResult(
                 scaffold.schemaVersion(),
                 scaffold.title(),
                 scaffold.chapterCount(),
@@ -204,6 +231,17 @@ public class ScriptAiPipelineService {
                 validationResult,
                 fallbackContext
         );
+        log.info(
+                "event=actone_ai_pipeline_fallback_success taskId={} stage={} model={} retry={} durationMs={} validationStatus={} valid={}",
+                context.taskId(),
+                fallbackStage,
+                UNKNOWN_MODEL,
+                DEFAULT_RETRY,
+                elapsedMillis(startedNanos),
+                validationResult.status(),
+                validationResult.valid()
+        );
+        return result;
     }
 
     private String markFallback(String yaml) {
@@ -225,5 +263,101 @@ public class ScriptAiPipelineService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private ScriptYamlValidationResult validateYaml(PipelineContext context, String yaml, int retry) {
+        ScriptYamlValidationResult validationResult = runStage(
+                context,
+                PipelineStage.YAML_VALIDATION,
+                retry,
+                () -> yamlValidator.validate(yaml)
+        );
+        log.info(
+                "event=actone_ai_yaml_validation_result taskId={} stage={} model={} retry={} validationStatus={} valid={} errorPresent={}",
+                context.taskId(),
+                PipelineStage.YAML_VALIDATION,
+                UNKNOWN_MODEL,
+                retry,
+                validationResult.status(),
+                validationResult.valid(),
+                hasText(validationResult.errorMessage())
+        );
+        return validationResult;
+    }
+
+    private <T> T runStage(PipelineContext context, PipelineStage stage, int retry, StageAction<T> action) {
+        long startedNanos = System.nanoTime();
+        log.info(
+                "event=actone_ai_stage_start taskId={} stage={} model={} retry={} chapterCount={}",
+                context.taskId(),
+                stage,
+                UNKNOWN_MODEL,
+                retry,
+                context.chapterCount()
+        );
+        try {
+            T result = action.execute();
+            log.info(
+                    "event=actone_ai_stage_success taskId={} stage={} model={} retry={} durationMs={} chapterCount={}",
+                    context.taskId(),
+                    stage,
+                    UNKNOWN_MODEL,
+                    retry,
+                    elapsedMillis(startedNanos),
+                    context.chapterCount()
+            );
+            return result;
+        } catch (RuntimeException ex) {
+            log.warn(
+                    "event=actone_ai_stage_failure taskId={} stage={} model={} retry={} durationMs={} errorType={}",
+                    context.taskId(),
+                    stage,
+                    UNKNOWN_MODEL,
+                    retry,
+                    elapsedMillis(startedNanos),
+                    ex.getClass().getSimpleName()
+            );
+            throw new ScriptAiPipelineStageException(stage, ex);
+        }
+    }
+
+    private void logPipelineStart(PipelineContext context, ScriptYamlGenerateRequest request) {
+        log.info(
+                "event=actone_ai_pipeline_start taskId={} stage={} model={} retry={} chapterCount={} titlePresent={} authorPresent={} loglinePresent={}",
+                context.taskId(),
+                PipelineStage.INIT,
+                UNKNOWN_MODEL,
+                DEFAULT_RETRY,
+                context.chapterCount(),
+                hasText(request.title()),
+                hasText(request.author()),
+                hasText(request.logline())
+        );
+    }
+
+    private void logPipelineComplete(ScriptAiPipelineResult result, long startedNanos) {
+        log.info(
+                "event=actone_ai_pipeline_complete taskId={} stage={} model={} retry={} durationMs={} generationMode={} fallback={} validationStatus={} valid={} chapterCount={}",
+                result.context().taskId(),
+                result.context().currentStage(),
+                UNKNOWN_MODEL,
+                DEFAULT_RETRY,
+                elapsedMillis(startedNanos),
+                result.generationMode().yamlValue(),
+                result.fallback(),
+                result.validationResult() == null ? null : result.validationResult().status(),
+                result.valid(),
+                result.chapterCount()
+        );
+    }
+
+    private long elapsedMillis(long startedNanos) {
+        return Math.max(0L, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos));
+    }
+
+    @FunctionalInterface
+    private interface StageAction<T> {
+
+        T execute();
     }
 }
