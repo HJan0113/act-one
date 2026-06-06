@@ -20,6 +20,7 @@ import {
     AppShell,
     ChapterList,
     type ChapterOutline,
+    ConsistencyWorkbench,
     ConversionProgress,
     InputPanel,
     type ProgressStep,
@@ -988,6 +989,15 @@ function App() {
                 <CharacterWorkbench
                     characters={characterCards}
                     relationships={relationships}
+                    scenes={traceScenes}
+                    yamlReady={Boolean(yamlDraft.trim())}
+                />
+            ) : null}
+
+            {activeView === "consistency" ? (
+                <ConsistencyWorkbench
+                    characters={characterCards}
+                    chapters={chapterOutline}
                     scenes={traceScenes}
                     yamlReady={Boolean(yamlDraft.trim())}
                 />

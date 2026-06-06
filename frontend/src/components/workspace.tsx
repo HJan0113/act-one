@@ -85,7 +85,7 @@ export type ValidationCheck = {
   state: "fail" | "pass" | "pending" | "warn";
 };
 
-export type WorkspaceView = "archive" | "characters" | "pipeline" | "result" | "source" | "trace";
+export type WorkspaceView = "archive" | "characters" | "consistency" | "pipeline" | "result" | "source" | "trace";
 
 type AppShellProps = {
     activeView: WorkspaceView;
@@ -187,6 +187,12 @@ const workspaceNavItems: Array<{
         icon: <ListChecks size={18} aria-hidden="true"/>,
         id: "characters",
         label: "人物"
+    },
+    {
+        detail: "一致性报告",
+        icon: <ShieldCheck size={18} aria-hidden="true"/>,
+        id: "consistency",
+        label: "校验"
     },
     {
         detail: "项目与草稿",
@@ -1081,6 +1087,280 @@ function inferSourceChapterIds(character: ScriptCharacterCard, scenes: ScriptTra
 function chapterIdLabel(chapterId: string) {
   const match = chapterId.match(/chapter[_-](\d+)/i);
   return match ? `第 ${Number(match[1])} 章` : "";
+}
+
+type ConsistencyWorkbenchProps = {
+  characters: ScriptCharacterCard[];
+  chapters: ChapterOutline[];
+  scenes: ScriptTraceScene[];
+  yamlReady: boolean;
+};
+
+type ConsistencyIssue = {
+  detail: string;
+  id: string;
+  scope: string;
+  severity: "fail" | "info" | "warn";
+  title: string;
+};
+
+export function ConsistencyWorkbench({
+  characters,
+  chapters,
+  scenes,
+  yamlReady
+}: ConsistencyWorkbenchProps) {
+  const issues = yamlReady ? buildConsistencyIssues(characters, scenes, chapters) : [];
+  const failCount = issues.filter((issue) => issue.severity === "fail").length;
+  const warnCount = issues.filter((issue) => issue.severity === "warn").length;
+  const infoCount = issues.filter((issue) => issue.severity === "info").length;
+
+  return (
+    <div className="consistency-workbench" aria-label="角色一致性自动校验">
+      <section className="studio-panel consistency-summary" aria-label="一致性摘要">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Consistency Report</p>
+            <h2>角色一致性</h2>
+          </div>
+          <StatusBadge
+            label={issues.length > 0 ? `${issues.length} 项风险` : yamlReady ? "未发现风险" : "待生成"}
+            tone={failCount > 0 ? "danger" : warnCount > 0 ? "warning" : yamlReady ? "success" : "neutral"}
+          />
+        </div>
+        <div className="consistency-metrics">
+          <div data-tone="danger">
+            <span>阻断</span>
+            <strong>{failCount}</strong>
+          </div>
+          <div data-tone="warning">
+            <span>警告</span>
+            <strong>{warnCount}</strong>
+          </div>
+          <div data-tone="info">
+            <span>提示</span>
+            <strong>{infoCount}</strong>
+          </div>
+          <div data-tone="success">
+            <span>覆盖场景</span>
+            <strong>{scenes.length}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section className="studio-panel consistency-report" aria-label="一致性问题列表">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Issues</p>
+            <h2>检查结果</h2>
+          </div>
+          <StatusBadge label={`${characters.length} 人 / ${scenes.length} 场`} tone="info" />
+        </div>
+
+        <div className="consistency-list">
+          {issues.length > 0 ? (
+            issues.map((issue) => (
+              <article className="consistency-item" data-severity={issue.severity} key={issue.id}>
+                <span>{issue.scope}</span>
+                <strong>{issue.title}</strong>
+                <p>{issue.detail}</p>
+              </article>
+            ))
+          ) : (
+            <EmptyState
+              description={yamlReady ? "当前角色卡、对白说话人、场景角色和源文摘录未触发规则风险。" : "生成或加载 YAML 后，将自动检查角色一致性。"}
+              icon={<ShieldCheck size={18} />}
+              size="sm"
+              title="暂无一致性风险"
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function buildConsistencyIssues(
+  characters: ScriptCharacterCard[],
+  scenes: ScriptTraceScene[],
+  chapters: ChapterOutline[]
+): ConsistencyIssue[] {
+  const issues: ConsistencyIssue[] = [];
+
+  if (scenes.length === 0) {
+    issues.push({
+      detail: "YAML 未解析到 scenes，无法校验 scene characters、speaker 和 source evidence。",
+      id: "scenes-empty",
+      scope: "YAML",
+      severity: "info",
+      title: "暂无场景数据"
+    });
+    return issues;
+  }
+
+  if (characters.length === 0) {
+    issues.push({
+      detail: "characters 为空时，无法校验别名、首次出场和对白说话人是否属于已知角色。",
+      id: "characters-empty",
+      scope: "characters",
+      severity: "warn",
+      title: "缺少结构化角色卡"
+    });
+  }
+
+  issues.push(...findAliasConflicts(characters));
+  issues.push(...findFirstAppearanceIssues(characters, scenes));
+  scenes.forEach((scene) => {
+    issues.push(...findSceneCharacterIssues(scene, characters));
+    issues.push(...findSpeakerIssues(scene, characters));
+    issues.push(...findSourceEvidenceIssues(scene, chapters));
+  });
+
+  return issues;
+}
+
+function findAliasConflicts(characters: ScriptCharacterCard[]): ConsistencyIssue[] {
+  const ownerByAlias = new Map<string, string>();
+  const issues: ConsistencyIssue[] = [];
+  characters.forEach((character) => {
+    [character.name, ...character.aliases].filter(Boolean).forEach((alias) => {
+      const normalized = alias.trim();
+      const owner = ownerByAlias.get(normalized);
+      if (owner && owner !== character.name) {
+        issues.push({
+          detail: `“${normalized}” 同时指向 ${owner} 与 ${character.name}，可能是同人多名或别名归属错误。`,
+          id: `alias-${owner}-${character.name}-${normalized}`,
+          scope: "aliases",
+          severity: "warn",
+          title: "别名存在冲突"
+        });
+      } else {
+        ownerByAlias.set(normalized, character.name);
+      }
+    });
+  });
+  return issues;
+}
+
+function findFirstAppearanceIssues(characters: ScriptCharacterCard[], scenes: ScriptTraceScene[]): ConsistencyIssue[] {
+  return characters.flatMap((character) => {
+    const declaredChapterIndex = chapterIndexFromId(character.firstAppearanceChapterId);
+    if (!declaredChapterIndex) {
+      return [];
+    }
+    const firstScene = scenes.find((scene) => sceneMentionsCharacter(scene, character));
+    if (!firstScene || !firstScene.chapterIndex || firstScene.chapterIndex >= declaredChapterIndex) {
+      return [];
+    }
+    return [{
+      detail: `${character.name} 声明首次出场为 ${chapterIdLabel(character.firstAppearanceChapterId)}，但已在第 ${firstScene.chapterIndex} 章场景 ${firstScene.id} 中出现。`,
+      id: `first-appearance-${character.id || character.name}`,
+      scope: character.name,
+      severity: "warn" as const,
+      title: "首次出场顺序异常"
+    }];
+  });
+}
+
+function findSceneCharacterIssues(scene: ScriptTraceScene, characters: ScriptCharacterCard[]): ConsistencyIssue[] {
+  if (characters.length === 0 || scene.characters.length === 0) {
+    return [];
+  }
+  return scene.characters
+    .filter((characterRef) => !resolveCharacterRef(characterRef, characters))
+    .map((characterRef) => ({
+      detail: `scene.characters 包含 “${characterRef}”，但 characters 中没有匹配的 id、name 或 aliases。`,
+      id: `${scene.id}-unknown-character-${characterRef}`,
+      scope: scene.id,
+      severity: "fail" as const,
+      title: "场景角色引用未知"
+    }));
+}
+
+function findSpeakerIssues(scene: ScriptTraceScene, characters: ScriptCharacterCard[]): ConsistencyIssue[] {
+  if (characters.length === 0) {
+    return [];
+  }
+  return scene.dialogues.flatMap<ConsistencyIssue>((dialogue, index) => {
+    const speaker = dialogue.speaker.trim();
+    if (!speaker || speaker === "旁白") {
+      return [];
+    }
+    const character = resolveCharacterRef(speaker, characters);
+    if (!character) {
+      return [{
+        detail: `第 ${index + 1} 句对白 speaker 为 “${speaker}”，但角色卡中没有匹配人物。`,
+        id: `${scene.id}-unknown-speaker-${index}`,
+        scope: scene.id,
+        severity: "fail" as const,
+        title: "对白说话人未知"
+      }];
+    }
+    if (scene.characters.length > 0 && !scene.characters.some((value) => valueMatchesCharacter(value, character))) {
+      return [{
+        detail: `“${speaker}” 有对白，但未出现在该场景的 scene.characters 中。`,
+        id: `${scene.id}-speaker-not-in-scene-${index}`,
+        scope: scene.id,
+        severity: "warn" as const,
+        title: "对白人物未列入场景角色"
+      }];
+    }
+    return [];
+  });
+}
+
+function findSourceEvidenceIssues(scene: ScriptTraceScene, chapters: ChapterOutline[]): ConsistencyIssue[] {
+  const issues: ConsistencyIssue[] = [];
+  if (!scene.sourceChapterId || !scene.chapterIndex) {
+    issues.push({
+      detail: "scene 缺少 source_chapter_id 或 chapter_index，无法回溯原文。",
+      id: `${scene.id}-missing-source-chapter`,
+      scope: scene.id,
+      severity: "fail",
+      title: "来源章节缺失"
+    });
+  }
+  if (!scene.sourceExcerpt.trim()) {
+    issues.push({
+      detail: "scene.source_excerpt 为空，无法判断改编依据。",
+      id: `${scene.id}-missing-source-excerpt`,
+      scope: scene.id,
+      severity: "fail",
+      title: "来源摘录缺失"
+    });
+    return issues;
+  }
+
+  const chapter = chapters.find((item) => item.id === scene.sourceChapterId || item.index === scene.chapterIndex);
+  if (!chapter) {
+    issues.push({
+      detail: `当前前端没有第 ${scene.chapterIndex || "-"} 章原文，无法验证 source_excerpt 是否命中。`,
+      id: `${scene.id}-source-chapter-unavailable`,
+      scope: scene.id,
+      severity: "info",
+      title: "原文未加载，摘录待回查"
+    });
+    return issues;
+  }
+  if (!chapter.content.includes(scene.sourceExcerpt.trim())) {
+    issues.push({
+      detail: "source_excerpt 未在对应章节正文中精确命中，可能是模型改写了摘录或章节引用错误。",
+      id: `${scene.id}-source-excerpt-mismatch`,
+      scope: scene.id,
+      severity: "warn",
+      title: "来源摘录无法精确回查"
+    });
+  }
+  return issues;
+}
+
+function resolveCharacterRef(value: string, characters: ScriptCharacterCard[]) {
+  return characters.find((character) => valueMatchesCharacter(value, character));
+}
+
+function chapterIndexFromId(chapterId: string) {
+  const match = chapterId.match(/chapter[_-](\d+)/i);
+  return match ? Number(match[1]) : 0;
 }
 
 type ScriptPreviewPanelProps = {
