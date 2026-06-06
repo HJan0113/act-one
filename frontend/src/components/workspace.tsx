@@ -85,6 +85,18 @@ export type ValidationCheck = {
   state: "fail" | "pass" | "pending" | "warn";
 };
 
+export type AiChangeSummary = {
+  changes: Array<{
+    detail: string;
+    tone: StatusTone;
+    type: "表达" | "格式" | "节奏" | "事实";
+  }>;
+  riskWarnings: string[];
+  sceneIds: string[];
+  summary: string;
+  validationStatus: string;
+};
+
 export type WorkspaceView = "archive" | "characters" | "consistency" | "pipeline" | "result" | "source" | "trace";
 
 type AppShellProps = {
@@ -1528,6 +1540,61 @@ function resolveCharacterRef(value: string, characters: ScriptCharacterCard[]) {
 function chapterIndexFromId(chapterId: string) {
   const match = chapterId.match(/chapter[_-](\d+)/i);
   return match ? Number(match[1]) : 0;
+}
+
+type AiChangeSummaryPanelProps = {
+  summary: AiChangeSummary | null;
+};
+
+export function AiChangeSummaryPanel({summary}: AiChangeSummaryPanelProps) {
+  return (
+    <section className="studio-panel ai-change-panel" aria-label="AI 改动解释与差异摘要">
+      <div className="panel-heading">
+        <div>
+          <p className="panel-kicker">AI Change Log</p>
+          <h2>改动解释</h2>
+        </div>
+        <StatusBadge
+          label={summary ? summary.validationStatus || "已生成" : "暂无改动"}
+          tone={summary?.validationStatus === "valid" ? "success" : summary ? "warning" : "neutral"}
+        />
+      </div>
+
+      {summary ? (
+        <div className="ai-change-body">
+          <p>{summary.summary || "AI 已返回 patch，等待作者复核。"}</p>
+          <div className="ai-change-scenes">
+            {summary.sceneIds.map((sceneId) => (
+              <span key={sceneId}>{sceneId}</span>
+            ))}
+          </div>
+          <div className="ai-change-grid">
+            {summary.changes.map((change) => (
+              <article className="ai-change-card" key={`${change.type}-${change.detail}`}>
+                <StatusBadge label={change.type} tone={change.tone} />
+                <p>{change.detail}</p>
+              </article>
+            ))}
+          </div>
+          <div className="ai-risk-list">
+            <span>Risk warnings</span>
+            {summary.riskWarnings.length > 0 ? (
+              summary.riskWarnings.map((risk) => <p key={risk}>{risk}</p>)
+            ) : (
+              <p>未返回事实、关系或来源证据风险。</p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <EmptyState
+          description="执行局部精修或对白口吻重写后，这里会显示 patch 摘要、风险和改动类型。"
+          icon={<ClipboardCopy size={18} />}
+          size="sm"
+          title="暂无 AI 改动"
+        />
+      )}
+    </section>
+  );
 }
 
 type ScriptPreviewPanelProps = {

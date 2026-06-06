@@ -17,6 +17,7 @@ import {
 import {ActionButton} from "./components/ActionButton";
 import {StatusBadge, type StatusTone} from "./components/StatusBadge";
 import {
+    AiChangeSummaryPanel,
     AppShell,
     ChapterList,
     type ChapterOutline,
@@ -29,6 +30,7 @@ import {
     Sidebar,
     SourceTraceWorkbench,
     TaskConsole,
+    type AiChangeSummary,
     type TaskStatus,
     type TaskSummary,
     TopBar,
@@ -52,6 +54,7 @@ import {
     streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
 import type {AuthSession, ScriptDraftListItem, ScriptProjectListItem, ScriptYamlStreamPayload} from "./types/api";
+import type {ScriptDialogueVoiceRewriteData, ScriptSceneRefineData} from "./types/api";
 import {parseScriptYamlCharacters, parseScriptYamlRelationships, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
 
 const placeholderYaml = `schema_version: "1.0"
@@ -110,6 +113,7 @@ function App() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [sceneRefinementLoading, setSceneRefinementLoading] = useState(false);
   const [dialogueVoiceLoading, setDialogueVoiceLoading] = useState(false);
+  const [aiChangeSummary, setAiChangeSummary] = useState<AiChangeSummary | null>(null);
   const [yamlDraft, setYamlDraft] = useState("");
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
   const [activeTraceSceneId, setActiveTraceSceneId] = useState("");
@@ -337,6 +341,7 @@ function App() {
   function handleYamlDraftChange(value: string) {
     setYamlDraft(value);
     setDraftId("");
+    setAiChangeSummary(null);
     setValidationStatus(value.trim() ? "edited" : "pending");
     setValidationError("");
     setGenerationMode(extractGenerationMode(value));
@@ -510,6 +515,7 @@ function App() {
       const nextGenerationMode = data.generationMode || extractGenerationMode(data.yaml);
         const nextYamlMessage = createGenerationMessage(nextGenerationMode, Boolean(data.fallback), data.fallbackReason || "");
       setYamlDraft(data.yaml);
+      setAiChangeSummary(null);
       setSchemaVersion(data.schemaVersion);
       setGeneratedTitle(data.title);
       setDraftId("");
@@ -750,6 +756,7 @@ function App() {
     try {
       const data = await requestWithAuth((token) => getDraftDetail(nextDraftId, token));
       setYamlDraft(data.yaml);
+      setAiChangeSummary(null);
       setDraftId(data.draftId);
       setProjectId(data.projectId);
       setGeneratedTitle(data.title);
@@ -798,6 +805,7 @@ function App() {
         )
       );
       setYamlDraft(data.patchedYaml);
+      setAiChangeSummary(createScenePatchChangeSummary(data));
       setDraftId("");
       setValidationStatus(data.validationStatus || "edited");
       setValidationError(data.validationError || "");
@@ -851,6 +859,7 @@ function App() {
         )
       );
       setYamlDraft(data.patchedYaml);
+      setAiChangeSummary(createVoicePatchChangeSummary(data));
       setDraftId("");
       setValidationStatus(data.validationStatus || "edited");
       setValidationError(data.validationError || "");
@@ -1083,7 +1092,12 @@ function App() {
                 </div>
             ) : null}
 
-            {activeView === "result" ? scriptPanel : null}
+            {activeView === "result" ? (
+                <div className="result-workbench">
+                    {scriptPanel}
+                    <AiChangeSummaryPanel summary={aiChangeSummary}/>
+                </div>
+            ) : null}
 
             {activeView === "trace" ? (
                 <SourceTraceWorkbench
@@ -1385,6 +1399,78 @@ function generationModeLabel(generationMode: string) {
     return "规则脚手架";
   }
   return "生成模式";
+}
+
+function createScenePatchChangeSummary(data: ScriptSceneRefineData): AiChangeSummary {
+  const patch = data.scenePatch;
+  const riskWarnings = patch.riskWarnings || [];
+  return {
+    changes: [
+      {
+        detail: riskWarnings.length > 0 ? "AI 返回了事实或来源风险，应用前需要复核。" : "未返回事实改写风险，source 字段由后端保护未被修改。",
+        tone: riskWarnings.length > 0 ? "warning" : "success",
+        type: "事实"
+      },
+      {
+        detail: patch.dialogues?.length
+          ? `对白已替换为 ${patch.dialogues.length} 句，action ${patch.action ? "同步更新" : "未改"}。`
+          : patch.action
+            ? "action 已按指令更新，表达层发生变化。"
+            : "未检测到 action/dialogues 字段变化。",
+        tone: patch.action || patch.dialogues?.length ? "info" : "neutral",
+        type: "表达"
+      },
+      {
+        detail: patch.scenePurpose || patch.time ? "场景目的或时间被调整，可能影响节奏判断。" : "场景目的和时间未被 patch 修改。",
+        tone: patch.scenePurpose || patch.time ? "warning" : "success",
+        type: "节奏"
+      },
+      {
+        detail: `完整 YAML 已重新校验，状态为 ${data.validationStatus}；ai_expansion=${String(patch.aiExpansion)}。`,
+        tone: data.validationStatus === "valid" ? "success" : "danger",
+        type: "格式"
+      }
+    ],
+    riskWarnings,
+    sceneIds: [data.sceneId],
+    summary: patch.summary || "局部 scene patch 已应用到当前 YAML。",
+    validationStatus: data.validationStatus
+  };
+}
+
+function createVoicePatchChangeSummary(data: ScriptDialogueVoiceRewriteData): AiChangeSummary {
+  const patch = data.voicePatch;
+  const riskWarnings = patch.riskWarnings || [];
+  const sceneIds = patch.scenePatches.map((scenePatch) => scenePatch.sceneId);
+  const dialogueCount = patch.scenePatches.reduce((total, scenePatch) => total + scenePatch.dialogues.length, 0);
+  return {
+    changes: [
+      {
+        detail: riskWarnings.length > 0 ? "口吻重写返回了事实或关系风险，保存前需要复核。" : "仅允许改写指定 speaker 的对白，事实字段未被修改。",
+        tone: riskWarnings.length > 0 ? "warning" : "success",
+        type: "事实"
+      },
+      {
+        detail: `${patch.speaker} 的 ${dialogueCount} 句对白已按统一口吻重写。`,
+        tone: "info",
+        type: "表达"
+      },
+      {
+        detail: sceneIds.length > 1 ? `跨 ${sceneIds.length} 个场景统一口吻，可能改变对白节奏。` : "单场景对白口吻调整。",
+        tone: sceneIds.length > 1 ? "warning" : "info",
+        type: "节奏"
+      },
+      {
+        detail: `完整 YAML 已重新校验，状态为 ${data.validationStatus}；dialogues 数组保持结构化输出。`,
+        tone: data.validationStatus === "valid" ? "success" : "danger",
+        type: "格式"
+      }
+    ],
+    riskWarnings,
+    sceneIds,
+    summary: patch.summary || patch.voiceSample || "对白口吻 patch 已应用到当前 YAML。",
+    validationStatus: data.validationStatus
+  };
 }
 
 function createInitialTask(): ConversionTaskState {
