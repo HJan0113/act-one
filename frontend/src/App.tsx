@@ -73,7 +73,7 @@ const defaultLoginUsername = "admin";
 const defaultLoginPassword = "admin";
 const chapterHeadingPattern = /^第\s*([0-9一二三四五六七八九十百千万两〇零]+)\s*[章节回集部卷幕].*$/gm;
 
-type ConversionTaskState = Omit<TaskSummary, "canCancel">;
+type ConversionTaskState = Omit<TaskSummary, "canCancel" | "canRetry">;
 
 function App() {
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => readStoredAuth());
@@ -133,10 +133,16 @@ function App() {
     const taskSummary = useMemo<TaskSummary>(
         () => ({
             ...conversionTask,
-            canCancel: yamlLoading && Boolean(generationAbortRef.current)
+            canCancel: yamlLoading && Boolean(generationAbortRef.current),
+            canRetry:
+                !yamlLoading &&
+                conversionTask.status === "failed" &&
+                isBackendTaskId(conversionTask.taskId) &&
+                conversionTask.retryable !== false
         }),
         [conversionTask, yamlLoading]
     );
+    const generateButtonLabel = taskSummary.canRetry ? "继续生成" : "开始生成";
   const workflowSteps = useMemo(
     () =>
       createWorkflowSteps({
@@ -401,9 +407,18 @@ function App() {
           setConversionTask((current) => ({
               ...current,
               currentStage: pipelineStageLabel(payload.stage) || current.currentStage,
-              errorMessage: status === "failed" ? payload.message || current.errorMessage : "",
+              errorMessage:
+                  status === "failed"
+                      ? payload.validationError || payload.message || current.errorMessage
+                      : status === "running"
+                          ? ""
+                          : current.errorMessage,
+              errorType: payload.errorType || (status === "running" ? undefined : current.errorType),
+              failedStage: payload.failedStage || (status === "failed" ? payload.stage || current.failedStage : current.failedStage),
               message: payload.message || current.message,
               progress: nextTaskProgress(payload.progress, current.progress),
+              resumeStage: payload.resumeStage || current.resumeStage,
+              retryable: payload.retryable ?? current.retryable,
               status,
               taskId: payload.taskId || current.taskId || streamTaskId
           }));
@@ -451,12 +466,13 @@ function App() {
                 onValidation: (payload) => {
                     updateTaskFromStream(payload);
                     if (payload.validationStatus) {
+                        const stageLabel = pipelineStageLabel(payload.stage) || "校验";
                         setValidationStatus(payload.validationStatus);
                         setValidationError(payload.validationError || "");
                         setYamlMessage(
                             payload.validationStatus === "valid"
-                                ? "Schema 校验通过，等待完成事件。"
-                                : payload.validationError || "Schema 校验未通过，等待自动修复或兜底结果。"
+                                ? `${stageLabel}通过，等待完成事件。`
+                                : payload.validationError || `${stageLabel}未通过，等待自动修复或兜底结果。`
                         );
                     }
                 }
@@ -495,9 +511,13 @@ function App() {
         setYamlMessage(errorMessage);
         setConversionTask((current) => ({
             ...current,
-            currentStage: aborted ? "已停止" : "生成失败",
+            currentStage: aborted
+                ? "已停止"
+                : current.currentStage && current.currentStage !== "AI Pipeline 编排"
+                    ? current.currentStage
+                    : "生成失败",
             errorMessage: aborted ? "" : errorMessage,
-            message: aborted ? errorMessage : "请检查模型配置、网络或输入文本后重试。",
+            message: aborted ? errorMessage : current.message || "请检查模型配置、网络或输入文本后重试。",
             progress: aborted ? Math.max(current.progress, 20) : Math.max(current.progress, 42),
             status: aborted ? "canceled" : "failed",
             taskId: streamTaskId
@@ -817,7 +837,7 @@ function App() {
                     projectId={projectId}
                     title={generatedTitle || title}
                 >
-                    <TaskConsole onCancel={stopGeneration} summary={taskSummary}/>
+                    <TaskConsole onCancel={stopGeneration} onRetry={generateYaml} summary={taskSummary}/>
                     <ConversionProgress steps={workflowSteps}/>
                 </Sidebar>
       }
@@ -839,7 +859,7 @@ function App() {
                 onClick={generateYaml}
                 variant="primary"
               >
-                  开始生成
+                  {generateButtonLabel}
               </ActionButton>
                 <ActionButton
                     disabled={!taskSummary.canCancel}
@@ -904,7 +924,7 @@ function App() {
             {activeView === "pipeline" ? (
                 <div className="page-grid page-grid--pipeline">
                     <div className="studio-panel page-side-panel">
-                        <TaskConsole onCancel={stopGeneration} summary={taskSummary}/>
+                        <TaskConsole onCancel={stopGeneration} onRetry={generateYaml} summary={taskSummary}/>
                     </div>
                     <div className="studio-panel page-side-panel">
                         <ConversionProgress steps={workflowSteps}/>
@@ -922,8 +942,8 @@ function App() {
                             <p>{taskSummary.errorMessage || taskSummary.message}</p>
                             <div className="task-detail-list">
                                 <span>此页实时显示后端 `meta / progress / validation / finish / error` 事件。</span>
-                                <span>停止生成当前会中止前端流式连接，后端任务取消会在下一项接入。</span>
-                                <span>阶段结果暂存、失败恢复和超长文本分块会继续挂在此页。</span>
+                                <span>停止生成会调用后端取消接口，并中止当前流式连接。</span>
+                                <span>失败后保留小说输入与任务 ID，可从控制台或顶部按钮继续生成。</span>
                             </div>
                         </div>
                     </section>

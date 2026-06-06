@@ -59,6 +59,7 @@ export type TaskStatus = "canceled" | "failed" | "idle" | "ready" | "running" | 
 
 export type TaskSummary = {
     canCancel: boolean;
+    canRetry: boolean;
     currentStage: string;
     errorMessage: string;
     errorType?: string;
@@ -249,9 +250,10 @@ export function Sidebar({ author, chapterCount, children, isValid, projectId, ti
 type TaskConsoleProps = {
     summary: TaskSummary;
     onCancel: () => void;
+    onRetry: () => void;
 };
 
-export function TaskConsole({onCancel, summary}: TaskConsoleProps) {
+export function TaskConsole({onCancel, onRetry, summary}: TaskConsoleProps) {
     return (
         <section className="sidebar__section task-console" data-status={summary.status} aria-label="AI 转换任务控制台">
             <div className="sidebar__section-title">
@@ -268,26 +270,62 @@ export function TaskConsole({onCancel, summary}: TaskConsoleProps) {
                 <p>{summary.errorMessage || summary.message}</p>
                 {summary.status === "failed" ? (
                     <div className="task-console__recovery">
-                        <span>{summary.failedStage || "失败阶段未知"}</span>
-                        <span>{summary.retryable === false ? "不可重试" : `可从 ${summary.resumeStage || "安全阶段"} 继续`}</span>
+                        <span>{summary.failedStage ? stageDisplayName(summary.failedStage) : "失败阶段未知"}</span>
+                        <span>{summary.errorType || "RuntimeException"}</span>
+                        <span>
+                            {summary.retryable === false
+                                ? "不可重试"
+                                : `可从 ${summary.resumeStage ? stageDisplayName(summary.resumeStage) : "安全阶段"} 继续`}
+                        </span>
                     </div>
                 ) : null}
                 <div className="task-console__meta">
                     <span>{summary.taskId || "未创建任务"}</span>
-                    <ActionButton
-                        disabled={!summary.canCancel}
-                        icon={<CircleStop aria-hidden="true" size={14}/>}
-                        onClick={onCancel}
-                        size="sm"
-                        variant="ghost"
-                    >
-                        停止
-                    </ActionButton>
+                    <div className="task-console__actions">
+                        <ActionButton
+                            disabled={!summary.canRetry}
+                            icon={<RefreshCcw aria-hidden="true" size={14}/>}
+                            onClick={onRetry}
+                            size="sm"
+                            variant="secondary"
+                        >
+                            重试
+                        </ActionButton>
+                        <ActionButton
+                            disabled={!summary.canCancel}
+                            icon={<CircleStop aria-hidden="true" size={14}/>}
+                            onClick={onCancel}
+                            size="sm"
+                            variant="ghost"
+                        >
+                            停止
+                        </ActionButton>
+                    </div>
                 </div>
             </div>
         </section>
     );
 }
+
+function stageDisplayName(stage: string) {
+    return stageLabels[stage] || stage;
+}
+
+const stageLabels: Record<string, string> = {
+    CHAPTER_SUMMARY: "章节摘要",
+    COMPLETED: "转换完成",
+    CONSISTENCY_CHECK: "一致性校验",
+    DIALOGUE_GENERATION: "对白生成",
+    FACT_CONSTRAINT_CHECK: "事实约束",
+    GLOBAL_STORY_EXTRACTION: "全局故事抽取",
+    INIT: "任务初始化",
+    PSYCHOLOGICAL_VISUALIZATION: "心理影视化",
+    SCENE_PLANNING: "场景规划",
+    SCRIPT_YAML_GENERATION: "YAML 生成",
+    SOURCE_TRACE: "源文追溯",
+    YAML_REPAIR: "YAML 自动修复",
+    YAML_VALIDATION: "Schema 校验"
+};
 
 type ChapterListProps = {
   activeChapterIndex: number;

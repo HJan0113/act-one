@@ -173,12 +173,13 @@ public class ScriptYamlStreamService {
             sendCancelAndDone(runningTask, stage, "生成已停止。");
         } catch (RuntimeException error) {
             PipelineStage stage = runningTask.currentStage();
-            markFailed(runningTask, stage, error);
-            send(runningTask.sender(), ScriptYamlStreamEventType.ERROR, ScriptYamlStreamPayload.of(
+            ScriptConversionTaskResponse failedTask = markFailed(runningTask, stage, error);
+            send(runningTask.sender(), ScriptYamlStreamEventType.ERROR, ScriptYamlStreamPayload.failure(
                     runningTask.taskId(),
                     stage.name(),
                     100,
-                    safeMessage(error)
+                    safeMessage(error),
+                    failedTask
             ));
             send(runningTask.sender(), ScriptYamlStreamEventType.DONE, "[DONE]");
             runningTask.sender().complete();
@@ -214,10 +215,11 @@ public class ScriptYamlStreamService {
         }
     }
 
-    private void markFailed(RunningTask runningTask, PipelineStage stage, RuntimeException error) {
+    private ScriptConversionTaskResponse markFailed(RunningTask runningTask, PipelineStage stage, RuntimeException error) {
         if (runningTask.persistent()) {
-            conversionTaskService.markFailed(runningTask.taskId(), stage, error);
+            return conversionTaskService.markFailed(runningTask.taskId(), stage, error);
         }
+        return null;
     }
 
     private void markCanceled(RunningTask runningTask, PipelineStage stage, String message) {

@@ -78,6 +78,10 @@ export type ScriptYamlStreamPayload = {
   result?: ScriptYamlData | null;
   stage?: string | null;
   taskId?: string | null;
+  errorType?: string | null;
+  failedStage?: string | null;
+  resumeStage?: string | null;
+  retryable?: boolean | null;
   valid?: boolean | null;
   validationError?: string | null;
   validationStatus?: string | null;
