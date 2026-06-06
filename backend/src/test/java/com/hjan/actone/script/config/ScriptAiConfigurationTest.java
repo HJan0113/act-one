@@ -19,6 +19,7 @@ import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.LlmScriptYamlGenerationStage;
 import com.hjan.actone.script.ai.pipeline.LlmYamlRepairStage;
+import com.hjan.actone.script.ai.pipeline.PipelineConsistencyChecker;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineService;
@@ -46,6 +47,7 @@ class ScriptAiConfigurationTest {
                 .withBean(LLMService.class, StubLlmService::new)
                 .run(context -> {
                     assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
+                    assertThat(context).hasSingleBean(PipelineConsistencyChecker.class);
                     assertThat(context).hasSingleBean(ChapterSummaryStage.class);
                     assertThat(context).hasSingleBean(GlobalStoryExtractionStage.class);
                     assertThat(context).hasSingleBean(ScenePlanningStage.class);
@@ -88,6 +90,7 @@ class ScriptAiConfigurationTest {
     void doesNotRegisterChapterSummaryStageWithoutLlmService() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
+            assertThat(context).hasSingleBean(PipelineConsistencyChecker.class);
             assertThat(context).hasSingleBean(SourceTraceStage.class);
             assertThat(context.getBean(SourceTraceStage.class))
                     .isInstanceOf(DeterministicSourceTraceStage.class);

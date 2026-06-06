@@ -1225,6 +1225,7 @@ function extractTaskStage(message?: string | null) {
 const pipelineStageLabels: Record<string, string> = {
     CHAPTER_SUMMARY: "章节摘要",
     COMPLETED: "转换完成",
+    CONSISTENCY_CHECK: "一致性校验",
     DIALOGUE_GENERATION: "对白生成",
     GLOBAL_STORY_EXTRACTION: "全局故事抽取",
     INIT: "任务初始化",

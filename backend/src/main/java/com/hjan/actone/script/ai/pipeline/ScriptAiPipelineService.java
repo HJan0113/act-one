@@ -41,6 +41,7 @@ public class ScriptAiPipelineService {
     private final ScriptYamlGenerationStage scriptYamlGenerationStage;
     private final YamlRepairStage yamlRepairStage;
     private final GlobalStoryStateMerger globalStoryStateMerger;
+    private final PipelineConsistencyChecker consistencyChecker;
 
     public ScriptAiPipelineService(NovelChapterParser chapterParser,
                                    ScriptYamlValidator yamlValidator,
@@ -65,7 +66,8 @@ public class ScriptAiPipelineService {
                 sourceTraceStage,
                 scriptYamlGenerationStage,
                 yamlRepairStage,
-                new GlobalStoryStateMerger()
+                new GlobalStoryStateMerger(),
+                new PipelineConsistencyChecker()
         );
     }
 
@@ -80,7 +82,8 @@ public class ScriptAiPipelineService {
                                    SourceTraceStage sourceTraceStage,
                                    ScriptYamlGenerationStage scriptYamlGenerationStage,
                                    YamlRepairStage yamlRepairStage,
-                                   GlobalStoryStateMerger globalStoryStateMerger) {
+                                   GlobalStoryStateMerger globalStoryStateMerger,
+                                   PipelineConsistencyChecker consistencyChecker) {
         this.chapterParser = Objects.requireNonNull(chapterParser, "NovelChapterParser 不能为空");
         this.yamlValidator = Objects.requireNonNull(yamlValidator, "ScriptYamlValidator 不能为空");
         this.ruleBasedDraftService = Objects.requireNonNull(ruleBasedDraftService, "ScriptYamlDraftService 不能为空");
@@ -105,6 +108,7 @@ public class ScriptAiPipelineService {
         );
         this.yamlRepairStage = Objects.requireNonNull(yamlRepairStage, "YamlRepairStage 不能为空");
         this.globalStoryStateMerger = Objects.requireNonNull(globalStoryStateMerger, "GlobalStoryStateMerger 不能为空");
+        this.consistencyChecker = Objects.requireNonNull(consistencyChecker, "PipelineConsistencyChecker 不能为空");
     }
 
     public ScriptAiPipelineResult generate(ScriptYamlGenerateRequest request) {
@@ -154,6 +158,7 @@ public class ScriptAiPipelineService {
             context = visualizePsychology(context, actualObserver);
             context = generateDialogues(context, actualObserver);
             context = traceSource(context, chapters, actualObserver);
+            context = checkConsistency(context, chapters, actualObserver);
             context = generateYaml(context, actualObserver);
             ScriptAiPipelineResult result = validateAndRepairIfNeeded(context, request, actualObserver);
             logPipelineComplete(result, pipelineStartedNanos);
@@ -293,6 +298,15 @@ public class ScriptAiPipelineService {
                 observer,
                 () -> context.withSourceTrace(sourceTraceStage.trace(context, chapters))
         );
+    }
+
+    private PipelineContext checkConsistency(PipelineContext context,
+                                             List<NovelChapter> chapters,
+                                             ScriptAiPipelineObserver observer) {
+        return runStage(context, PipelineStage.CONSISTENCY_CHECK, DEFAULT_RETRY, observer, () -> {
+            consistencyChecker.validate(context, chapters);
+            return context;
+        });
     }
 
     private PipelineContext generateYaml(PipelineContext context, ScriptAiPipelineObserver observer) {

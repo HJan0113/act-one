@@ -46,10 +46,11 @@ public class ScriptYamlStreamService {
         register(PipelineStage.SCENE_PLANNING, 34, 44);
         register(PipelineStage.PSYCHOLOGICAL_VISUALIZATION, 46, 56);
         register(PipelineStage.DIALOGUE_GENERATION, 58, 68);
-        register(PipelineStage.SOURCE_TRACE, 70, 78);
-        register(PipelineStage.SCRIPT_YAML_GENERATION, 80, 86);
-        register(PipelineStage.YAML_VALIDATION, 88, 92);
-        register(PipelineStage.YAML_REPAIR, 93, 96);
+        register(PipelineStage.SOURCE_TRACE, 70, 76);
+        register(PipelineStage.CONSISTENCY_CHECK, 78, 82);
+        register(PipelineStage.SCRIPT_YAML_GENERATION, 84, 88);
+        register(PipelineStage.YAML_VALIDATION, 90, 93);
+        register(PipelineStage.YAML_REPAIR, 94, 96);
         register(PipelineStage.COMPLETED, 100, 100);
     }
 

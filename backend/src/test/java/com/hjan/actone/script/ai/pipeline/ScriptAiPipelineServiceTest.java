@@ -50,7 +50,9 @@ class ScriptAiPipelineServiceTest {
         assertThat(stages.globalContexts)
                 .extracting(globalContext -> globalContext.chapterSummaries().get(0).chapterId())
                 .containsExactly("chapter_1", "chapter_2", "chapter_3");
-        assertThat(stages.sceneContext.globalStoryState()).isEqualTo(GlobalStoryState.empty());
+        assertThat(stages.sceneContext.globalStoryState().characters())
+                .extracting(GlobalStoryState.CharacterProfile::id)
+                .contains("character_001");
         assertThat(stages.cinematicContext.scenePlan().scenes()).hasSize(1);
         assertThat(stages.yamlContext.cinematicTreatment().scenes()).hasSize(1);
         assertThat(stages.dialogueContext.cinematicTreatment().scenes()).hasSize(1);
@@ -147,6 +149,8 @@ class ScriptAiPipelineServiceTest {
                 "success:DIALOGUE_GENERATION",
                 "start:SOURCE_TRACE",
                 "success:SOURCE_TRACE",
+                "start:CONSISTENCY_CHECK",
+                "success:CONSISTENCY_CHECK",
                 "start:SCRIPT_YAML_GENERATION",
                 "success:SCRIPT_YAML_GENERATION",
                 "start:YAML_VALIDATION",
@@ -200,8 +204,9 @@ class ScriptAiPipelineServiceTest {
                         "主角在旧剧场面对三次选择。",
                         chapters.size()
                 )
-                .withChapterSummaries(cachedSummaries)
-                .withGlobalStoryState(GlobalStoryState.empty());
+                .withChapterSummaries(cachedSummaries);
+        GlobalStoryState cachedGlobalState = cachedStages.extract(cachedContext.withChapterSummaries(List.of(cachedSummaries.get(0))));
+        cachedContext = cachedContext.withGlobalStoryState(cachedGlobalState);
         ScenePlan cachedScenePlan = cachedStages.plan(cachedContext);
 
         FakeStages stages = new FakeStages();
@@ -211,7 +216,7 @@ class ScriptAiPipelineServiceTest {
         ScriptAiPipelineResult result = service.generate(
                 request(),
                 ScriptAiPipelineObserver.NOOP,
-                new ScriptAiPipelineResumeState(cachedSummaries, GlobalStoryState.empty(), cachedScenePlan)
+                new ScriptAiPipelineResumeState(cachedSummaries, cachedGlobalState, cachedScenePlan)
         );
 
         assertThat(result.valid()).isTrue();
@@ -441,7 +446,40 @@ class ScriptAiPipelineServiceTest {
             if (rollingGlobalState) {
                 return rollingState(context.chapterSummaries().get(0));
             }
-            return GlobalStoryState.empty();
+            return defaultGlobalState(context.chapterSummaries().get(0));
+        }
+
+        private GlobalStoryState defaultGlobalState(ChapterSummary summary) {
+            String chapterId = summary.chapterId();
+            int chapterIndex = summary.chapterIndex();
+            return new GlobalStoryState(
+                    List.of(new GlobalStoryState.CharacterProfile(
+                            "character_001",
+                            "林夏",
+                            List.of(),
+                            "主角",
+                            "旧剧场匿名信事件的调查者。",
+                            chapterId,
+                            List.of(chapterId)
+                    )),
+                    List.of(new GlobalStoryState.LocationProfile(
+                            "location_%03d".formatted(chapterIndex),
+                            "旧剧场",
+                            "匿名信和后台暗门的核心地点。",
+                            List.of(chapterId)
+                    )),
+                    List.of(new GlobalStoryState.TimelineEvent(
+                            "timeline_%03d".formatted(chapterIndex),
+                            chapterIndex,
+                            chapterId,
+                            "第 " + chapterIndex + " 次选择",
+                            summary.summary()
+                    )),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    List.of()
+            );
         }
 
         private GlobalStoryState rollingState(ChapterSummary summary) {
@@ -509,7 +547,7 @@ class ScriptAiPipelineServiceTest {
                     "旧剧场",
                     "旧剧场",
                     "深夜",
-                    List.of("林夏"),
+                    List.of("character_001"),
                     "建立主角目标",
                     "是否进入旧剧场",
                     List.of(new ScenePlan.Beat(

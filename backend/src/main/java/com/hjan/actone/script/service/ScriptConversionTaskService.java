@@ -286,6 +286,7 @@ public class ScriptConversionTaskService {
             case PSYCHOLOGICAL_VISUALIZATION,
                  DIALOGUE_GENERATION,
                  SOURCE_TRACE,
+                 CONSISTENCY_CHECK,
                  SCRIPT_YAML_GENERATION,
                  YAML_VALIDATION,
                  YAML_REPAIR,
