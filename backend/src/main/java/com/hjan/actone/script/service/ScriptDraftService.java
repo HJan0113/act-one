@@ -83,6 +83,17 @@ public class ScriptDraftService {
         return detail(draftId);
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public void delete(String draftId) {
+        String normalizedDraftId = requireText(draftId, "草稿 ID 不能为空。");
+        ScriptDraftDO draft = scriptDraftMapper.selectById(normalizedDraftId);
+        if (draft == null) {
+            throw new ClientException("草稿不存在。");
+        }
+        verifyProjectOwned(draft.getProjectId());
+        scriptDraftMapper.deleteById(normalizedDraftId);
+    }
+
     private ScriptDraftListItemResponse toListItem(ScriptDraftDO draft) {
         return new ScriptDraftListItemResponse(
                 draft.getId(),

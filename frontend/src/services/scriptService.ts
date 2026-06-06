@@ -1,5 +1,6 @@
 import {readResponseError, requestApi, withAuthHeader} from "./apiClient";
 import type {
+    ApiResult,
     ChapterPreviewData,
     ScriptDemoNovelData,
     ScriptDialogueVoiceRewriteData,
@@ -186,6 +187,14 @@ export function listMyProjects(token?: string) {
   );
 }
 
+export function deleteProject(projectId: string, token?: string) {
+  return deleteResource(
+    `/api/script/projects/${encodeURIComponent(projectId)}`,
+    token,
+    "项目删除失败"
+  );
+}
+
 export function listDrafts(projectId: string, token?: string) {
   return requestApi<ScriptDraftListItem[]>(
     `/api/script/drafts?projectId=${encodeURIComponent(projectId)}`,
@@ -193,6 +202,14 @@ export function listDrafts(projectId: string, token?: string) {
       token
     },
     "草稿列表加载失败"
+  );
+}
+
+export function deleteDraft(draftId: string, token?: string) {
+  return deleteResource(
+    `/api/script/drafts/${encodeURIComponent(draftId)}`,
+    token,
+    "保存记录删除失败"
   );
 }
 
@@ -285,6 +302,20 @@ export async function exportDraftYaml(draftId: string, fallbackFilename: string,
     blob: await response.blob(),
     filename: readDownloadFilename(response, fallbackFilename)
   };
+}
+
+async function deleteResource(url: string, token: string | undefined, fallbackMessage: string) {
+  const response = await fetch(url, {
+    headers: withAuthHeader(undefined, token),
+    method: "DELETE"
+  });
+  if (!response.ok) {
+    throw new Error(await readResponseError(response, fallbackMessage));
+  }
+  const result = (await response.json()) as ApiResult<unknown>;
+  if (result.code !== "0") {
+    throw new Error(result.message || `${fallbackMessage}。`);
+  }
 }
 
 function readDownloadFilename(response: Response, fallback: string) {

@@ -34,3 +34,5 @@ frontend/vite.config.d.ts
 *.iml
 
 /backend/src/main/resources/db/
+/.agents/
+/skills-lock.json

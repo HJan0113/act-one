@@ -10,6 +10,7 @@ import {
     Play,
     RefreshCcw,
     Save,
+    Trash2,
     UserCircle,
     Wand2
 } from "lucide-react";
@@ -51,6 +52,8 @@ import {
     analyzeDraftRhythm,
     cancelGenerationTask as cancelScriptGenerationTask,
     createProjectFromText,
+    deleteDraft as deleteScriptDraft,
+    deleteProject as deleteScriptProject,
     exportDraftYaml as exportDraftYamlFile,
     fetchDemoNovel,
     generateSceneStoryboard,
@@ -94,6 +97,11 @@ const chapterHeadingPattern = /^第\s*([0-9一二三四五六七八九十百千�
 
 type ConversionTaskState = Omit<TaskSummary, "canCancel" | "canRetry">;
 
+type DeleteTarget = {
+  id: string;
+  kind: "draft" | "project";
+};
+
 function App() {
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => readStoredAuth());
   const [authChecking, setAuthChecking] = useState(false);
@@ -129,6 +137,9 @@ function App() {
   const [storyboardLoading, setStoryboardLoading] = useState(false);
   const [storyboard, setStoryboard] = useState<ScriptStoryboardData | null>(null);
   const [demoLoading, setDemoLoading] = useState(false);
+  const [deletingProjectId, setDeletingProjectId] = useState("");
+  const [deletingDraftId, setDeletingDraftId] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<DeleteTarget | null>(null);
   const [aiChangeSummary, setAiChangeSummary] = useState<AiChangeSummary | null>(null);
   const [yamlDraft, setYamlDraft] = useState("");
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
@@ -879,6 +890,95 @@ function App() {
     }
   }
 
+  function isPendingDelete(kind: DeleteTarget["kind"], id: string) {
+    return pendingDelete?.kind === kind && pendingDelete.id === id;
+  }
+
+  async function deleteProjectRecord(project: ScriptProjectListItem) {
+    if (deletingProjectId) return;
+    if (!isPendingDelete("project", project.projectId)) {
+      setPendingDelete({kind: "project", id: project.projectId});
+      setYamlMessage(`再次点击该项目右侧删除按钮，将删除项目「${project.title}」及其草稿保存记录。`);
+      return;
+    }
+
+    setDeletingProjectId(project.projectId);
+    setPendingDelete(null);
+    try {
+      await requestWithAuth((token) => deleteScriptProject(project.projectId, token));
+      const remainingProjects = projects.filter((item) => item.projectId !== project.projectId);
+      setProjects(remainingProjects);
+      if (project.projectId === projectId) {
+        const nextProject = remainingProjects[0];
+        setDraftId("");
+        setDrafts([]);
+        setYamlDraft("");
+        setAiChangeSummary(null);
+        setRhythmAnalysis(null);
+        setStoryboard(null);
+        setActiveTraceSceneId("");
+        setValidationStatus("pending");
+        setValidationError("");
+        setGenerationMode("");
+        setFallbackReason("");
+        if (nextProject) {
+          setProjectId(nextProject.projectId);
+          setGeneratedTitle(nextProject.title);
+          await loadDrafts(nextProject.projectId);
+          setYamlMessage(`已删除项目「${project.title}」，并切换到「${nextProject.title}」。`);
+        } else {
+          setProjectId("");
+          setGeneratedTitle("");
+          setConversionTask(createInitialTask());
+          setYamlMessage(`已删除项目「${project.title}」，当前没有保存的项目。`);
+        }
+      } else {
+        setYamlMessage(`已删除项目「${project.title}」。`);
+      }
+    } catch (error) {
+      setYamlMessage(error instanceof Error ? error.message : "项目删除失败。");
+    } finally {
+      setDeletingProjectId("");
+    }
+  }
+
+  async function deleteDraftRecord(draft: ScriptDraftListItem) {
+    if (deletingDraftId) return;
+    if (!isPendingDelete("draft", draft.draftId)) {
+      setPendingDelete({kind: "draft", id: draft.draftId});
+      setYamlMessage(`再次点击该记录右侧删除按钮，将删除保存记录「${draft.title}」。`);
+      return;
+    }
+
+    setDeletingDraftId(draft.draftId);
+    setPendingDelete(null);
+    try {
+      await requestWithAuth((token) => deleteScriptDraft(draft.draftId, token));
+      setDrafts((current) => current.filter((item) => item.draftId !== draft.draftId));
+      if (draft.draftId === draftId) {
+        setDraftId("");
+        setAiChangeSummary(null);
+        setRhythmAnalysis(null);
+        setStoryboard(null);
+        setConversionTask((current) => ({
+          ...current,
+          currentStage: "保存记录已删除",
+          errorMessage: "",
+          message: "当前编辑器内容已保留为未保存草稿，可继续编辑后重新保存。",
+          status: "ready",
+          taskId: projectId || current.taskId
+        }));
+        setYamlMessage(`已删除保存记录「${draft.title}」，当前 YAML 内容仍保留在编辑器中。`);
+      } else {
+        setYamlMessage(`已删除保存记录「${draft.title}」。`);
+      }
+    } catch (error) {
+      setYamlMessage(error instanceof Error ? error.message : "保存记录删除失败。");
+    } finally {
+      setDeletingDraftId("");
+    }
+  }
+
   async function analyzeRhythm() {
     if (!draftId) {
       setYamlMessage("请先保存或加载一个草稿，再执行节奏分析。");
@@ -1368,21 +1468,41 @@ function App() {
                         </div>
                         <div className="archive-list">
                             {projects.length > 0 ? (
-                                projects.map((project) => (
-                                    <button
-                                        className="archive-item"
-                                        data-active={project.projectId === projectId}
-                                        key={project.projectId}
-                                        onClick={() => selectProject(project.projectId)}
-                                        type="button"
-                                    >
-                                        <FolderOpen aria-hidden="true" size={18}/>
-                                        <span>
-                      <strong>{project.title}</strong>
-                      <small>{project.status || "draft"}</small>
-                    </span>
-                                    </button>
-                                ))
+                                projects.map((project) => {
+                                    const isDeleting = deletingProjectId === project.projectId;
+                                    const isConfirming = isPendingDelete("project", project.projectId);
+                                    return (
+                                        <div
+                                            className="archive-item"
+                                            data-active={project.projectId === projectId}
+                                            key={project.projectId}
+                                        >
+                                            <button
+                                                className="archive-item__main"
+                                                onClick={() => selectProject(project.projectId)}
+                                                type="button"
+                                            >
+                                                <FolderOpen aria-hidden="true" size={18}/>
+                                                <span>
+                          <strong>{project.title}</strong>
+                          <small>{project.status || "draft"}</small>
+                        </span>
+                                            </button>
+                                            <button
+                                                aria-label={`删除项目 ${project.title}`}
+                                                className="archive-delete-button"
+                                                data-confirming={isConfirming}
+                                                disabled={Boolean(deletingProjectId || draftLoading || projectLoading)}
+                                                onClick={() => deleteProjectRecord(project)}
+                                                title={isConfirming ? "再次点击确认删除项目" : "删除项目和草稿记录"}
+                                                type="button"
+                                            >
+                                                {isDeleting ? <Loader2 aria-hidden="true" className="spin" size={15}/> :
+                                                    isConfirming ? "确认" : <Trash2 aria-hidden="true" size={15}/>}
+                                            </button>
+                                        </div>
+                                    );
+                                })
                             ) : (
                                 <EmptyArchiveState icon={<FolderOpen aria-hidden="true" size={22}/>} title="暂无项目"
                                                    text="保存草稿后会形成项目入口。"/>
@@ -1407,23 +1527,43 @@ function App() {
                         </div>
                         <div className="archive-list">
                             {drafts.length > 0 ? (
-                                drafts.map((draft) => (
-                                    <button
-                                        className="archive-item"
-                                        data-active={draft.draftId === draftId}
-                                        key={draft.draftId}
-                                        onClick={() => loadDraftDetail(draft.draftId)}
-                                        type="button"
-                                    >
-                                        <History aria-hidden="true" size={18}/>
-                                        <span>
-                      <strong>{draft.title}</strong>
-                      <small>
-                        {draft.schemaVersion} / {draft.validationStatus}
-                      </small>
-                    </span>
-                                    </button>
-                                ))
+                                drafts.map((draft) => {
+                                    const isDeleting = deletingDraftId === draft.draftId;
+                                    const isConfirming = isPendingDelete("draft", draft.draftId);
+                                    return (
+                                        <div
+                                            className="archive-item"
+                                            data-active={draft.draftId === draftId}
+                                            key={draft.draftId}
+                                        >
+                                            <button
+                                                className="archive-item__main"
+                                                onClick={() => loadDraftDetail(draft.draftId)}
+                                                type="button"
+                                            >
+                                                <History aria-hidden="true" size={18}/>
+                                                <span>
+                          <strong>{draft.title}</strong>
+                          <small>
+                            {draft.schemaVersion} / {draft.validationStatus}
+                          </small>
+                        </span>
+                                            </button>
+                                            <button
+                                                aria-label={`删除保存记录 ${draft.title}`}
+                                                className="archive-delete-button"
+                                                data-confirming={isConfirming}
+                                                disabled={Boolean(deletingDraftId || draftLoading)}
+                                                onClick={() => deleteDraftRecord(draft)}
+                                                title={isConfirming ? "再次点击确认删除保存记录" : "删除保存记录"}
+                                                type="button"
+                                            >
+                                                {isDeleting ? <Loader2 aria-hidden="true" className="spin" size={15}/> :
+                                                    isConfirming ? "确认" : <Trash2 aria-hidden="true" size={15}/>}
+                                            </button>
+                                        </div>
+                                    );
+                                })
                             ) : (
                                 <EmptyArchiveState icon={<History aria-hidden="true" size={22}/>} title="暂无保存记录"
                                                    text="保存后可在此重新加载草稿版本。"/>

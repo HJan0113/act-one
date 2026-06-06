@@ -124,6 +124,24 @@ class ScriptDraftServiceTest {
                 .hasMessageContaining("草稿不存在");
     }
 
+    @Test
+    void deleteOwnedDraftUsesLogicalDelete() {
+        when(scriptDraftMapper.selectById("draft_1")).thenReturn(draft("draft_1", "project_1"));
+
+        service.delete("draft_1");
+
+        verify(scriptDraftMapper).deleteById("draft_1");
+    }
+
+    @Test
+    void deleteRejectsMissingDraft() {
+        when(scriptDraftMapper.selectById("missing")).thenReturn(null);
+
+        assertThatThrownBy(() -> service.delete("missing"))
+                .isInstanceOf(ClientException.class)
+                .hasMessageContaining("草稿不存在");
+    }
+
     private ScriptDraftDO draft(String draftId, String projectId) {
         ScriptDraftDO draft = new ScriptDraftDO();
         draft.setId(draftId);

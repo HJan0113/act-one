@@ -26,6 +26,7 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -92,6 +93,12 @@ public class ScriptYamlDraftController {
     @GetMapping("/{draftId}")
     public Result<ScriptDraftDetailResponse> detail(@PathVariable String draftId) {
         return Results.success(scriptDraftService.detail(draftId));
+    }
+
+    @DeleteMapping("/{draftId}")
+    public Result<Void> delete(@PathVariable String draftId) {
+        scriptDraftService.delete(draftId);
+        return Results.success();
     }
 
     @GetMapping("/{draftId}/rhythm-analysis")
