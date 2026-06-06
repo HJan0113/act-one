@@ -7,6 +7,7 @@ import {
     CircleStop,
     ClipboardCopy,
     Code2,
+    Film,
     FileDown,
     FileInput,
     FileText,
@@ -15,6 +16,7 @@ import {
     ListChecks,
     PanelLeftClose,
     PanelLeftOpen,
+    Radio,
     RefreshCcw,
     Save,
     ScrollText,
@@ -96,6 +98,40 @@ export type AiChangeSummary = {
   summary: string;
   validationStatus: string;
 };
+
+export type ScriptStyleVariant = "broadcast" | "screenplay" | "short_drama" | "stage";
+
+export const scriptStyleVariantOptions: Array<{
+  detail: string;
+  label: string;
+  prompt: string;
+  value: ScriptStyleVariant;
+}> = [
+  {
+    detail: "保留场景动作、对白、调度，适合常规影视剧本。",
+    label: "影视剧",
+    prompt: "强化镜头可拍性、场面调度、动作节奏和对白表演，保持原剧情事实不变。",
+    value: "screenplay"
+  },
+  {
+    detail: "更短节奏、更强钩子，适合连续反转和高密度冲突。",
+    label: "短剧",
+    prompt: "压缩铺垫，突出开场钩子、场景冲突、反转节点和强情绪对白，保持原剧情事实不变。",
+    value: "short_drama"
+  },
+  {
+    detail: "突出舞台空间、出入场、灯光和可演台词。",
+    label: "舞台剧",
+    prompt: "强化舞台调度、出入场、灯光/道具提示和可朗读台词，保持原剧情事实不变。",
+    value: "stage"
+  },
+  {
+    detail: "以声音叙事，强化旁白、环境音和对白辨识度。",
+    label: "广播剧",
+    prompt: "强化声音线索、环境音、旁白过渡和角色口吻辨识度，保持原剧情事实不变。",
+    value: "broadcast"
+  }
+];
 
 export type WorkspaceView = "archive" | "characters" | "consistency" | "pipeline" | "result" | "source" | "trace";
 
@@ -1595,6 +1631,74 @@ export function AiChangeSummaryPanel({summary}: AiChangeSummaryPanelProps) {
       )}
     </section>
   );
+}
+
+type StyleVariantPanelProps = {
+  canCreate: boolean;
+  creatingStyle: ScriptStyleVariant | "";
+  draftCount: number;
+  onCreateVariant: (style: ScriptStyleVariant) => void;
+};
+
+export function StyleVariantPanel({
+  canCreate,
+  creatingStyle,
+  draftCount,
+  onCreateVariant
+}: StyleVariantPanelProps) {
+  return (
+    <section className="studio-panel style-variant-panel" aria-label="多版本风格草稿">
+      <div className="panel-heading">
+        <div>
+          <p className="panel-kicker">Style Revisions</p>
+          <h2>风格版本</h2>
+        </div>
+        <StatusBadge label={draftCount > 0 ? `${draftCount} 个草稿` : "未保存"} tone={draftCount > 0 ? "info" : "neutral"} />
+      </div>
+
+      <div className="style-variant-body">
+        <p>基于当前结构化底稿另存为新草稿，原稿不会被覆盖。</p>
+        <div className="style-variant-grid">
+          {scriptStyleVariantOptions.map((option) => {
+            const loading = creatingStyle === option.value;
+            return (
+              <article className="style-variant-card" key={option.value}>
+                <span className="style-variant-card__icon" aria-hidden="true">
+                  {styleVariantIcon(option.value)}
+                </span>
+                <div>
+                  <strong>{option.label}</strong>
+                  <p>{option.detail}</p>
+                </div>
+                <ActionButton
+                  disabled={!canCreate || Boolean(creatingStyle)}
+                  icon={loading ? <RefreshCcw aria-hidden="true" className="spin" size={15} /> : <Sparkles aria-hidden="true" size={15} />}
+                  onClick={() => onCreateVariant(option.value)}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {loading ? "生成中" : "生成"}
+                </ActionButton>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function styleVariantIcon(value: ScriptStyleVariant) {
+  if (value === "screenplay") {
+    return <Film size={17} />;
+  }
+  if (value === "broadcast") {
+    return <Radio size={17} />;
+  }
+  if (value === "stage") {
+    return <BookOpen size={17} />;
+  }
+  return <Sparkles size={17} />;
 }
 
 type ScriptPreviewPanelProps = {
