@@ -15,12 +15,15 @@ import com.hjan.actone.common.exception.RemoteException;
 import com.hjan.actone.script.ai.model.ChapterSummary;
 import com.hjan.actone.script.ai.model.SourceEvidence;
 import com.hjan.actone.script.model.NovelChapter;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
+@Slf4j
 public class LlmChapterSummaryStage implements ChapterSummaryStage {
 
     private static final double SUMMARY_TEMPERATURE = 0.2D;
@@ -52,6 +55,8 @@ public class LlmChapterSummaryStage implements ChapterSummaryStage {
     @Override
     public ChapterSummary summarize(NovelChapter chapter) {
         Objects.requireNonNull(chapter, "NovelChapter 不能为空");
+        long startedNanos = System.nanoTime();
+        log.info("开始章节摘要 chapterId={} chapterIndex={}", chapter.id(), chapter.index());
         RenderedPrompt prompt = promptTemplateService.render(
                 PromptTemplateId.CHAPTER_SUMMARY,
                 Map.of(
@@ -72,6 +77,8 @@ public class LlmChapterSummaryStage implements ChapterSummaryStage {
         ));
         ChapterSummary summary = parseSummary(response);
         validateChapterReference(chapter, summary);
+        log.info("完成章节摘要 chapterId={} durationMs={}", chapter.id(),
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos));
         return summary;
     }
 

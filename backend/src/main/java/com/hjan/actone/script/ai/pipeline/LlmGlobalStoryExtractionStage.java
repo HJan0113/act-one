@@ -15,14 +15,13 @@ import com.hjan.actone.common.exception.RemoteException;
 import com.hjan.actone.script.ai.model.ChapterSummary;
 import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineContext;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
+@Slf4j
 public class LlmGlobalStoryExtractionStage implements GlobalStoryExtractionStage {
 
     private static final double EXTRACTION_TEMPERATURE = 0.2D;
@@ -67,6 +66,8 @@ public class LlmGlobalStoryExtractionStage implements GlobalStoryExtractionStage
         if (context.chapterSummaries().isEmpty()) {
             throw new IllegalArgumentException("chapterSummaries 不能为空");
         }
+        long startedNanos = System.nanoTime();
+        log.info("开始全局故事提取 taskId={} summaryCount={}", context.taskId(), context.chapterSummaries().size());
         RenderedPrompt prompt = promptTemplateService.render(
                 PromptTemplateId.GLOBAL_STORY_EXTRACTION,
                 Map.of(
@@ -88,6 +89,10 @@ public class LlmGlobalStoryExtractionStage implements GlobalStoryExtractionStage
         ));
         GlobalStoryState state = globalStoryStateMerger.normalize(parseState(response));
         validateState(context.chapterSummaries(), state);
+        log.info("完成全局故事提取 taskId={} durationMs={} characterCount={}",
+                context.taskId(),
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos),
+                state.characters().size());
         return state;
     }
 

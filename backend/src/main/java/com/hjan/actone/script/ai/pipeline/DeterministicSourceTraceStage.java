@@ -1,28 +1,23 @@
 package com.hjan.actone.script.ai.pipeline;
 
-import com.hjan.actone.script.ai.model.CinematicTreatment;
-import com.hjan.actone.script.ai.model.DialogueDraft;
-import com.hjan.actone.script.ai.model.PipelineContext;
-import com.hjan.actone.script.ai.model.ScenePlan;
-import com.hjan.actone.script.ai.model.SourceEvidence;
-import com.hjan.actone.script.ai.model.SourceTrace;
+import com.hjan.actone.script.ai.model.*;
 import com.hjan.actone.script.model.NovelChapter;
+import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class DeterministicSourceTraceStage implements SourceTraceStage {
 
     @Override
     public SourceTrace trace(PipelineContext context, List<NovelChapter> chapters) {
         Objects.requireNonNull(context, "PipelineContext 不能为空");
+        long startedNanos = System.nanoTime();
+        log.info("开始源文追溯 taskId={} sceneCount={}", context.taskId(),
+                context.scenePlan() != null ? context.scenePlan().scenes().size() : 0);
         if (context.scenePlan() == null || context.scenePlan().scenes().isEmpty()) {
             throw new IllegalArgumentException("scenePlan 不能为空");
         }
@@ -79,7 +74,12 @@ public class DeterministicSourceTraceStage implements SourceTraceStage {
                     evidence.toList()
             ));
         }
-        return new SourceTrace(traces);
+        SourceTrace result = new SourceTrace(traces);
+        log.info("完成源文追溯 taskId={} durationMs={} evidenceCount={}",
+                context.taskId(),
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos),
+                traces.stream().mapToInt(t -> t.evidence().size()).sum());
+        return result;
     }
 
     private Map<String, NovelChapter> chaptersById(List<NovelChapter> chapters) {

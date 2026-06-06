@@ -12,15 +12,14 @@ import com.hjan.actone.script.service.NovelChapterParser;
 import com.hjan.actone.script.service.ScriptYamlDraftService;
 import com.hjan.actone.script.service.ScriptYamlValidationResult;
 import com.hjan.actone.script.service.ScriptYamlValidator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 public class ScriptAiPipelineService {
 
-    private static final Logger log = LoggerFactory.getLogger(ScriptAiPipelineService.class);
     private static final String RULE_BASED_SCAFFOLD_MODE = "generation_mode: \"rule_based_scaffold\"";
     private static final String RULE_BASED_FALLBACK_MODE = "generation_mode: \"rule_based_fallback\"";
     private static final String UNKNOWN_MODEL = "n/a";
@@ -640,7 +639,14 @@ public class ScriptAiPipelineService {
                     context.chapterCount()
             );
             try {
-                T result = action.execute();
+                T result;
+                try (ScriptAiLlmCallTrace.Scope ignored = ScriptAiLlmCallTrace.open(
+                        context.taskId(),
+                        stage,
+                        currentRetry
+                )) {
+                    result = action.execute();
+                }
                 observer.onStageResult(context, stage, result);
                 if (observer.isCanceled()) {
                     throw new ScriptAiPipelineCanceledException(stage);

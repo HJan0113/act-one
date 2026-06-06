@@ -13,13 +13,16 @@ import com.hjan.actone.ai.service.LLMService;
 import com.hjan.actone.common.errorcode.BaseErrorCode;
 import com.hjan.actone.common.exception.RemoteException;
 import com.hjan.actone.script.ai.model.PipelineContext;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+@Slf4j
 public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
 
     private static final double YAML_TEMPERATURE = 0.15D;
@@ -79,6 +82,8 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
             throw new IllegalArgumentException("sourceTrace 不能为空");
         }
 
+        long startedNanos = System.nanoTime();
+        log.info("开始YAML生成 taskId={} sceneCount={}", context.taskId(), context.scenePlan().scenes().size());
         RenderedPrompt prompt = promptTemplateService.render(
                 PromptTemplateId.SCRIPT_YAML_GENERATION,
                 Map.of(
@@ -103,7 +108,12 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
                 timeout,
                 ChatResponseFormat.TEXT
         ));
-        return cleanYaml(response);
+        String yaml = cleanYaml(response);
+        log.info("完成YAML生成 taskId={} durationMs={} yamlLength={}",
+                context.taskId(),
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos),
+                yaml.length());
+        return yaml;
     }
 
     private String serialize(Object value, String errorMessage) {
