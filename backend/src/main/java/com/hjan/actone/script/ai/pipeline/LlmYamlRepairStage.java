@@ -24,7 +24,7 @@ public class LlmYamlRepairStage implements YamlRepairStage {
     private static final double REPAIR_TEMPERATURE = 0.0D;
     private static final double REPAIR_TOP_P = 0.6D;
     private static final int REPAIR_MAX_TOKENS = 8192;
-    private static final Duration REPAIR_TIMEOUT = Duration.ofSeconds(120);
+    private static final Duration DEFAULT_REPAIR_TIMEOUT = Duration.ofSeconds(120);
     private static final Pattern LEADING_CODE_FENCE =
             Pattern.compile("^```[\\w.+-]*[\\t ]*\\n?");
     private static final Pattern TRAILING_CODE_FENCE =
@@ -40,10 +40,18 @@ public class LlmYamlRepairStage implements YamlRepairStage {
 
     private final LLMService llmService;
     private final PromptTemplateService promptTemplateService;
+    private final Duration timeout;
 
     public LlmYamlRepairStage(LLMService llmService, PromptTemplateService promptTemplateService) {
+        this(llmService, promptTemplateService, DEFAULT_REPAIR_TIMEOUT);
+    }
+
+    public LlmYamlRepairStage(LLMService llmService,
+                              PromptTemplateService promptTemplateService,
+                              Duration timeout) {
         this.llmService = Objects.requireNonNull(llmService, "LLMService 不能为空");
         this.promptTemplateService = Objects.requireNonNull(promptTemplateService, "PromptTemplateService 不能为空");
+        this.timeout = ScriptAiTimeouts.requirePositive(timeout, DEFAULT_REPAIR_TIMEOUT, "YAML 修复 timeout");
     }
 
     @Override
@@ -75,7 +83,7 @@ public class LlmYamlRepairStage implements YamlRepairStage {
                 REPAIR_TEMPERATURE,
                 REPAIR_TOP_P,
                 REPAIR_MAX_TOKENS,
-                REPAIR_TIMEOUT,
+                timeout,
                 ChatResponseFormat.TEXT
         ));
         return cleanYaml(response);

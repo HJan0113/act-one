@@ -25,7 +25,7 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
     private static final double YAML_TEMPERATURE = 0.15D;
     private static final double YAML_TOP_P = 0.8D;
     private static final int YAML_MAX_TOKENS = 8192;
-    private static final Duration YAML_TIMEOUT = Duration.ofSeconds(120);
+    private static final Duration DEFAULT_YAML_TIMEOUT = Duration.ofSeconds(120);
     private static final Pattern LEADING_CODE_FENCE =
             Pattern.compile("^```[\\w.+-]*[\\t ]*\\n?");
     private static final Pattern TRAILING_CODE_FENCE =
@@ -42,13 +42,22 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
     private final LLMService llmService;
     private final PromptTemplateService promptTemplateService;
     private final ObjectMapper objectMapper;
+    private final Duration timeout;
 
     public LlmScriptYamlGenerationStage(LLMService llmService,
                                         PromptTemplateService promptTemplateService,
                                         ObjectMapper objectMapper) {
+        this(llmService, promptTemplateService, objectMapper, DEFAULT_YAML_TIMEOUT);
+    }
+
+    public LlmScriptYamlGenerationStage(LLMService llmService,
+                                        PromptTemplateService promptTemplateService,
+                                        ObjectMapper objectMapper,
+                                        Duration timeout) {
         this.llmService = Objects.requireNonNull(llmService, "LLMService 不能为空");
         this.promptTemplateService = Objects.requireNonNull(promptTemplateService, "PromptTemplateService 不能为空");
         this.objectMapper = Objects.requireNonNull(objectMapper, "ObjectMapper 不能为空");
+        this.timeout = ScriptAiTimeouts.requirePositive(timeout, DEFAULT_YAML_TIMEOUT, "YAML 生成 timeout");
     }
 
     @Override
@@ -91,7 +100,7 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
                 YAML_TEMPERATURE,
                 YAML_TOP_P,
                 YAML_MAX_TOKENS,
-                YAML_TIMEOUT,
+                timeout,
                 ChatResponseFormat.TEXT
         ));
         return cleanYaml(response);

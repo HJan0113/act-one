@@ -31,18 +31,27 @@ public class LlmScenePlanningStage implements ScenePlanningStage {
     private static final double PLANNING_TEMPERATURE = 0.2D;
     private static final double PLANNING_TOP_P = 0.8D;
     private static final int PLANNING_MAX_TOKENS = 4096;
-    private static final Duration PLANNING_TIMEOUT = Duration.ofSeconds(90);
+    private static final Duration DEFAULT_PLANNING_TIMEOUT = Duration.ofSeconds(90);
 
     private final LLMService llmService;
     private final PromptTemplateService promptTemplateService;
     private final ObjectMapper objectMapper;
+    private final Duration timeout;
 
     public LlmScenePlanningStage(LLMService llmService,
                                  PromptTemplateService promptTemplateService,
                                  ObjectMapper objectMapper) {
+        this(llmService, promptTemplateService, objectMapper, DEFAULT_PLANNING_TIMEOUT);
+    }
+
+    public LlmScenePlanningStage(LLMService llmService,
+                                 PromptTemplateService promptTemplateService,
+                                 ObjectMapper objectMapper,
+                                 Duration timeout) {
         this.llmService = Objects.requireNonNull(llmService, "LLMService 不能为空");
         this.promptTemplateService = Objects.requireNonNull(promptTemplateService, "PromptTemplateService 不能为空");
         this.objectMapper = Objects.requireNonNull(objectMapper, "ObjectMapper 不能为空");
+        this.timeout = ScriptAiTimeouts.requirePositive(timeout, DEFAULT_PLANNING_TIMEOUT, "场景规划 timeout");
     }
 
     @Override
@@ -70,7 +79,7 @@ public class LlmScenePlanningStage implements ScenePlanningStage {
                 PLANNING_TEMPERATURE,
                 PLANNING_TOP_P,
                 PLANNING_MAX_TOKENS,
-                PLANNING_TIMEOUT,
+                timeout,
                 ChatResponseFormat.JSON_OBJECT
         ));
         ScenePlan plan = parsePlan(response);

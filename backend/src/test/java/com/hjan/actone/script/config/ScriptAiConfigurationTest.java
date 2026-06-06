@@ -33,6 +33,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.io.DefaultResourceLoader;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ScriptAiConfigurationTest {
@@ -86,6 +88,23 @@ class ScriptAiConfigurationTest {
                 .withBean(ScriptYamlValidator.class, ScriptYamlValidator::new)
                 .withBean(ScriptYamlDraftService.class, () -> new ScriptYamlDraftService(new NovelChapterParser()))
                 .run(context -> assertThat(context).hasSingleBean(ScriptAiPipelineService.class));
+    }
+
+    @Test
+    void bindsScriptAiCostAndTimeoutProperties() {
+        contextRunner
+                .withPropertyValues(
+                        "script.ai.max-stage-retries=2",
+                        "script.ai.timeouts.chapter-summary=7s",
+                        "script.ai.timeouts.script-yaml-generation=30s"
+                )
+                .run(context -> {
+                    assertThat(context).hasSingleBean(ScriptAiProperties.class);
+                    ScriptAiProperties properties = context.getBean(ScriptAiProperties.class);
+                    assertThat(properties.getMaxStageRetries()).isEqualTo(2);
+                    assertThat(properties.getTimeouts().getChapterSummary()).isEqualTo(Duration.ofSeconds(7));
+                    assertThat(properties.getTimeouts().getScriptYamlGeneration()).isEqualTo(Duration.ofSeconds(30));
+                });
     }
 
     @Test

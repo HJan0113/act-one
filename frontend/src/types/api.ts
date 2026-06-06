@@ -50,6 +50,14 @@ export type ScriptYamlGenerateRequest = {
   title: string;
 };
 
+export type ScriptAiUsageSummary = {
+  callCount: number;
+  completionTokens: number;
+  estimated: boolean;
+  promptTokens: number;
+  totalTokens: number;
+};
+
 export type ScriptYamlData = {
   chapterCount: number;
   fallback?: boolean;
@@ -57,6 +65,7 @@ export type ScriptYamlData = {
   generationMode?: string | null;
   schemaVersion: string;
   title: string;
+  usageSummary?: ScriptAiUsageSummary | null;
   validationError?: string | null;
   validationStatus?: string | null;
   yaml: string;

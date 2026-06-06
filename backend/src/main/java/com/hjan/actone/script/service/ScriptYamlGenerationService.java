@@ -63,7 +63,8 @@ public class ScriptYamlGenerationService {
                 result.fallback(),
                 result.fallbackReason(),
                 validation == null ? null : validation.status(),
-                validation == null ? null : validation.errorMessage()
+                validation == null ? null : validation.errorMessage(),
+                result.usageSummary()
         );
     }
 
@@ -79,7 +80,8 @@ public class ScriptYamlGenerationService {
                 false,
                 null,
                 validation.status(),
-                validation.errorMessage()
+                validation.errorMessage(),
+                null
         );
     }
 }

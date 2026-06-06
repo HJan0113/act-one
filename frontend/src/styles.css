@@ -1298,7 +1298,7 @@ h1 {
 
 .result-summary {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 1px;
     border-top: 1px solid var(--line);
     border-bottom: 1px solid var(--line);

@@ -26,18 +26,27 @@ public class LlmChapterSummaryStage implements ChapterSummaryStage {
     private static final double SUMMARY_TEMPERATURE = 0.2D;
     private static final double SUMMARY_TOP_P = 0.8D;
     private static final int SUMMARY_MAX_TOKENS = 2048;
-    private static final Duration SUMMARY_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration DEFAULT_SUMMARY_TIMEOUT = Duration.ofSeconds(60);
 
     private final LLMService llmService;
     private final PromptTemplateService promptTemplateService;
     private final ObjectMapper objectMapper;
+    private final Duration timeout;
 
     public LlmChapterSummaryStage(LLMService llmService,
                                   PromptTemplateService promptTemplateService,
                                   ObjectMapper objectMapper) {
+        this(llmService, promptTemplateService, objectMapper, DEFAULT_SUMMARY_TIMEOUT);
+    }
+
+    public LlmChapterSummaryStage(LLMService llmService,
+                                  PromptTemplateService promptTemplateService,
+                                  ObjectMapper objectMapper,
+                                  Duration timeout) {
         this.llmService = Objects.requireNonNull(llmService, "LLMService 不能为空");
         this.promptTemplateService = Objects.requireNonNull(promptTemplateService, "PromptTemplateService 不能为空");
         this.objectMapper = Objects.requireNonNull(objectMapper, "ObjectMapper 不能为空");
+        this.timeout = ScriptAiTimeouts.requirePositive(timeout, DEFAULT_SUMMARY_TIMEOUT, "章节摘要 timeout");
     }
 
     @Override
@@ -58,7 +67,7 @@ public class LlmChapterSummaryStage implements ChapterSummaryStage {
                 SUMMARY_TEMPERATURE,
                 SUMMARY_TOP_P,
                 SUMMARY_MAX_TOKENS,
-                SUMMARY_TIMEOUT,
+                timeout,
                 ChatResponseFormat.JSON_OBJECT
         ));
         ChapterSummary summary = parseSummary(response);

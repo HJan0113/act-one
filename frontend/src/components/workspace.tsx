@@ -70,6 +70,11 @@ export type TaskSummary = {
     retryable?: boolean | null;
     status: TaskStatus;
     taskId: string;
+    usageSummary?: {
+        callCount: number;
+        estimated: boolean;
+        totalTokens: number;
+    } | null;
 };
 
 export type ValidationCheck = {
@@ -309,6 +314,14 @@ export function TaskConsole({onCancel, onRetry, summary}: TaskConsoleProps) {
 
 function stageDisplayName(stage: string) {
     return stageLabels[stage] || stage;
+}
+
+function usageSummaryLabel(summary: TaskSummary["usageSummary"]) {
+    if (!summary || summary.callCount <= 0) {
+        return "待统计";
+    }
+    const tokenPrefix = summary.estimated ? "~" : "";
+    return `${summary.callCount} 次 / ${tokenPrefix}${summary.totalTokens} tokens`;
 }
 
 const stageLabels: Record<string, string> = {
@@ -704,6 +717,10 @@ export function ScriptPreviewPanel({
             <div>
                 <span>状态</span>
                 <strong>{taskStatusLabel(taskSummary.status)}</strong>
+            </div>
+            <div>
+                <span>AI 用量</span>
+                <strong>{usageSummaryLabel(taskSummary.usageSummary)}</strong>
             </div>
         </section>
 

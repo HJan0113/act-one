@@ -74,3 +74,15 @@ ai:
         model: qwen3-max
         enabled: true
         priority: 1
+
+script:
+  ai:
+    max-stage-retries: ${ACT_ONE_SCRIPT_AI_MAX_STAGE_RETRIES:1}
+    timeouts:
+      chapter-summary: ${ACT_ONE_SCRIPT_AI_CHAPTER_SUMMARY_TIMEOUT:60s}
+      global-story-extraction: ${ACT_ONE_SCRIPT_AI_GLOBAL_STORY_EXTRACTION_TIMEOUT:90s}
+      scene-planning: ${ACT_ONE_SCRIPT_AI_SCENE_PLANNING_TIMEOUT:90s}
+      cinematic-treatment: ${ACT_ONE_SCRIPT_AI_CINEMATIC_TREATMENT_TIMEOUT:90s}
+      dialogue-generation: ${ACT_ONE_SCRIPT_AI_DIALOGUE_GENERATION_TIMEOUT:90s}
+      script-yaml-generation: ${ACT_ONE_SCRIPT_AI_YAML_GENERATION_TIMEOUT:120s}
+      yaml-repair: ${ACT_ONE_SCRIPT_AI_YAML_REPAIR_TIMEOUT:120s}

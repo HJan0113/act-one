@@ -288,6 +288,37 @@ class ScriptAiPipelineServiceTest {
     }
 
     @Test
+    void generateRetriesStageAndReusesSuccessfulChapterSummaries() {
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline");
+        stages.summaryFailureChapterIndex = 2;
+        stages.summaryFailuresRemaining = 1;
+        ScriptAiPipelineService service = service(stages, new ScriptAiPipelineOptions(1));
+
+        ScriptAiPipelineResult result = service.generate(request());
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.fallback()).isFalse();
+        assertThat(stages.summaryCalls).isEqualTo(4);
+        assertThat(stages.chapterOneCalls).isEqualTo(1);
+        assertThat(stages.chapterTwoCalls).isEqualTo(2);
+    }
+
+    @Test
+    void generateFallsBackAfterConfiguredStageRetriesAreExhausted() {
+        FakeStages stages = new FakeStages();
+        stages.summaryFailure = new IllegalStateException("provider timeout");
+        ScriptAiPipelineService service = service(stages, new ScriptAiPipelineOptions(1));
+
+        ScriptAiPipelineResult result = service.generate(request());
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.fallback()).isTrue();
+        assertThat(result.fallbackReason()).contains("CHAPTER_SUMMARY");
+        assertThat(stages.summaryCalls).isEqualTo(2);
+    }
+
+    @Test
     void generateFallsBackWhenRepairStillInvalid() {
         FakeStages stages = new FakeStages();
         stages.generatedYaml = invalidYaml();
@@ -320,6 +351,10 @@ class ScriptAiPipelineServiceTest {
     }
 
     private ScriptAiPipelineService service(FakeStages stages) {
+        return service(stages, ScriptAiPipelineOptions.defaults());
+    }
+
+    private ScriptAiPipelineService service(FakeStages stages, ScriptAiPipelineOptions options) {
         return new ScriptAiPipelineService(
                 chapterParser,
                 yamlValidator,
@@ -331,7 +366,11 @@ class ScriptAiPipelineServiceTest {
                 stages,
                 stages,
                 stages,
-                stages
+                stages,
+                new GlobalStoryStateMerger(),
+                new PipelineConsistencyChecker(),
+                new ScriptYamlFactConstraintChecker(),
+                options
         );
     }
 
@@ -416,8 +455,12 @@ class ScriptAiPipelineServiceTest {
 
         private final SourceTraceStage sourceTraceStage = new DeterministicSourceTraceStage();
         private int summaryCalls;
+        private int chapterOneCalls;
+        private int chapterTwoCalls;
         private int repairCalls;
         private RuntimeException summaryFailure;
+        private int summaryFailureChapterIndex;
+        private int summaryFailuresRemaining;
         private String generatedYaml;
         private String repairedYaml;
         private boolean rollingGlobalState;
@@ -433,8 +476,18 @@ class ScriptAiPipelineServiceTest {
         @Override
         public ChapterSummary summarize(NovelChapter chapter) {
             summaryCalls++;
+            if (chapter.index() == 1) {
+                chapterOneCalls++;
+            }
+            if (chapter.index() == 2) {
+                chapterTwoCalls++;
+            }
             if (summaryFailure != null) {
                 throw summaryFailure;
+            }
+            if (summaryFailureChapterIndex == chapter.index() && summaryFailuresRemaining > 0) {
+                summaryFailuresRemaining--;
+                throw new IllegalStateException("provider timeout");
             }
             SourceEvidence evidence = new SourceEvidence(
                     chapter.id(),

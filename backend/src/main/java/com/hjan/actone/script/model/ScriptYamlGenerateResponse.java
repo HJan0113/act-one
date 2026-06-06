@@ -1,5 +1,7 @@
 package com.hjan.actone.script.model;
 
+import com.hjan.actone.script.ai.pipeline.ScriptAiUsageSummary;
+
 public record ScriptYamlGenerateResponse(
         String schemaVersion,
         String title,
@@ -9,6 +11,11 @@ public record ScriptYamlGenerateResponse(
         boolean fallback,
         String fallbackReason,
         String validationStatus,
-        String validationError
+        String validationError,
+        ScriptAiUsageSummary usageSummary
 ) {
+
+    public ScriptYamlGenerateResponse {
+        usageSummary = usageSummary == null ? ScriptAiUsageSummary.empty() : usageSummary;
+    }
 }

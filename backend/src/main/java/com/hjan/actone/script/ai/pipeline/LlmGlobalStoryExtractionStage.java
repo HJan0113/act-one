@@ -28,12 +28,13 @@ public class LlmGlobalStoryExtractionStage implements GlobalStoryExtractionStage
     private static final double EXTRACTION_TEMPERATURE = 0.2D;
     private static final double EXTRACTION_TOP_P = 0.8D;
     private static final int EXTRACTION_MAX_TOKENS = 4096;
-    private static final Duration EXTRACTION_TIMEOUT = Duration.ofSeconds(90);
+    private static final Duration DEFAULT_EXTRACTION_TIMEOUT = Duration.ofSeconds(90);
 
     private final LLMService llmService;
     private final PromptTemplateService promptTemplateService;
     private final ObjectMapper objectMapper;
     private final GlobalStoryStateMerger globalStoryStateMerger;
+    private final Duration timeout;
 
     public LlmGlobalStoryExtractionStage(LLMService llmService,
                                          PromptTemplateService promptTemplateService,
@@ -45,10 +46,19 @@ public class LlmGlobalStoryExtractionStage implements GlobalStoryExtractionStage
                                          PromptTemplateService promptTemplateService,
                                          ObjectMapper objectMapper,
                                          GlobalStoryStateMerger globalStoryStateMerger) {
+        this(llmService, promptTemplateService, objectMapper, globalStoryStateMerger, DEFAULT_EXTRACTION_TIMEOUT);
+    }
+
+    public LlmGlobalStoryExtractionStage(LLMService llmService,
+                                         PromptTemplateService promptTemplateService,
+                                         ObjectMapper objectMapper,
+                                         GlobalStoryStateMerger globalStoryStateMerger,
+                                         Duration timeout) {
         this.llmService = Objects.requireNonNull(llmService, "LLMService 不能为空");
         this.promptTemplateService = Objects.requireNonNull(promptTemplateService, "PromptTemplateService 不能为空");
         this.objectMapper = Objects.requireNonNull(objectMapper, "ObjectMapper 不能为空");
         this.globalStoryStateMerger = Objects.requireNonNull(globalStoryStateMerger, "GlobalStoryStateMerger 不能为空");
+        this.timeout = ScriptAiTimeouts.requirePositive(timeout, DEFAULT_EXTRACTION_TIMEOUT, "全局故事抽取 timeout");
     }
 
     @Override
@@ -73,7 +83,7 @@ public class LlmGlobalStoryExtractionStage implements GlobalStoryExtractionStage
                 EXTRACTION_TEMPERATURE,
                 EXTRACTION_TOP_P,
                 EXTRACTION_MAX_TOKENS,
-                EXTRACTION_TIMEOUT,
+                timeout,
                 ChatResponseFormat.JSON_OBJECT
         ));
         GlobalStoryState state = globalStoryStateMerger.normalize(parseState(response));

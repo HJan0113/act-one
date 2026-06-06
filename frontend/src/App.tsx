@@ -420,7 +420,8 @@ function App() {
               resumeStage: payload.resumeStage || current.resumeStage,
               retryable: payload.retryable ?? current.retryable,
               status,
-              taskId: payload.taskId || current.taskId || streamTaskId
+              taskId: payload.taskId || current.taskId || streamTaskId,
+              usageSummary: payload.result?.usageSummary || current.usageSummary
           }));
       };
 
@@ -501,7 +502,8 @@ function App() {
             message: nextYamlMessage,
             progress: data.validationStatus === "valid" ? 100 : 96,
             status: data.validationStatus === "invalid" ? "failed" : "success",
-            taskId: streamTaskId
+            taskId: streamTaskId,
+            usageSummary: data.usageSummary
         });
         setActiveView("result");
     } catch (error) {
