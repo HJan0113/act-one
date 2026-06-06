@@ -1,0 +1,36 @@
+schema_version: "1.0"
+kind: "screenplay_draft"
+metadata:
+  title: "夜雨孤庙"
+  author: "测试作者"
+  logline: "杀手林夜在破庙中改变刺杀目标。"
+source:
+  type: "novel"
+  chapter_count: 3
+  generation_mode: "ai_pipeline"
+characters:
+  - id: "character_001"
+    name: "林夜"
+    role: "主角"
+    description: "江湖暗刃，临阵改换雇主。"
+acts:
+  - id: "act_1"
+    title: "第一幕"
+    chapter_range:
+      start: 1
+      end: 3
+    dramatic_function: "建立刺杀任务并完成立场反转"
+scenes:
+  - id: "scene_001"
+    act_id: "act_1"
+    chapter_index: 1
+    source_chapter_id: "chapter_1"
+    title: "破庙伏杀"
+    location: "荒山破庙"
+    time: "雨夜子时"
+    scene_purpose: "建立林夜的任务与危险氛围"
+    action: |-
+      林夜吹熄残烛，刀锋在黑暗里出鞘半寸。
+    dialogues: []
+    source_excerpt: |-
+      林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。

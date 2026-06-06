@@ -17,6 +17,20 @@ import {
   type ProgressStep,
   type ValidationCheck
 } from "./components/workspace";
+import { isAuthExpiredError } from "./services/apiClient";
+import { fetchCurrentUser, login as loginWithPassword, logout as logoutSession } from "./services/authService";
+import { removeStoredAuth, readStoredAuth, writeStoredAuth } from "./services/authStorage";
+import {
+  createProjectFromText,
+  exportDraftYaml as exportDraftYamlFile,
+  generateYaml as generateScriptYaml,
+  getDraftDetail,
+  listDrafts as listProjectDrafts,
+  listMyProjects,
+  previewChapters as previewNovelChapters,
+  saveDraft as saveScriptDraft
+} from "./services/scriptService";
+import type { AuthSession, ScriptDraftListItem, ScriptProjectListItem } from "./types/api";
 
 const placeholderYaml = `schema_version: "1.0"
 kind: "screenplay_draft"
@@ -37,135 +51,11 @@ acts:
       end: 1
 scenes: []`;
 
-type ApiResult<T> = {
-  code: string;
-  data?: T;
-  message?: string;
-};
-
-type ChapterPreviewData = {
-  chapterCount: number;
-  message: string;
-  valid: boolean;
-};
-
-type ScriptYamlData = {
-  chapterCount: number;
-  schemaVersion: string;
-  title: string;
-  yaml: string;
-};
-
-type ScriptProjectData = {
-  chapterCount: number;
-  projectId: string;
-  title: string;
-};
-
-type ScriptProjectListItem = {
-  createTime?: string;
-  description?: string | null;
-  projectId: string;
-  status: string;
-  title: string;
-  updateTime?: string;
-};
-
-type ScriptDraftSaveData = {
-  draftId: string;
-  projectId: string;
-  schemaVersion: string;
-  title: string;
-  validationError?: string | null;
-  validationStatus: string;
-};
-
-type ScriptDraftListItem = {
-  draftId: string;
-  projectId: string;
-  schemaVersion: string;
-  title: string;
-  validationStatus: string;
-};
-
-type ScriptDraftDetail = ScriptDraftListItem & {
-  validationError?: string | null;
-  yaml: string;
-};
-
-type AuthSession = {
-  avatar: string;
-  role: string;
-  token: string;
-  userId: string;
-  username: string;
-};
-
-type CurrentUserData = {
-  avatar: string;
-  role: string;
-  userId: string;
-  username: string;
-};
-
 const initialChapterMessage = "输入至少 3 个章节后，先解析章节，再进入 AI 生成。";
 const initialYamlMessage = "生成后将在这里展示可编辑 YAML 初稿。";
-const authStorageKey = "act-one-auth";
 const defaultLoginUsername = "admin";
 const defaultLoginPassword = "admin";
 const chapterHeadingPattern = /^第\s*([0-9一二三四五六七八九十百千万两〇零]+)\s*[章节回集部卷幕].*$/gm;
-
-async function readApiData<T>(response: Response, fallbackMessage: string): Promise<T> {
-  if (!response.ok) {
-    throw new Error(`${fallbackMessage}：${response.status}`);
-  }
-  const result = (await response.json()) as ApiResult<T>;
-  if (result.code !== "0" || result.data === undefined || result.data === null) {
-    throw new Error(result.message || `${fallbackMessage}。`);
-  }
-  return result.data;
-}
-
-function readStoredAuth(): AuthSession | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const raw = window.localStorage.getItem(authStorageKey);
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw) as Partial<AuthSession>;
-    if (parsed.token && parsed.userId && parsed.username && parsed.role) {
-      return {
-        avatar: parsed.avatar || "",
-        role: parsed.role,
-        token: parsed.token,
-        userId: parsed.userId,
-        username: parsed.username
-      };
-    }
-  } catch {
-    window.localStorage.removeItem(authStorageKey);
-  }
-  return null;
-}
-
-function writeStoredAuth(session: AuthSession) {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(authStorageKey, JSON.stringify(session));
-  }
-}
-
-function removeStoredAuth() {
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(authStorageKey);
-  }
-}
-
-function isAuthExpiredError(error: unknown) {
-  return error instanceof Error && (error.message.includes("未登录") || error.message.includes("登录已过期"));
-}
 
 function App() {
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => readStoredAuth());
@@ -251,10 +141,7 @@ function App() {
     async function refreshCurrentUser() {
       setAuthChecking(true);
       try {
-        const response = await fetch("/api/user/me", {
-          headers: { Authorization: activeToken }
-        });
-        const data = await readApiData<CurrentUserData>(response, "登录状态校验失败");
+        const data = await fetchCurrentUser(activeToken);
         if (ignored) {
           return;
         }
@@ -297,20 +184,10 @@ function App() {
     setDrafts([]);
   }
 
-  async function requestApi<T>(
-    url: string,
-    init: RequestInit | undefined,
-    fallbackMessage: string,
-    tokenOverride?: string
-  ): Promise<T> {
-    const headers = new Headers(init?.headers);
+  async function requestWithAuth<T>(operation: (token?: string) => Promise<T>, tokenOverride?: string): Promise<T> {
     const token = tokenOverride || authSession?.token;
-    if (token) {
-      headers.set("Authorization", token);
-    }
     try {
-      const response = await fetch(url, { ...init, headers });
-      return await readApiData<T>(response, fallbackMessage);
+      return await operation(token);
     } catch (error) {
       if (isAuthExpiredError(error)) {
         clearAuthSession("登录状态已过期，请重新登录。");
@@ -330,12 +207,7 @@ function App() {
     setLoginLoading(true);
     setAuthError("");
     try {
-      const response = await fetch("/api/auth/login", {
-        body: JSON.stringify({ password, username }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST"
-      });
-      const data = await readApiData<AuthSession>(response, "登录失败");
+      const data = await loginWithPassword({ password, username });
       saveAuthSession(data);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "登录失败。");
@@ -348,10 +220,7 @@ function App() {
     const token = authSession?.token;
     if (token) {
       try {
-        await fetch("/api/auth/logout", {
-          headers: { Authorization: token },
-          method: "POST"
-        });
+        await logoutSession(token);
       } catch {
         // 本地清理优先，远端会话失败不阻塞退出。
       }
@@ -402,11 +271,7 @@ function App() {
     if (!canPreview) return;
     setPreviewLoading(true);
     try {
-      const data = await requestApi<ChapterPreviewData>("/api/novels/chapters/preview", {
-        body: JSON.stringify({ text: novelText }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST"
-      }, "章节解析失败");
+      const data = await requestWithAuth((token) => previewNovelChapters(novelText, token));
       setIsValid(data.valid);
       setChapterCount(data.chapterCount);
       setMessage(data.message);
@@ -424,16 +289,17 @@ function App() {
     setValidationStatus("generating");
     setYamlMessage("正在生成 YAML 初稿...");
     try {
-      const data = await requestApi<ScriptYamlData>("/api/script/drafts/yaml/from-text", {
-        body: JSON.stringify({
-          author,
-          logline,
-          text: novelText,
-          title
-        }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST"
-      }, "YAML 生成失败");
+      const data = await requestWithAuth((token) =>
+        generateScriptYaml(
+          {
+            author,
+            logline,
+            text: novelText,
+            title
+          },
+          token
+        )
+      );
       setYamlDraft(data.yaml);
       setSchemaVersion(data.schemaVersion);
       setGeneratedTitle(data.title);
@@ -466,15 +332,16 @@ function App() {
     if (projectId) {
       return projectId;
     }
-    const data = await requestApi<ScriptProjectData>("/api/script/projects/from-text", {
-      body: JSON.stringify({
-        description: logline,
-        text: novelText,
-        title: generatedTitle || title
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST"
-    }, "项目创建失败");
+    const data = await requestWithAuth((token) =>
+      createProjectFromText(
+        {
+          description: logline,
+          text: novelText,
+          title: generatedTitle || title
+        },
+        token
+      )
+    );
     setProjectId(data.projectId);
     setGeneratedTitle((current) => current || data.title);
     setChapterCount(data.chapterCount);
@@ -492,7 +359,7 @@ function App() {
   async function loadProjects(tokenOverride?: string) {
     setProjectLoading(true);
     try {
-      const data = await requestApi<ScriptProjectListItem[]>("/api/script/projects/my", undefined, "项目列表加载失败", tokenOverride);
+      const data = await requestWithAuth((token) => listMyProjects(token), tokenOverride);
       setProjects(data);
       if (data.length === 0) {
         setProjectId("");
@@ -527,12 +394,7 @@ function App() {
     if (!nextProjectId) return;
     setDraftLoading(true);
     try {
-      const data = await requestApi<ScriptDraftListItem[]>(
-        `/api/script/drafts?projectId=${encodeURIComponent(nextProjectId)}`,
-        undefined,
-        "草稿列表加载失败",
-        tokenOverride
-      );
+      const data = await requestWithAuth((token) => listProjectDrafts(nextProjectId, token), tokenOverride);
       setDrafts(data);
     } catch (error) {
       setYamlMessage(error instanceof Error ? error.message : "草稿列表加载失败。");
@@ -547,16 +409,17 @@ function App() {
     setYamlMessage("正在保存 YAML 草稿...");
     try {
       const activeProjectId = await ensureProject();
-      const data = await requestApi<ScriptDraftSaveData>("/api/script/drafts", {
-        body: JSON.stringify({
-          projectId: activeProjectId,
-          schemaVersion: schemaVersion || "1.0",
-          title: generatedTitle || title || "未命名剧本",
-          yaml: yamlDraft
-        }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST"
-      }, "草稿保存失败");
+      const data = await requestWithAuth((token) =>
+        saveScriptDraft(
+          {
+            projectId: activeProjectId,
+            schemaVersion: schemaVersion || "1.0",
+            title: generatedTitle || title || "未命名剧本",
+            yaml: yamlDraft
+          },
+          token
+        )
+      );
       setDraftId(data.draftId);
       setProjectId(data.projectId);
       setGeneratedTitle(data.title);
@@ -580,11 +443,7 @@ function App() {
     if (!nextDraftId) return;
     setDraftLoading(true);
     try {
-      const data = await requestApi<ScriptDraftDetail>(
-        `/api/script/drafts/${encodeURIComponent(nextDraftId)}`,
-        undefined,
-        "草稿加载失败"
-      );
+      const data = await requestWithAuth((token) => getDraftDetail(nextDraftId, token));
       setYamlDraft(data.yaml);
       setDraftId(data.draftId);
       setProjectId(data.projectId);
@@ -609,19 +468,13 @@ function App() {
     setExportLoading(true);
     setYamlMessage("正在导出 YAML 文件...");
     try {
-      const headers = new Headers();
-      if (authSession?.token) {
-        headers.set("Authorization", authSession.token);
-      }
-      const response = await fetch(`/api/script/drafts/${encodeURIComponent(draftId)}/export.yaml`, { headers });
-      if (!response.ok) {
-        throw new Error(await readResponseError(response, "YAML 导出失败"));
-      }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const exported = await requestWithAuth((token) =>
+        exportDraftYamlFile(draftId, `${generatedTitle || title || "script-draft"}-${draftId}.yaml`, token)
+      );
+      const url = URL.createObjectURL(exported.blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = readDownloadFilename(response, `${generatedTitle || title || "script-draft"}-${draftId}.yaml`);
+      link.download = exported.filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -903,25 +756,6 @@ function createSchemaChecks(yaml: string, validationStatus: string, validationEr
       state: pending ? "pending" : /scenes:\s*\n\s*-\s+id:/i.test(source) ? "pass" : "fail"
     }
   ];
-}
-
-async function readResponseError(response: Response, fallbackMessage: string) {
-  try {
-    const result = (await response.json()) as ApiResult<unknown>;
-    return result.message || `${fallbackMessage}：${response.status}`;
-  } catch {
-    return `${fallbackMessage}：${response.status}`;
-  }
-}
-
-function readDownloadFilename(response: Response, fallback: string) {
-  const disposition = response.headers.get("Content-Disposition") || "";
-  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-  if (encoded?.[1]) {
-    return decodeURIComponent(encoded[1]);
-  }
-  const simple = disposition.match(/filename="?([^";]+)"?/i);
-  return simple?.[1] || fallback;
 }
 
 function createWorkflowSteps({

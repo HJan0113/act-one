@@ -10,7 +10,11 @@
 
 # 输出要求
 1. 只输出一个 JSON 对象，不要输出 Markdown 代码围栏或解释文字。
-2. 必须包含 characters、locations、timeline、relationships、props、foreshadowing、conflicts。
-3. characters 应包含稳定 id、name、aliases、role、description、firstAppearanceChapterId、sourceChapterIds。
-4. 所有事实必须带来源章节 ID；无法确认的内容放入 conflicts，不得静默覆盖。
-5. 同一人物的别名要归并，但证据不足时保留为冲突候选。
+2. 必须匹配 `GlobalStoryState` JSON 结构，包含 characters、locations、timeline、relationships、props、foreshadowing、conflicts。
+3. characters 每项包含 id、name、aliases、role、description、firstAppearanceChapterId、sourceChapterIds。
+4. locations 每项包含 id、name、description、sourceChapterIds。
+5. timeline 每项包含 eventId、order、chapterId、timeExpression、description。
+6. relationships 每项包含 id、sourceCharacterId、targetCharacterId、type、description、sourceChapterIds。
+7. props、foreshadowing、conflicts 均必须保留 sourceChapterIds。
+8. 所有事实必须带来源章节 ID；无法确认的内容放入 conflicts，不得静默覆盖。
+9. 同一人物的别名要归并，但证据不足时保留为冲突候选。
