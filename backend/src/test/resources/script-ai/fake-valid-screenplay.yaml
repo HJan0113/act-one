@@ -34,3 +34,20 @@ scenes:
     dialogues: []
     source_excerpt: |-
       林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。
+  - id: "scene_002"
+    act_id: "act_1"
+    chapter_index: 1
+    source_chapter_id: "chapter_1"
+    title: "刀锋出鞘"
+    location: "荒山破庙"
+    time: "雨夜子时"
+    scene_purpose: "把同一章节拆成第二个可拍场景，推进刺杀即将发生"
+    action: |-
+      刀锋出鞘半寸，寒光切开雨夜，林夜侧脸没有半分波澜。
+    dialogues:
+      - speaker: "林夜"
+        speaker_character_id: "character_001"
+        emotion: "冷静"
+        line: "终于来了。"
+    source_excerpt: |-
+      猎物，终于来了。

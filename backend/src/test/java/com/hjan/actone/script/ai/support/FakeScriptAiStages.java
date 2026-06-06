@@ -122,59 +122,108 @@ public class FakeScriptAiStages implements ChapterSummaryStage,
     @Override
     public ScenePlan plan(PipelineContext context) {
         failIfConfigured(PipelineStage.SCENE_PLANNING);
-        return new ScenePlan(List.of(new ScenePlan.Scene(
-                "scene_001",
-                "act_1",
-                1,
-                "chapter_1",
-                "破庙伏杀",
-                "荒山破庙",
-                "雨夜子时",
-                List.of("character_001"),
-                "建立林夜的任务与危险氛围。",
-                "刺杀任务与真实目标不一致。",
-                List.of(new ScenePlan.Beat(
-                        "林夜吹熄残烛，隐入阴影。",
-                        "他吹熄了身旁仅存的半截残烛，将自己彻底融入深邃的阴影之中。",
-                        List.of("character_001")
-                )),
-                "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。"
-        )));
+        return new ScenePlan(List.of(
+                new ScenePlan.Scene(
+                        "scene_001",
+                        "act_1",
+                        1,
+                        "chapter_1",
+                        "破庙伏杀",
+                        "荒山破庙",
+                        "雨夜子时",
+                        List.of("character_001"),
+                        "建立林夜的任务与危险氛围。",
+                        "刺杀任务与真实目标不一致。",
+                        List.of(new ScenePlan.Beat(
+                                "林夜吹熄残烛，隐入阴影。",
+                                "他吹熄了身旁仅存的半截残烛，将自己彻底融入深邃的阴影之中。",
+                                List.of("character_001")
+                        )),
+                        "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。"
+                ),
+                new ScenePlan.Scene(
+                        "scene_002",
+                        "act_1",
+                        1,
+                        "chapter_1",
+                        "刀锋出鞘",
+                        "荒山破庙",
+                        "雨夜子时",
+                        List.of("character_001"),
+                        "把同一章节拆成第二个可拍场景，推进刺杀即将发生。",
+                        "林夜是否继续执行旧任务。",
+                        List.of(new ScenePlan.Beat(
+                                "刀锋在黑暗中亮起。",
+                                "刀锋出鞘半寸，清冷的寒光映亮了他毫无波澜的侧脸。",
+                                List.of("character_001")
+                        )),
+                        "猎物，终于来了。"
+                )
+        ));
     }
 
     @Override
     public CinematicTreatment visualize(PipelineContext context) {
         failIfConfigured(PipelineStage.PSYCHOLOGICAL_VISUALIZATION);
-        return new CinematicTreatment(List.of(new CinematicTreatment.SceneTreatment(
-                "scene_001",
-                1,
-                "chapter_1",
-                "林夜吹熄残烛，指节扣紧刀柄；哭声传来时，他停住脚步，刀尖慢慢垂下。",
-                List.of(new CinematicTreatment.Transformation(
-                        "他从冷漠执行者转向主动选择。",
-                        "哭声传来，林夜扣紧刀柄的手停在半空，刀尖慢慢垂下。",
-                        "动作与停顿",
-                        "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。",
-                        List.of("character_001")
-                ))
-        )));
+        return new CinematicTreatment(List.of(
+                new CinematicTreatment.SceneTreatment(
+                        "scene_001",
+                        1,
+                        "chapter_1",
+                        "林夜吹熄残烛，指节扣紧刀柄，整个人没入破庙阴影。",
+                        List.of(new CinematicTreatment.Transformation(
+                                "他从冷漠执行者转向主动选择。",
+                                "林夜扣紧刀柄的手停在半空，刀尖慢慢垂下。",
+                                "动作与停顿",
+                                "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。",
+                                List.of("character_001")
+                        ))
+                ),
+                new CinematicTreatment.SceneTreatment(
+                        "scene_002",
+                        1,
+                        "chapter_1",
+                        "刀锋出鞘半寸，寒光切开雨夜，林夜侧脸没有半分波澜。",
+                        List.of(new CinematicTreatment.Transformation(
+                                "他把任务当成交易。",
+                                "林夜看着刀锋映出的冷光，拇指稳稳压住刀镡。",
+                                "道具与表情",
+                                "刀锋出鞘半寸，清冷的寒光映亮了他毫无波澜的侧脸。",
+                                List.of("character_001")
+                        ))
+                )
+        ));
     }
 
     @Override
     public DialogueDraft draft(PipelineContext context) {
         failIfConfigured(PipelineStage.DIALOGUE_GENERATION);
-        return new DialogueDraft(List.of(new DialogueDraft.SceneDialogues(
-                "scene_001",
-                1,
-                "chapter_1",
-                List.of(new DialogueDraft.DialogueLine(
-                        "林夜",
-                        "character_001",
-                        "别出声。跟紧我。",
-                        "压低声音",
-                        "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。"
-                ))
-        )));
+        return new DialogueDraft(List.of(
+                new DialogueDraft.SceneDialogues(
+                        "scene_001",
+                        1,
+                        "chapter_1",
+                        List.of(new DialogueDraft.DialogueLine(
+                                "林夜",
+                                "character_001",
+                                "别出声。跟紧我。",
+                                "压低声音",
+                                "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。"
+                        ))
+                ),
+                new DialogueDraft.SceneDialogues(
+                        "scene_002",
+                        1,
+                        "chapter_1",
+                        List.of(new DialogueDraft.DialogueLine(
+                                "林夜",
+                                "character_001",
+                                "终于来了。",
+                                "冷静",
+                                "猎物，终于来了。"
+                        ))
+                )
+        ));
     }
 
     @Override
