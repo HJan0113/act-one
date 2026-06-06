@@ -13,6 +13,8 @@ import java.util.regex.Pattern;
 public class NovelChapterParser {
 
     public static final int MIN_CHAPTER_COUNT = 3;
+    public static final int DEFAULT_MAX_CHAPTER_CHARS = 6_000;
+    public static final int DEFAULT_TARGET_CHUNK_CHARS = 4_500;
     private static final Pattern CHAPTER_HEADING = Pattern.compile(
             "(?m)^\\s*(第\\s*[一二三四五六七八九十百千万零〇两0-9]+\\s*[章节回幕卷].*)$"
     );
@@ -22,6 +24,22 @@ public class NovelChapterParser {
     private static final Pattern DECORATIVE_PAGE_NUMBER = Pattern.compile("^[-_=—]{1,}\\s*\\d{1,4}\\s*[-_=—]{1,}$");
     private static final Pattern DECORATIVE_SEPARATOR = Pattern.compile("^[-_=—]{3,}$");
     private static final Pattern WEB_SOURCE_LINE = Pattern.compile("(?i).*(https?://|www\\.|\\.com|\\.net|\\.org).*");
+    private static final Pattern SENTENCE = Pattern.compile("[^。！？!?；;]+[。！？!?；;]?");
+    private static final Pattern PREFERRED_BOUNDARY = Pattern.compile(
+            "^(翌日|次日|第二天|当夜|夜里|清晨|黎明|黄昏|傍晚|深夜|子时|与此同时|此时|这时|随后|片刻后|不久后|来到|回到|走进|门外|屋内|院中|街上|山下|林中|雨夜).*"
+    );
+
+    private final int maxChapterChars;
+    private final int targetChunkChars;
+
+    public NovelChapterParser() {
+        this(DEFAULT_MAX_CHAPTER_CHARS, DEFAULT_TARGET_CHUNK_CHARS);
+    }
+
+    NovelChapterParser(int maxChapterChars, int targetChunkChars) {
+        this.maxChapterChars = Math.max(1, maxChapterChars);
+        this.targetChunkChars = Math.max(1, targetChunkChars);
+    }
 
     public NovelPreviewResponse preview(String rawText) {
         String text = cleanup(rawText);
@@ -60,7 +78,7 @@ public class NovelChapterParser {
             headings.add(new Heading(matcher.start(), matcher.end(), title));
         }
         if (headings.isEmpty()) {
-            return List.of(new NovelChapter("chapter_1", 1, "未分章正文", text, text.length()));
+            return splitLongChapters(List.of(new NovelChapter("chapter_1", 1, "未分章正文", text, text.length())));
         }
 
         List<NovelChapter> chapters = new ArrayList<>();
@@ -81,7 +99,7 @@ public class NovelChapterParser {
                     content.length()
             ));
         }
-        return chapters;
+        return splitLongChapters(chapters);
     }
 
     public String cleanup(String text) {
@@ -121,6 +139,99 @@ public class NovelChapterParser {
     private boolean looksLikeNarrativeSentence(String title) {
         return title.endsWith("。") || title.endsWith("！") || title.endsWith("？")
                 || title.endsWith(".") || title.endsWith("!") || title.endsWith("?");
+    }
+
+    private List<NovelChapter> splitLongChapters(List<NovelChapter> chapters) {
+        List<NovelChapter> result = new ArrayList<>();
+        for (NovelChapter chapter : chapters) {
+            List<String> chunks = splitContent(chapter.content());
+            for (int i = 0; i < chunks.size(); i++) {
+                int chapterIndex = result.size() + 1;
+                boolean chunked = chunks.size() > 1;
+                String id = chunked
+                        ? "chapter_%d_chunk_%d".formatted(chapter.index(), i + 1)
+                        : "chapter_" + chapterIndex;
+                String title = chunked
+                        ? chapter.title() + "（片段 " + (i + 1) + "）"
+                        : chapter.title();
+                String content = chunks.get(i).trim();
+                if (!content.isBlank()) {
+                    result.add(new NovelChapter(id, chapterIndex, title, content, content.length()));
+                }
+            }
+        }
+        return result;
+    }
+
+    private List<String> splitContent(String content) {
+        if (content == null || content.isBlank()) {
+            return List.of();
+        }
+        String normalized = content.trim();
+        if (normalized.length() <= maxChapterChars) {
+            return List.of(normalized);
+        }
+
+        List<TextSegment> segments = segments(normalized);
+        List<String> chunks = new ArrayList<>();
+        List<String> currentSegments = new ArrayList<>();
+        int currentLength = 0;
+        int preferredMinimum = Math.max(1, targetChunkChars * 2 / 3);
+        for (TextSegment segment : segments) {
+            if (segment.text().isBlank()) {
+                continue;
+            }
+            int separatorLength = currentSegments.isEmpty() ? 0 : 2;
+            boolean exceedsBudget = !currentSegments.isEmpty()
+                    && currentLength + separatorLength + segment.text().length() > targetChunkChars;
+            boolean naturalBoundary = !currentSegments.isEmpty()
+                    && currentLength >= preferredMinimum
+                    && segment.preferredBreakBefore();
+            if (exceedsBudget || naturalBoundary) {
+                chunks.add(String.join("\n\n", currentSegments).trim());
+                currentSegments.clear();
+                currentLength = 0;
+                separatorLength = 0;
+            }
+            currentSegments.add(segment.text());
+            currentLength += separatorLength + segment.text().length();
+        }
+        if (!currentSegments.isEmpty()) {
+            chunks.add(String.join("\n\n", currentSegments).trim());
+        }
+        return chunks.isEmpty() ? List.of(normalized) : chunks;
+    }
+
+    private List<TextSegment> segments(String content) {
+        String[] paragraphs = content.split("\\n\\s*\\n");
+        List<TextSegment> result = new ArrayList<>();
+        for (String paragraph : paragraphs) {
+            String text = paragraph.trim();
+            if (text.isBlank()) {
+                continue;
+            }
+            if (text.length() <= targetChunkChars) {
+                result.add(new TextSegment(text, isPreferredBoundary(text)));
+                continue;
+            }
+            Matcher matcher = SENTENCE.matcher(text);
+            boolean matched = false;
+            while (matcher.find()) {
+                String sentence = matcher.group().trim();
+                if (!sentence.isBlank()) {
+                    result.add(new TextSegment(sentence, isPreferredBoundary(sentence)));
+                    matched = true;
+                }
+            }
+            if (!matched) {
+                result.add(new TextSegment(text, isPreferredBoundary(text)));
+            }
+        }
+        return result;
+    }
+
+    private boolean isPreferredBoundary(String text) {
+        return text != null && PREFERRED_BOUNDARY.matcher(text.strip()).matches();
     }
 
     private boolean isBoilerplateLine(String line) {
@@ -192,5 +303,8 @@ public class NovelChapterParser {
     }
 
     private record Heading(int start, int end, String title) {
+    }
+
+    private record TextSegment(String text, boolean preferredBreakBefore) {
     }
 }
