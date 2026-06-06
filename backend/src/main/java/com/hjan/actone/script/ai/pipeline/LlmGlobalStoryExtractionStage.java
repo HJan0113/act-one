@@ -33,13 +33,22 @@ public class LlmGlobalStoryExtractionStage implements GlobalStoryExtractionStage
     private final LLMService llmService;
     private final PromptTemplateService promptTemplateService;
     private final ObjectMapper objectMapper;
+    private final GlobalStoryStateMerger globalStoryStateMerger;
 
     public LlmGlobalStoryExtractionStage(LLMService llmService,
                                          PromptTemplateService promptTemplateService,
                                          ObjectMapper objectMapper) {
+        this(llmService, promptTemplateService, objectMapper, new GlobalStoryStateMerger());
+    }
+
+    public LlmGlobalStoryExtractionStage(LLMService llmService,
+                                         PromptTemplateService promptTemplateService,
+                                         ObjectMapper objectMapper,
+                                         GlobalStoryStateMerger globalStoryStateMerger) {
         this.llmService = Objects.requireNonNull(llmService, "LLMService 不能为空");
         this.promptTemplateService = Objects.requireNonNull(promptTemplateService, "PromptTemplateService 不能为空");
         this.objectMapper = Objects.requireNonNull(objectMapper, "ObjectMapper 不能为空");
+        this.globalStoryStateMerger = Objects.requireNonNull(globalStoryStateMerger, "GlobalStoryStateMerger 不能为空");
     }
 
     @Override
@@ -61,7 +70,7 @@ public class LlmGlobalStoryExtractionStage implements GlobalStoryExtractionStage
                 EXTRACTION_TIMEOUT,
                 ChatResponseFormat.JSON_OBJECT
         ));
-        GlobalStoryState state = parseState(response);
+        GlobalStoryState state = globalStoryStateMerger.normalize(parseState(response));
         validateState(context.chapterSummaries(), state);
         return state;
     }

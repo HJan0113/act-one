@@ -8,6 +8,7 @@ import com.hjan.actone.ai.service.LLMService;
 import com.hjan.actone.infra.ai.prompt.ClasspathPromptTemplateService;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
+import com.hjan.actone.script.ai.pipeline.GlobalStoryStateMerger;
 import com.hjan.actone.script.ai.pipeline.LlmChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,7 @@ class ScriptAiConfigurationTest {
         contextRunner
                 .withBean(LLMService.class, StubLlmService::new)
                 .run(context -> {
+                    assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
                     assertThat(context).hasSingleBean(ChapterSummaryStage.class);
                     assertThat(context).hasSingleBean(GlobalStoryExtractionStage.class);
                     assertThat(context.getBean(ChapterSummaryStage.class))
@@ -40,6 +42,7 @@ class ScriptAiConfigurationTest {
     @Test
     void doesNotRegisterChapterSummaryStageWithoutLlmService() {
         contextRunner.run(context -> {
+            assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
             assertThat(context).doesNotHaveBean(ChapterSummaryStage.class);
             assertThat(context).doesNotHaveBean(GlobalStoryExtractionStage.class);
         });
