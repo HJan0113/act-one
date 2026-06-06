@@ -7,7 +7,9 @@ import com.hjan.actone.ai.prompt.PromptTemplateService;
 import com.hjan.actone.ai.service.LLMService;
 import com.hjan.actone.infra.ai.prompt.ClasspathPromptTemplateService;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
+import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmChapterSummaryStage;
+import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -27,14 +29,20 @@ class ScriptAiConfigurationTest {
                 .withBean(LLMService.class, StubLlmService::new)
                 .run(context -> {
                     assertThat(context).hasSingleBean(ChapterSummaryStage.class);
+                    assertThat(context).hasSingleBean(GlobalStoryExtractionStage.class);
                     assertThat(context.getBean(ChapterSummaryStage.class))
                             .isInstanceOf(LlmChapterSummaryStage.class);
+                    assertThat(context.getBean(GlobalStoryExtractionStage.class))
+                            .isInstanceOf(LlmGlobalStoryExtractionStage.class);
                 });
     }
 
     @Test
     void doesNotRegisterChapterSummaryStageWithoutLlmService() {
-        contextRunner.run(context -> assertThat(context).doesNotHaveBean(ChapterSummaryStage.class));
+        contextRunner.run(context -> {
+            assertThat(context).doesNotHaveBean(ChapterSummaryStage.class);
+            assertThat(context).doesNotHaveBean(GlobalStoryExtractionStage.class);
+        });
     }
 
     private static final class StubLlmService implements LLMService {
