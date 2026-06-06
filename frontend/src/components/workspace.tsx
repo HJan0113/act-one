@@ -803,6 +803,31 @@ export function SourceTraceWorkbench({
                   生成 patch
                 </ActionButton>
               </section>
+
+              <section className="visualization-candidates" aria-label="心理描写局部影视化候选">
+                <div className="visualization-candidates__heading">
+                  <span>心理影视化</span>
+                  <strong>{buildPsychologicalCandidates(selectedScene).length} 个候选</strong>
+                </div>
+                <div className="visualization-candidates__list">
+                  {buildPsychologicalCandidates(selectedScene).map((candidate) => (
+                    <article className="visualization-candidate" key={candidate.type}>
+                      <header>
+                        <span>{candidate.type}</span>
+                        <strong>{candidate.title}</strong>
+                      </header>
+                      <div>
+                        <small>Before</small>
+                        <p>{candidate.before}</p>
+                      </div>
+                      <div>
+                        <small>After</small>
+                        <p>{candidate.after}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
             </article>
           ) : (
             <EmptyState
@@ -851,6 +876,50 @@ function renderHighlightedSource(content: string, excerpt: string): ReactNode {
       {after}
     </p>
   );
+}
+
+type PsychologicalCandidate = {
+  after: string;
+  before: string;
+  title: string;
+  type: string;
+};
+
+function buildPsychologicalCandidates(scene: ScriptTraceScene): PsychologicalCandidate[] {
+  const before = compactCandidateText(scene.action || scene.sourceExcerpt || scene.scenePurpose || scene.title);
+  const evidence = compactCandidateText(scene.sourceExcerpt || scene.action || scene.title);
+  const location = scene.location && scene.location !== "待补充" ? scene.location : "现场";
+  return [
+    {
+      after: `${location}里，人物停住动作，视线落在一个具体细节上，再用一次短促的动作打断沉默。`,
+      before,
+      title: "把内心犹豫改成可拍动作",
+      type: "动作"
+    },
+    {
+      after: `人物没有解释情绪，只让呼吸、眼神和手部细节变化承接“${evidence}”。`,
+      before,
+      title: "用表情和身体反应替代心理旁白",
+      type: "表情"
+    },
+    {
+      after: `加入一个可见道具承载压力：人物触碰、握紧或避开它，让选择通过物件关系被看见。`,
+      before,
+      title: "用道具承接心理压力",
+      type: "道具"
+    },
+    {
+      after: `删除解释性句子，保留环境声和停顿，让对方的下一句对白推动人物做出选择。`,
+      before,
+      title: "用沉默和节奏制造转折",
+      type: "沉默"
+    }
+  ];
+}
+
+function compactCandidateText(value: string) {
+  const compacted = value.replace(/\s+/g, " ").trim();
+  return compacted.length > 120 ? `${compacted.slice(0, 120)}...` : compacted || "当前场景暂无可对比文本。";
 }
 
 type CharacterWorkbenchProps = {
