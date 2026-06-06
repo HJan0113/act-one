@@ -1,6 +1,7 @@
 package com.hjan.actone.script.ai.pipeline;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hjan.actone.ai.model.ChatMessage;
 import com.hjan.actone.ai.model.ChatRequest;
@@ -12,6 +13,7 @@ import com.hjan.actone.ai.prompt.RenderedPrompt;
 import com.hjan.actone.ai.service.LLMService;
 import com.hjan.actone.common.errorcode.BaseErrorCode;
 import com.hjan.actone.common.exception.RemoteException;
+import com.hjan.actone.common.log.AiExceptionDiagnostics;
 import com.hjan.actone.script.ai.model.ChapterSummary;
 import com.hjan.actone.script.ai.model.SourceEvidence;
 import com.hjan.actone.script.model.NovelChapter;
@@ -28,7 +30,7 @@ public class LlmChapterSummaryStage implements ChapterSummaryStage {
 
     private static final double SUMMARY_TEMPERATURE = 0.2D;
     private static final double SUMMARY_TOP_P = 0.8D;
-    private static final int SUMMARY_MAX_TOKENS = 2048;
+    private static final int SUMMARY_MAX_TOKENS = 4096;
     private static final Duration DEFAULT_SUMMARY_TIMEOUT = Duration.ofSeconds(60);
 
     private final LLMService llmService;
@@ -75,29 +77,50 @@ public class LlmChapterSummaryStage implements ChapterSummaryStage {
                 timeout,
                 ChatResponseFormat.JSON_OBJECT
         ));
-        ChapterSummary summary = parseSummary(response);
+        ChapterSummary summary = parseSummary(chapter, response);
         validateChapterReference(chapter, summary);
         log.info("完成章节摘要 chapterId={} durationMs={}", chapter.id(),
                 TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos));
         return summary;
     }
 
-    private ChapterSummary parseSummary(ChatResponse response) {
+    private ChapterSummary parseSummary(NovelChapter chapter, ChatResponse response) {
         if (response == null || !hasText(response.content())) {
+            log.warn("event=actone_ai_chapter_summary_empty_response chapterId={} chapterIndex={} responsePresent={}",
+                    chapter.id(), chapter.index(), response != null);
             throw new RemoteException("AI 章节摘要返回为空", BaseErrorCode.REMOTE_ERROR);
+        }
+        if ("LENGTH".equalsIgnoreCase(response.finishReason())) {
+            log.warn("event=actone_ai_chapter_summary_truncated chapterId={} chapterIndex={} responseLength={}",
+                    chapter.id(), chapter.index(), response.content().length());
+            throw new RemoteException("AI 章节摘要输出被截断", BaseErrorCode.REMOTE_ERROR);
         }
         try {
             return objectMapper.readValue(response.content(), ChapterSummary.class);
         } catch (JsonProcessingException | IllegalArgumentException ex) {
-            throw new RemoteException("AI 章节摘要结构非法", BaseErrorCode.REMOTE_ERROR);
+            log.warn(
+                    "event=actone_ai_chapter_summary_parse_failure chapterId={} chapterIndex={} responseLength={} errorType={} jsonPath={} safeReason={}",
+                    chapter.id(),
+                    chapter.index(),
+                    response.content().length(),
+                    ex.getClass().getSimpleName(),
+                    jsonPath(ex),
+                    safeValidationReason(ex)
+            );
+            throw new RemoteException("AI 章节摘要结构非法", ex, BaseErrorCode.REMOTE_ERROR);
         }
     }
 
     private void validateChapterReference(NovelChapter chapter, ChapterSummary summary) {
         if (!chapter.id().equals(summary.chapterId()) || chapter.index() != summary.chapterIndex()) {
+            log.warn(
+                    "event=actone_ai_chapter_summary_validation_failure reason=chapter_reference_mismatch expectedChapterId={} expectedChapterIndex={} actualChapterId={} actualChapterIndex={}",
+                    chapter.id(), chapter.index(), summary.chapterId(), summary.chapterIndex());
             throw new RemoteException("AI 章节摘要章节引用不一致", BaseErrorCode.REMOTE_ERROR);
         }
         if (summary.keyEvents().isEmpty()) {
+            log.warn("event=actone_ai_chapter_summary_validation_failure reason=key_events_empty chapterId={} chapterIndex={}",
+                    chapter.id(), chapter.index());
             throw new RemoteException("AI 章节摘要缺少关键事件", BaseErrorCode.REMOTE_ERROR);
         }
         summary.sourceEvidence().forEach(evidence -> validateEvidence(chapter, evidence));
@@ -107,8 +130,39 @@ public class LlmChapterSummaryStage implements ChapterSummaryStage {
 
     private void validateEvidence(NovelChapter chapter, SourceEvidence evidence) {
         if (!chapter.id().equals(evidence.sourceChapterId()) || chapter.index() != evidence.chapterIndex()) {
+            log.warn(
+                    "event=actone_ai_chapter_summary_validation_failure reason=source_evidence_mismatch expectedChapterId={} expectedChapterIndex={} actualChapterId={} actualChapterIndex={}",
+                    chapter.id(), chapter.index(), evidence.sourceChapterId(), evidence.chapterIndex());
             throw new RemoteException("AI 章节摘要来源章节不一致", BaseErrorCode.REMOTE_ERROR);
         }
+    }
+
+    private String jsonPath(Exception ex) {
+        if (ex instanceof JsonMappingException mappingException) {
+            List<String> path = mappingException.getPath().stream()
+                    .map(reference -> {
+                        if (hasText(reference.getFieldName())) {
+                            return reference.getFieldName();
+                        }
+                        return reference.getIndex() >= 0 ? "[" + reference.getIndex() + "]" : null;
+                    })
+                    .filter(Objects::nonNull)
+                    .toList();
+            if (!path.isEmpty()) {
+                return String.join(".", path).replace(".[", "[");
+            }
+        }
+        return null;
+    }
+
+    private String safeValidationReason(Exception ex) {
+        if (ex instanceof IllegalArgumentException) {
+            return AiExceptionDiagnostics.sanitize(ex.getMessage());
+        }
+        if (ex.getCause() instanceof IllegalArgumentException cause) {
+            return AiExceptionDiagnostics.sanitize(cause.getMessage());
+        }
+        return null;
     }
 
     private String requireText(String value, String field) {

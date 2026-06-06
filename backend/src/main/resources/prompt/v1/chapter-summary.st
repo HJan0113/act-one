@@ -15,15 +15,42 @@
 
 # 输出要求
 1. 只输出一个 JSON 对象，不要输出 Markdown 代码围栏或解释文字。
-2. 必须匹配 `ChapterSummary` JSON 结构：
-   - chapterId: 字符串
-   - chapterIndex: 数字
-   - title: 字符串
-   - summary: 字符串
-   - keyEvents: 数组，每项包含 eventId、description、evidence
-   - characters、locations、timeExpressions、conflicts: 字符串数组
-   - innerStates: 数组，每项包含 character、description、evidence
-   - sourceEvidence: 非空数组，每项包含 sourceChapterId、chapterIndex、excerpt
-3. keyEvents 按发生顺序列出，不新增原文没有的人物、事件或关系。
-4. sourceEvidence 中每项保留能支持关键事件的短原文摘录。
-5. innerStates 只识别心理、情绪和不可直接拍摄的叙述，暂不进行影视化改写。
+2. 必须严格匹配以下 JSON 结构：
+
+{
+  "chapterId": "<{{chapter_id}}>",
+  "chapterIndex": {{chapter_index}},
+  "title": "<章节标题>",
+  "summary": "<章节摘要>",
+  "keyEvents": [
+    {
+      "eventId": "<事件标识>",
+      "description": "<事件描述>",
+      "evidence": [
+        {"sourceChapterId": "<{{chapter_id}}>", "chapterIndex": {{chapter_index}}, "excerpt": "<原文摘录>"}
+      ]
+    }
+  ],
+  "characters": ["<角色名>"],
+  "locations": ["<地点>"],
+  "timeExpressions": ["<时间表达>"],
+  "conflicts": ["<冲突>"],
+  "innerStates": [
+    {
+      "character": "<角色名>",
+      "description": "<心理/情绪描述>",
+      "evidence": {"sourceChapterId": "<{{chapter_id}}>", "chapterIndex": {{chapter_index}}, "excerpt": "<原文摘录>"}
+    }
+  ],
+  "sourceEvidence": [
+    {"sourceChapterId": "<{{chapter_id}}>", "chapterIndex": {{chapter_index}}, "excerpt": "<原文摘录>"}
+  ]
+}
+
+3. keyEvents 按发生顺序列出，保留 3-6 个关键事件，不新增原文没有的人物、事件或关系。
+4. keyEvents[].evidence 是数组，即使只有一条原文摘录也要写成 [{...}]。
+5. innerStates[].evidence 是单个对象 {...}，不是数组。
+6. sourceEvidence 保留 3-5 项即可；每个 keyEvent 的 evidence 只保留 1 条最能支持事件的摘录。
+7. 所有 excerpt 必须是短摘录，控制在 80 个中文字符以内，不要复制整段原文，不要换行。
+8. summary 控制在 120 个中文字符以内；description 控制在 60 个中文字符以内。
+9. innerStates 只识别心理、情绪和不可直接拍摄的叙述，暂不进行影视化改写。
