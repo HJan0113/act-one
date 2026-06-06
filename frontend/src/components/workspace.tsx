@@ -28,6 +28,7 @@ import {
 import {ActionButton} from "./ActionButton";
 import {EmptyState} from "./EmptyState";
 import {StatusBadge, type StatusTone} from "./StatusBadge";
+import type {ScriptRhythmAnalysisData, ScriptSceneRhythmMetric} from "../types/api";
 import type {ScriptCharacterCard, ScriptRelationship, ScriptTraceScene} from "../utils/scriptYamlTrace";
 
 export type ChapterOutline = {
@@ -1699,6 +1700,143 @@ function styleVariantIcon(value: ScriptStyleVariant) {
     return <BookOpen size={17} />;
   }
   return <Sparkles size={17} />;
+}
+
+type RhythmAnalysisPanelProps = {
+  activeDraftId: string;
+  analysis: ScriptRhythmAnalysisData | null;
+  loading: boolean;
+  onAnalyze: () => void;
+  yamlReady: boolean;
+};
+
+export function RhythmAnalysisPanel({
+  activeDraftId,
+  analysis,
+  loading,
+  onAnalyze,
+  yamlReady
+}: RhythmAnalysisPanelProps) {
+  const canAnalyze = Boolean(activeDraftId) && !loading;
+  return (
+    <section className="studio-panel rhythm-panel" aria-label="剧本节奏分析">
+      <div className="panel-heading">
+        <div>
+          <p className="panel-kicker">Rhythm Metrics</p>
+          <h2>节奏分析</h2>
+        </div>
+        <div className="panel-actions">
+          <StatusBadge label={analysisModeLabel(analysis?.assessmentMode)} tone={analysis?.assessmentMode === "ai_assisted" ? "success" : "info"} />
+          <ActionButton
+            disabled={!canAnalyze}
+            icon={loading ? <RefreshCcw aria-hidden="true" className="spin" size={15} /> : <Activity aria-hidden="true" size={15} />}
+            onClick={onAnalyze}
+            size="sm"
+            variant="secondary"
+          >
+            {loading ? "分析中" : "分析"}
+          </ActionButton>
+        </div>
+      </div>
+
+      {analysis ? (
+        <div className="rhythm-body">
+          <div className="rhythm-overview">
+            <MetricTile label="场景" value={String(analysis.overall.sceneCount)} />
+            <MetricTile label="对白" value={String(analysis.overall.dialogueCount)} />
+            <MetricTile label="冲突" value={`${analysis.overall.averageConflictScore}/5`} />
+            <MetricTile label="转折" value={`${analysis.overall.averageTurningScore}/5`} />
+            <MetricTile label="目的覆盖" value={`${analysis.overall.purposeCoverage}%`} />
+            <MetricTile label="失衡场景" value={String(analysis.overall.imbalanceSceneCount)} />
+          </div>
+
+          <div className="rhythm-ratio" aria-label="整体动作对白比例">
+            <RhythmMeter label="动作" value={analysis.overall.actionRatio} tone="action" />
+            <RhythmMeter label="对白" value={analysis.overall.dialogueRatio} tone="dialogue" />
+          </div>
+
+          <div className="rhythm-scene-list">
+            {analysis.scenes.map((scene) => (
+              <RhythmSceneRow key={scene.sceneId} scene={scene} />
+            ))}
+          </div>
+
+          <div className="rhythm-suggestions">
+            <span>建议</span>
+            {analysis.suggestions.map((suggestion) => (
+              <p key={suggestion}>{suggestion}</p>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <EmptyState
+          description={yamlReady ? "请先保存为草稿，再调用后端指标接口生成动作/对白比例和冲突转折评分。" : "生成或加载 YAML 后可执行节奏分析。"}
+          icon={<Activity size={18} />}
+          size="sm"
+          title={activeDraftId ? "尚未分析" : "等待已保存草稿"}
+        />
+      )}
+    </section>
+  );
+}
+
+function MetricTile({label, value}: {label: string; value: string}) {
+  return (
+    <div className="rhythm-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function RhythmMeter({label, tone, value}: {label: string; tone: "action" | "dialogue"; value: number}) {
+  return (
+    <div className="rhythm-meter" data-tone={tone}>
+      <div className="rhythm-meter__label">
+        <span>{label}</span>
+        <strong>{value}%</strong>
+      </div>
+      <div className="rhythm-meter__track" aria-hidden="true">
+        <span style={{width: `${Math.min(100, Math.max(0, value))}%`}} />
+      </div>
+    </div>
+  );
+}
+
+function RhythmSceneRow({scene}: {scene: ScriptSceneRhythmMetric}) {
+  return (
+    <article className="rhythm-scene-row">
+      <div className="rhythm-scene-row__head">
+        <div>
+          <strong>{scene.title || scene.sceneId}</strong>
+          <span>{scene.sceneId} / {scene.paceLevel}</span>
+        </div>
+        <StatusBadge label={`冲突 ${scene.conflictScore}/5`} tone={scene.conflictScore >= 4 ? "success" : scene.conflictScore <= 2 ? "warning" : "info"} />
+      </div>
+      <p>{scene.summary}</p>
+      <div className="rhythm-mini-bars">
+        <RhythmMeter label="动作" value={scene.actionRatio} tone="action" />
+        <RhythmMeter label="对白" value={scene.dialogueRatio} tone="dialogue" />
+      </div>
+      {scene.warnings.length > 0 ? (
+        <div className="rhythm-warning-list">
+          {scene.warnings.map((warning) => (
+            <span key={warning}>{warning}</span>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function analysisModeLabel(mode?: string) {
+  if (mode === "ai_assisted") {
+    return "AI 评估";
+  }
+  if (mode === "rule_based_fallback") {
+    return "规则评估";
+  }
+  return "未分析";
 }
 
 type ScriptPreviewPanelProps = {

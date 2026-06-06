@@ -9,11 +9,13 @@ import com.hjan.actone.script.model.ScriptDraftSaveResponse;
 import com.hjan.actone.script.model.ScriptConversionTaskResponse;
 import com.hjan.actone.script.model.ScriptDialogueVoiceRewriteRequest;
 import com.hjan.actone.script.model.ScriptDialogueVoiceRewriteResponse;
+import com.hjan.actone.script.model.ScriptRhythmAnalysisResponse;
 import com.hjan.actone.script.model.ScriptSceneRefineRequest;
 import com.hjan.actone.script.model.ScriptSceneRefineResponse;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
 import com.hjan.actone.script.service.ScriptDraftService;
+import com.hjan.actone.script.service.ScriptRhythmAnalysisService;
 import com.hjan.actone.script.service.ScriptSceneRefinementService;
 import com.hjan.actone.script.service.ScriptYamlGenerationService;
 import com.hjan.actone.script.service.ScriptYamlStreamService;
@@ -42,15 +44,18 @@ public class ScriptYamlDraftController {
     private final ScriptYamlStreamService scriptYamlStreamService;
     private final ScriptDraftService scriptDraftService;
     private final ScriptSceneRefinementService scriptSceneRefinementService;
+    private final ScriptRhythmAnalysisService scriptRhythmAnalysisService;
 
     public ScriptYamlDraftController(ScriptYamlGenerationService scriptYamlGenerationService,
                                      ScriptYamlStreamService scriptYamlStreamService,
                                      ScriptDraftService scriptDraftService,
-                                     ScriptSceneRefinementService scriptSceneRefinementService) {
+                                     ScriptSceneRefinementService scriptSceneRefinementService,
+                                     ScriptRhythmAnalysisService scriptRhythmAnalysisService) {
         this.scriptYamlGenerationService = scriptYamlGenerationService;
         this.scriptYamlStreamService = scriptYamlStreamService;
         this.scriptDraftService = scriptDraftService;
         this.scriptSceneRefinementService = scriptSceneRefinementService;
+        this.scriptRhythmAnalysisService = scriptRhythmAnalysisService;
     }
 
     @PostMapping("/yaml/from-text")
@@ -82,6 +87,11 @@ public class ScriptYamlDraftController {
     @GetMapping("/{draftId}")
     public Result<ScriptDraftDetailResponse> detail(@PathVariable String draftId) {
         return Results.success(scriptDraftService.detail(draftId));
+    }
+
+    @GetMapping("/{draftId}/rhythm-analysis")
+    public Result<ScriptRhythmAnalysisResponse> analyzeRhythm(@PathVariable String draftId) {
+        return Results.success(scriptRhythmAnalysisService.analyze(draftId));
     }
 
     @PostMapping("/{draftId}/scenes/{sceneId}/refine")

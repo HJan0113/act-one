@@ -8,6 +8,7 @@ import type {
     ScriptDraftListItem,
     ScriptDraftSaveData,
     ScriptDraftSaveRequest,
+    ScriptRhythmAnalysisData,
     ScriptProjectCreateRequest,
     ScriptProjectData,
     ScriptProjectListItem,
@@ -213,6 +214,16 @@ export function getDraftDetail(draftId: string, token?: string) {
       token
     },
     "草稿加载失败"
+  );
+}
+
+export function analyzeDraftRhythm(draftId: string, token?: string) {
+  return requestApi<ScriptRhythmAnalysisData>(
+    `/api/script/drafts/${encodeURIComponent(draftId)}/rhythm-analysis`,
+    {
+      token
+    },
+    "剧本节奏分析失败"
   );
 }
 

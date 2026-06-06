@@ -25,6 +25,7 @@ import {
     ConversionProgress,
     InputPanel,
     type ProgressStep,
+    RhythmAnalysisPanel,
     ScriptPreviewPanel,
     CharacterWorkbench,
     Sidebar,
@@ -44,6 +45,7 @@ import {isAuthExpiredError} from "./services/apiClient";
 import {fetchCurrentUser, login as loginWithPassword, logout as logoutSession} from "./services/authService";
 import {readStoredAuth, removeStoredAuth, writeStoredAuth} from "./services/authStorage";
 import {
+    analyzeDraftRhythm,
     cancelGenerationTask as cancelScriptGenerationTask,
     createProjectFromText,
     exportDraftYaml as exportDraftYamlFile,
@@ -57,7 +59,7 @@ import {
     streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
 import type {AuthSession, ScriptDraftListItem, ScriptProjectListItem, ScriptYamlStreamPayload} from "./types/api";
-import type {ScriptDialogueVoiceRewriteData, ScriptSceneRefineData} from "./types/api";
+import type {ScriptDialogueVoiceRewriteData, ScriptRhythmAnalysisData, ScriptSceneRefineData} from "./types/api";
 import {parseScriptYamlCharacters, parseScriptYamlRelationships, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
 
 const placeholderYaml = `schema_version: "1.0"
@@ -117,6 +119,8 @@ function App() {
   const [sceneRefinementLoading, setSceneRefinementLoading] = useState(false);
   const [dialogueVoiceLoading, setDialogueVoiceLoading] = useState(false);
   const [styleVariantLoading, setStyleVariantLoading] = useState<ScriptStyleVariant | "">("");
+  const [rhythmLoading, setRhythmLoading] = useState(false);
+  const [rhythmAnalysis, setRhythmAnalysis] = useState<ScriptRhythmAnalysisData | null>(null);
   const [aiChangeSummary, setAiChangeSummary] = useState<AiChangeSummary | null>(null);
   const [yamlDraft, setYamlDraft] = useState("");
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
@@ -322,6 +326,7 @@ function App() {
     setProjectId("");
     setDraftId("");
     setDrafts([]);
+    setRhythmAnalysis(null);
     setActiveChapterIndex(1);
     if (value.trim()) {
       setIsValid(false);
@@ -346,6 +351,7 @@ function App() {
     setYamlDraft(value);
     setDraftId("");
     setAiChangeSummary(null);
+    setRhythmAnalysis(null);
     setValidationStatus(value.trim() ? "edited" : "pending");
     setValidationError("");
     setGenerationMode(extractGenerationMode(value));
@@ -520,6 +526,7 @@ function App() {
         const nextYamlMessage = createGenerationMessage(nextGenerationMode, Boolean(data.fallback), data.fallbackReason || "");
       setYamlDraft(data.yaml);
       setAiChangeSummary(null);
+      setRhythmAnalysis(null);
       setSchemaVersion(data.schemaVersion);
       setGeneratedTitle(data.title);
       setDraftId("");
@@ -666,6 +673,7 @@ function App() {
     setGeneratedTitle(project?.title || "");
     setDraftId("");
     setYamlDraft("");
+    setRhythmAnalysis(null);
     setValidationStatus("pending");
     setValidationError("");
     setGenerationMode("");
@@ -714,6 +722,7 @@ function App() {
         )
       );
       setDraftId(data.draftId);
+      setRhythmAnalysis(null);
       setProjectId(data.projectId);
       setGeneratedTitle(data.title);
       setSchemaVersion(data.schemaVersion);
@@ -784,6 +793,7 @@ function App() {
       );
       setYamlDraft(variantYaml);
       setAiChangeSummary(null);
+      setRhythmAnalysis(null);
       setDraftId(data.draftId);
       setProjectId(data.projectId);
       setGeneratedTitle(data.title);
@@ -831,6 +841,7 @@ function App() {
       const data = await requestWithAuth((token) => getDraftDetail(nextDraftId, token));
       setYamlDraft(data.yaml);
       setAiChangeSummary(null);
+      setRhythmAnalysis(null);
       setDraftId(data.draftId);
       setProjectId(data.projectId);
       setGeneratedTitle(data.title);
@@ -860,6 +871,44 @@ function App() {
     }
   }
 
+  async function analyzeRhythm() {
+    if (!draftId) {
+      setYamlMessage("请先保存或加载一个草稿，再执行节奏分析。");
+      return;
+    }
+    setRhythmLoading(true);
+    setYamlMessage("正在分析剧本节奏...");
+    try {
+      const data = await requestWithAuth((token) => analyzeDraftRhythm(draftId, token));
+      setRhythmAnalysis(data);
+      setYamlMessage(
+        `节奏分析完成：${data.overall.sceneCount} 个场景，动作/对白 ${data.overall.actionRatio}%/${data.overall.dialogueRatio}%。`
+      );
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: "节奏分析完成",
+        errorMessage: "",
+        message: data.suggestions[0] || "节奏指标已生成，可查看场景比例和冲突转折评分。",
+        progress: Math.max(current.progress, 100),
+        status: "success",
+        taskId: data.draftId
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "剧本节奏分析失败。";
+      setYamlMessage(errorMessage);
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: "节奏分析失败",
+        errorMessage,
+        message: "请确认当前草稿已保存且 YAML 可解析。",
+        progress: Math.max(current.progress, 80),
+        status: "failed"
+      }));
+    } finally {
+      setRhythmLoading(false);
+    }
+  }
+
   async function refineScenePatch(sceneId: string, instruction: string) {
     if (!draftId) {
       setYamlMessage("请先保存当前 YAML 草稿，再执行局部精修。");
@@ -880,6 +929,7 @@ function App() {
       );
       setYamlDraft(data.patchedYaml);
       setAiChangeSummary(createScenePatchChangeSummary(data));
+      setRhythmAnalysis(null);
       setDraftId("");
       setValidationStatus(data.validationStatus || "edited");
       setValidationError(data.validationError || "");
@@ -934,6 +984,7 @@ function App() {
       );
       setYamlDraft(data.patchedYaml);
       setAiChangeSummary(createVoicePatchChangeSummary(data));
+      setRhythmAnalysis(null);
       setDraftId("");
       setValidationStatus(data.validationStatus || "edited");
       setValidationError(data.validationError || "");
@@ -1175,6 +1226,13 @@ function App() {
                             creatingStyle={styleVariantLoading}
                             draftCount={drafts.length}
                             onCreateVariant={createStyleVariantDraft}
+                        />
+                        <RhythmAnalysisPanel
+                            activeDraftId={draftId}
+                            analysis={rhythmAnalysis}
+                            loading={rhythmLoading}
+                            onAnalyze={analyzeRhythm}
+                            yamlReady={Boolean(yamlDraft.trim())}
                         />
                         <AiChangeSummaryPanel summary={aiChangeSummary}/>
                     </div>

@@ -169,6 +169,43 @@ export type ScriptDraftDetail = ScriptDraftListItem & {
   yaml: string;
 };
 
+export type ScriptRhythmOverallMetrics = {
+  actionCharCount: number;
+  actionRatio: number;
+  averageConflictScore: number;
+  averageTurningScore: number;
+  dialogueCharCount: number;
+  dialogueCount: number;
+  dialogueRatio: number;
+  imbalanceSceneCount: number;
+  purposeCoverage: number;
+  sceneCount: number;
+};
+
+export type ScriptSceneRhythmMetric = {
+  actionCharCount: number;
+  actionRatio: number;
+  conflictScore: number;
+  dialogueCharCount: number;
+  dialogueCount: number;
+  dialogueRatio: number;
+  paceLevel: string;
+  purposeScore: number;
+  sceneId: string;
+  summary: string;
+  title: string;
+  turningScore: number;
+  warnings: string[];
+};
+
+export type ScriptRhythmAnalysisData = {
+  assessmentMode: string;
+  draftId: string;
+  overall: ScriptRhythmOverallMetrics;
+  scenes: ScriptSceneRhythmMetric[];
+  suggestions: string[];
+};
+
 export type ScriptDialoguePatchData = {
   emotion?: string | null;
   line: string;
