@@ -14,8 +14,10 @@ import com.hjan.actone.script.ai.pipeline.LlmChapterSummaryStage;
 import com.hjan.actone.script.ai.pipeline.LlmDialogueGenerationStage;
 import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
+import com.hjan.actone.script.ai.pipeline.LlmScriptYamlGenerationStage;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
+import com.hjan.actone.script.ai.pipeline.ScriptYamlGenerationStage;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -80,5 +82,14 @@ public class ScriptAiConfiguration {
                                                            PromptTemplateService promptTemplateService,
                                                            ObjectMapper objectMapper) {
         return new LlmDialogueGenerationStage(llmService, promptTemplateService, objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnBean({LLMService.class, PromptTemplateService.class, ObjectMapper.class})
+    @ConditionalOnMissingBean(ScriptYamlGenerationStage.class)
+    public ScriptYamlGenerationStage scriptYamlGenerationStage(LLMService llmService,
+                                                               PromptTemplateService promptTemplateService,
+                                                               ObjectMapper objectMapper) {
+        return new LlmScriptYamlGenerationStage(llmService, promptTemplateService, objectMapper);
     }
 }
