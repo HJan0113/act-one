@@ -118,7 +118,8 @@ public class ScriptAiConfiguration {
             DialogueGenerationStage.class,
             SourceTraceStage.class,
             ScriptYamlGenerationStage.class,
-            YamlRepairStage.class
+            YamlRepairStage.class,
+            GlobalStoryStateMerger.class
     })
     @ConditionalOnMissingBean(ScriptAiPipelineService.class)
     public ScriptAiPipelineService scriptAiPipelineService(NovelChapterParser chapterParser,
@@ -131,7 +132,8 @@ public class ScriptAiConfiguration {
                                                            DialogueGenerationStage dialogueGenerationStage,
                                                            SourceTraceStage sourceTraceStage,
                                                            ScriptYamlGenerationStage scriptYamlGenerationStage,
-                                                           YamlRepairStage yamlRepairStage) {
+                                                           YamlRepairStage yamlRepairStage,
+                                                           GlobalStoryStateMerger globalStoryStateMerger) {
         return new ScriptAiPipelineService(
                 chapterParser,
                 yamlValidator,
@@ -143,7 +145,8 @@ public class ScriptAiConfiguration {
                 dialogueGenerationStage,
                 sourceTraceStage,
                 scriptYamlGenerationStage,
-                yamlRepairStage
+                yamlRepairStage,
+                globalStoryStateMerger
         );
     }
 }

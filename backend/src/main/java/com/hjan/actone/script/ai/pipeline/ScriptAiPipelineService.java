@@ -40,6 +40,7 @@ public class ScriptAiPipelineService {
     private final SourceTraceStage sourceTraceStage;
     private final ScriptYamlGenerationStage scriptYamlGenerationStage;
     private final YamlRepairStage yamlRepairStage;
+    private final GlobalStoryStateMerger globalStoryStateMerger;
 
     public ScriptAiPipelineService(NovelChapterParser chapterParser,
                                    ScriptYamlValidator yamlValidator,
@@ -52,6 +53,34 @@ public class ScriptAiPipelineService {
                                    SourceTraceStage sourceTraceStage,
                                    ScriptYamlGenerationStage scriptYamlGenerationStage,
                                    YamlRepairStage yamlRepairStage) {
+        this(
+                chapterParser,
+                yamlValidator,
+                ruleBasedDraftService,
+                chapterSummaryStage,
+                globalStoryExtractionStage,
+                scenePlanningStage,
+                cinematicTreatmentStage,
+                dialogueGenerationStage,
+                sourceTraceStage,
+                scriptYamlGenerationStage,
+                yamlRepairStage,
+                new GlobalStoryStateMerger()
+        );
+    }
+
+    public ScriptAiPipelineService(NovelChapterParser chapterParser,
+                                   ScriptYamlValidator yamlValidator,
+                                   ScriptYamlDraftService ruleBasedDraftService,
+                                   ChapterSummaryStage chapterSummaryStage,
+                                   GlobalStoryExtractionStage globalStoryExtractionStage,
+                                   ScenePlanningStage scenePlanningStage,
+                                   CinematicTreatmentStage cinematicTreatmentStage,
+                                   DialogueGenerationStage dialogueGenerationStage,
+                                   SourceTraceStage sourceTraceStage,
+                                   ScriptYamlGenerationStage scriptYamlGenerationStage,
+                                   YamlRepairStage yamlRepairStage,
+                                   GlobalStoryStateMerger globalStoryStateMerger) {
         this.chapterParser = Objects.requireNonNull(chapterParser, "NovelChapterParser 不能为空");
         this.yamlValidator = Objects.requireNonNull(yamlValidator, "ScriptYamlValidator 不能为空");
         this.ruleBasedDraftService = Objects.requireNonNull(ruleBasedDraftService, "ScriptYamlDraftService 不能为空");
@@ -75,6 +104,7 @@ public class ScriptAiPipelineService {
                 "ScriptYamlGenerationStage 不能为空"
         );
         this.yamlRepairStage = Objects.requireNonNull(yamlRepairStage, "YamlRepairStage 不能为空");
+        this.globalStoryStateMerger = Objects.requireNonNull(globalStoryStateMerger, "GlobalStoryStateMerger 不能为空");
     }
 
     public ScriptAiPipelineResult generate(ScriptYamlGenerateRequest request) {
@@ -209,7 +239,17 @@ public class ScriptAiPipelineService {
                 PipelineStage.GLOBAL_STORY_EXTRACTION,
                 DEFAULT_RETRY,
                 observer,
-                () -> context.withGlobalStoryState(globalStoryExtractionStage.extract(context))
+                () -> {
+                    GlobalStoryState accumulatedState = context.globalStoryState();
+                    for (ChapterSummary summary : context.chapterSummaries()) {
+                        PipelineContext chunkContext = context
+                                .withChapterSummaries(List.of(summary))
+                                .withGlobalStoryState(accumulatedState);
+                        GlobalStoryState nextState = globalStoryExtractionStage.extract(chunkContext);
+                        accumulatedState = globalStoryStateMerger.merge(accumulatedState, nextState);
+                    }
+                    return context.withGlobalStoryState(accumulatedState);
+                }
         );
     }
 

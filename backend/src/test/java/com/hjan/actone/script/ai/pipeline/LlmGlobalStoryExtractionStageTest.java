@@ -60,9 +60,12 @@ class LlmGlobalStoryExtractionStageTest {
                 .satisfies(message -> {
                     assertThat(message.role()).isEqualTo(ChatRole.USER);
                     assertThat(message.content())
+                            .contains("<existing_global_story_state>")
                             .contains("<chapter_summaries>")
+                            .contains("\"characters\" : [ ]")
                             .contains("\"chapterId\" : \"chapter_1\"")
                             .contains("林夜在破庙中听见孩子哭声")
+                            .doesNotContain("{{existing_global_story_state}}")
                             .doesNotContain("{{chapter_summaries}}");
                 });
     }

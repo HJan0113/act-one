@@ -46,7 +46,10 @@ class ScriptAiPipelineServiceTest {
         assertThat(result.context().currentStage()).isEqualTo(PipelineStage.COMPLETED);
         assertThat(result.context().chapterSummaries()).hasSize(3);
         assertThat(stages.summaryCalls).isEqualTo(3);
-        assertThat(stages.globalContext.chapterSummaries()).hasSize(3);
+        assertThat(stages.globalContexts).hasSize(3);
+        assertThat(stages.globalContexts)
+                .extracting(globalContext -> globalContext.chapterSummaries().get(0).chapterId())
+                .containsExactly("chapter_1", "chapter_2", "chapter_3");
         assertThat(stages.sceneContext.globalStoryState()).isEqualTo(GlobalStoryState.empty());
         assertThat(stages.cinematicContext.scenePlan().scenes()).hasSize(1);
         assertThat(stages.yamlContext.cinematicTreatment().scenes()).hasSize(1);
@@ -55,6 +58,37 @@ class ScriptAiPipelineServiceTest {
         assertThat(stages.yamlContext.sourceTrace().scenes()).hasSize(1);
         assertThat(stages.yamlContext.scenePlan().scenes()).hasSize(1);
         assertThat(stages.repairCalls).isZero();
+    }
+
+    @Test
+    void generateRollsGlobalStoryStateAcrossChapterSummariesAndKeepsConflicts() {
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline");
+        stages.rollingGlobalState = true;
+        ScriptAiPipelineService service = service(stages);
+
+        ScriptAiPipelineResult result = service.generate(request());
+
+        assertThat(result.valid()).isTrue();
+        assertThat(stages.globalContexts).hasSize(3);
+        assertThat(stages.globalContexts.get(0).globalStoryState()).isEqualTo(GlobalStoryState.empty());
+        assertThat(stages.globalContexts.get(1).globalStoryState().characters())
+                .extracting(GlobalStoryState.CharacterProfile::name)
+                .containsExactly("林夏");
+        assertThat(stages.globalContexts.get(2).globalStoryState().conflicts())
+                .extracting(GlobalStoryState.ConflictNote::description)
+                .anySatisfy(description -> assertThat(description).contains("角色冲突"));
+
+        GlobalStoryState finalState = result.context().globalStoryState();
+        assertThat(finalState.characters()).hasSize(2);
+        assertThat(finalState.characters().get(0).name()).isEqualTo("林夏");
+        assertThat(finalState.characters().get(0).aliases()).contains("小夏");
+        assertThat(finalState.conflicts()).singleElement()
+                .satisfies(conflict -> {
+                    assertThat(conflict.description()).contains("调查者 / 保护者");
+                    assertThat(conflict.sourceChapterIds()).containsExactly("chapter_1", "chapter_2");
+                });
+        assertThat(stages.sceneContext.globalStoryState()).isEqualTo(finalState);
     }
 
     @Test
@@ -360,7 +394,9 @@ class ScriptAiPipelineServiceTest {
         private RuntimeException summaryFailure;
         private String generatedYaml;
         private String repairedYaml;
+        private boolean rollingGlobalState;
         private PipelineContext globalContext;
+        private final List<PipelineContext> globalContexts = new ArrayList<>();
         private PipelineContext sceneContext;
         private PipelineContext cinematicContext;
         private PipelineContext dialogueContext;
@@ -401,7 +437,65 @@ class ScriptAiPipelineServiceTest {
         @Override
         public GlobalStoryState extract(PipelineContext context) {
             globalContext = context;
+            globalContexts.add(context);
+            if (rollingGlobalState) {
+                return rollingState(context.chapterSummaries().get(0));
+            }
             return GlobalStoryState.empty();
+        }
+
+        private GlobalStoryState rollingState(ChapterSummary summary) {
+            String chapterId = summary.chapterId();
+            int chapterIndex = summary.chapterIndex();
+            List<GlobalStoryState.CharacterProfile> characters = switch (chapterIndex) {
+                case 1 -> List.of(new GlobalStoryState.CharacterProfile(
+                        "character_001",
+                        "林夏",
+                        List.of(),
+                        "调查者",
+                        "推开旧剧场大门，开始追查匿名信。",
+                        chapterId,
+                        List.of(chapterId)
+                ));
+                case 2 -> List.of(new GlobalStoryState.CharacterProfile(
+                        "character_002",
+                        "小夏",
+                        List.of("林夏"),
+                        "保护者",
+                        "面对旧友拦阻时选择保护对方秘密。",
+                        chapterId,
+                        List.of(chapterId)
+                ));
+                default -> List.of(new GlobalStoryState.CharacterProfile(
+                        "character_003",
+                        "旧友",
+                        List.of(),
+                        "知情者",
+                        "多年未见的朋友，知道后台暗门的真相。",
+                        chapterId,
+                        List.of(chapterId)
+                ));
+            };
+            return new GlobalStoryState(
+                    characters,
+                    List.of(new GlobalStoryState.LocationProfile(
+                            "location_%03d".formatted(chapterIndex),
+                            chapterIndex == 2 ? "后台暗门" : "旧剧场",
+                            "第 " + chapterIndex + " 章关键地点。",
+                            List.of(chapterId)
+                    )),
+                    List.of(new GlobalStoryState.TimelineEvent(
+                            "timeline_%03d".formatted(chapterIndex),
+                            chapterIndex,
+                            chapterId,
+                            "第 " + chapterIndex + " 次选择",
+                            summary.summary()
+                    )),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    List.of()
+            );
         }
 
         @Override

@@ -59,7 +59,13 @@ public class LlmGlobalStoryExtractionStage implements GlobalStoryExtractionStage
         }
         RenderedPrompt prompt = promptTemplateService.render(
                 PromptTemplateId.GLOBAL_STORY_EXTRACTION,
-                Map.of("chapter_summaries", serializeSummaries(context.chapterSummaries()))
+                Map.of(
+                        "chapter_summaries", serialize(context.chapterSummaries(), "章节摘要序列化失败"),
+                        "existing_global_story_state", serialize(
+                                context.globalStoryState(),
+                                "已有全局故事状态序列化失败"
+                        )
+                )
         );
         ChatResponse response = llmService.chat(new ChatRequest(
                 List.of(ChatMessage.user(prompt.content())),
@@ -75,11 +81,11 @@ public class LlmGlobalStoryExtractionStage implements GlobalStoryExtractionStage
         return state;
     }
 
-    private String serializeSummaries(List<ChapterSummary> summaries) {
+    private String serialize(Object value, String errorMessage) {
         try {
-            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(summaries);
+            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(value);
         } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("章节摘要序列化失败", ex);
+            throw new IllegalStateException(errorMessage, ex);
         }
     }
 

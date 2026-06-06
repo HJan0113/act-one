@@ -14,7 +14,7 @@ public enum PromptTemplateId {
             "global-story-extraction",
             "1.0.0",
             "prompt/v1/global-story-extraction.st",
-            List.of("chapter_summaries")
+            List.of("chapter_summaries", "existing_global_story_state")
     ),
     SCENE_PLANNING(
             "scene-planning",
