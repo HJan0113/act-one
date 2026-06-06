@@ -18,9 +18,11 @@ import com.hjan.actone.script.ai.pipeline.LlmDialogueGenerationStage;
 import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.LlmScriptYamlGenerationStage;
+import com.hjan.actone.script.ai.pipeline.LlmYamlRepairStage;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
 import com.hjan.actone.script.ai.pipeline.ScriptYamlGenerationStage;
+import com.hjan.actone.script.ai.pipeline.YamlRepairStage;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -47,6 +49,7 @@ class ScriptAiConfigurationTest {
                     assertThat(context).hasSingleBean(DialogueGenerationStage.class);
                     assertThat(context).hasSingleBean(SourceTraceStage.class);
                     assertThat(context).hasSingleBean(ScriptYamlGenerationStage.class);
+                    assertThat(context).hasSingleBean(YamlRepairStage.class);
                     assertThat(context.getBean(ChapterSummaryStage.class))
                             .isInstanceOf(LlmChapterSummaryStage.class);
                     assertThat(context.getBean(GlobalStoryExtractionStage.class))
@@ -61,6 +64,8 @@ class ScriptAiConfigurationTest {
                             .isInstanceOf(DeterministicSourceTraceStage.class);
                     assertThat(context.getBean(ScriptYamlGenerationStage.class))
                             .isInstanceOf(LlmScriptYamlGenerationStage.class);
+                    assertThat(context.getBean(YamlRepairStage.class))
+                            .isInstanceOf(LlmYamlRepairStage.class);
                 });
     }
 
@@ -77,6 +82,7 @@ class ScriptAiConfigurationTest {
             assertThat(context).doesNotHaveBean(CinematicTreatmentStage.class);
             assertThat(context).doesNotHaveBean(DialogueGenerationStage.class);
             assertThat(context).doesNotHaveBean(ScriptYamlGenerationStage.class);
+            assertThat(context).doesNotHaveBean(YamlRepairStage.class);
         });
     }
 
