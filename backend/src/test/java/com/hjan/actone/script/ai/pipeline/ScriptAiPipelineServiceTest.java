@@ -3,6 +3,7 @@ package com.hjan.actone.script.ai.pipeline;
 import com.hjan.actone.common.exception.ClientException;
 import com.hjan.actone.script.ai.model.ChapterSummary;
 import com.hjan.actone.script.ai.model.CinematicTreatment;
+import com.hjan.actone.script.ai.model.DialogueDraft;
 import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.ai.model.PipelineStage;
@@ -46,6 +47,8 @@ class ScriptAiPipelineServiceTest {
         assertThat(stages.sceneContext.globalStoryState()).isEqualTo(GlobalStoryState.empty());
         assertThat(stages.cinematicContext.scenePlan().scenes()).hasSize(1);
         assertThat(stages.yamlContext.cinematicTreatment().scenes()).hasSize(1);
+        assertThat(stages.dialogueContext.cinematicTreatment().scenes()).hasSize(1);
+        assertThat(stages.yamlContext.dialogueDraft().scenes()).hasSize(1);
         assertThat(stages.yamlContext.scenePlan().scenes()).hasSize(1);
         assertThat(stages.repairCalls).isZero();
     }
@@ -131,6 +134,7 @@ class ScriptAiPipelineServiceTest {
                 stages,
                 stages,
                 stages,
+                stages,
                 stages
         );
     }
@@ -208,6 +212,7 @@ class ScriptAiPipelineServiceTest {
             GlobalStoryExtractionStage,
             ScenePlanningStage,
             CinematicTreatmentStage,
+            DialogueGenerationStage,
             ScriptYamlGenerationStage,
             YamlRepairStage {
 
@@ -219,6 +224,7 @@ class ScriptAiPipelineServiceTest {
         private PipelineContext globalContext;
         private PipelineContext sceneContext;
         private PipelineContext cinematicContext;
+        private PipelineContext dialogueContext;
         private PipelineContext yamlContext;
         private PipelineContext repairContext;
 
@@ -295,6 +301,23 @@ class ScriptAiPipelineServiceTest {
                             "动作与停顿",
                             "林夏推开旧剧场的门。",
                             List.of("character_001")
+                    ))
+            )));
+        }
+
+        @Override
+        public DialogueDraft draft(PipelineContext context) {
+            dialogueContext = context;
+            return new DialogueDraft(List.of(new DialogueDraft.SceneDialogues(
+                    "scene_001",
+                    1,
+                    "chapter_1",
+                    List.of(new DialogueDraft.DialogueLine(
+                            "林夏",
+                            "character_001",
+                            "我进去。你在这里等我。",
+                            "克制",
+                            "林夏推开旧剧场的门。"
                     ))
             )));
         }

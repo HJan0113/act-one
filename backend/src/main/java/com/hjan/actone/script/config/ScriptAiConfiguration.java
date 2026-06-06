@@ -5,10 +5,12 @@ import com.hjan.actone.ai.prompt.PromptTemplateService;
 import com.hjan.actone.ai.service.LLMService;
 import com.hjan.actone.script.ai.pipeline.CinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
+import com.hjan.actone.script.ai.pipeline.DialogueGenerationStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryStateMerger;
 import com.hjan.actone.script.ai.pipeline.LlmCinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.LlmChapterSummaryStage;
+import com.hjan.actone.script.ai.pipeline.LlmDialogueGenerationStage;
 import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
@@ -61,5 +63,14 @@ public class ScriptAiConfiguration {
                                                            PromptTemplateService promptTemplateService,
                                                            ObjectMapper objectMapper) {
         return new LlmCinematicTreatmentStage(llmService, promptTemplateService, objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnBean({LLMService.class, PromptTemplateService.class, ObjectMapper.class})
+    @ConditionalOnMissingBean(DialogueGenerationStage.class)
+    public DialogueGenerationStage dialogueGenerationStage(LLMService llmService,
+                                                           PromptTemplateService promptTemplateService,
+                                                           ObjectMapper objectMapper) {
+        return new LlmDialogueGenerationStage(llmService, promptTemplateService, objectMapper);
     }
 }

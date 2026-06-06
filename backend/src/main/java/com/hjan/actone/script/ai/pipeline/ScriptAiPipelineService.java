@@ -36,6 +36,7 @@ public class ScriptAiPipelineService {
     private final GlobalStoryExtractionStage globalStoryExtractionStage;
     private final ScenePlanningStage scenePlanningStage;
     private final CinematicTreatmentStage cinematicTreatmentStage;
+    private final DialogueGenerationStage dialogueGenerationStage;
     private final ScriptYamlGenerationStage scriptYamlGenerationStage;
     private final YamlRepairStage yamlRepairStage;
 
@@ -46,6 +47,7 @@ public class ScriptAiPipelineService {
                                    GlobalStoryExtractionStage globalStoryExtractionStage,
                                    ScenePlanningStage scenePlanningStage,
                                    CinematicTreatmentStage cinematicTreatmentStage,
+                                   DialogueGenerationStage dialogueGenerationStage,
                                    ScriptYamlGenerationStage scriptYamlGenerationStage,
                                    YamlRepairStage yamlRepairStage) {
         this.chapterParser = Objects.requireNonNull(chapterParser, "NovelChapterParser 不能为空");
@@ -60,6 +62,10 @@ public class ScriptAiPipelineService {
         this.cinematicTreatmentStage = Objects.requireNonNull(
                 cinematicTreatmentStage,
                 "CinematicTreatmentStage 不能为空"
+        );
+        this.dialogueGenerationStage = Objects.requireNonNull(
+                dialogueGenerationStage,
+                "DialogueGenerationStage 不能为空"
         );
         this.scriptYamlGenerationStage = Objects.requireNonNull(
                 scriptYamlGenerationStage,
@@ -91,6 +97,7 @@ public class ScriptAiPipelineService {
             context = extractGlobalStoryState(context);
             context = planScenes(context);
             context = visualizePsychology(context);
+            context = generateDialogues(context);
             context = generateYaml(context);
             ScriptAiPipelineResult result = validateAndRepairIfNeeded(context, request);
             logPipelineComplete(result, pipelineStartedNanos);
@@ -150,6 +157,15 @@ public class ScriptAiPipelineService {
                 PipelineStage.PSYCHOLOGICAL_VISUALIZATION,
                 DEFAULT_RETRY,
                 () -> context.withCinematicTreatment(cinematicTreatmentStage.visualize(context))
+        );
+    }
+
+    private PipelineContext generateDialogues(PipelineContext context) {
+        return runStage(
+                context,
+                PipelineStage.DIALOGUE_GENERATION,
+                DEFAULT_RETRY,
+                () -> context.withDialogueDraft(dialogueGenerationStage.draft(context))
         );
     }
 

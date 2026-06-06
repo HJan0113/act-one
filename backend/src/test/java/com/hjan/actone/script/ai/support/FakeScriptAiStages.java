@@ -2,6 +2,7 @@ package com.hjan.actone.script.ai.support;
 
 import com.hjan.actone.script.ai.model.ChapterSummary;
 import com.hjan.actone.script.ai.model.CinematicTreatment;
+import com.hjan.actone.script.ai.model.DialogueDraft;
 import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.ai.model.PipelineStage;
@@ -9,6 +10,7 @@ import com.hjan.actone.script.ai.model.ScenePlan;
 import com.hjan.actone.script.ai.model.SourceEvidence;
 import com.hjan.actone.script.ai.pipeline.CinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
+import com.hjan.actone.script.ai.pipeline.DialogueGenerationStage;
 import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.ScriptYamlGenerationStage;
@@ -24,6 +26,7 @@ public class FakeScriptAiStages implements ChapterSummaryStage,
         GlobalStoryExtractionStage,
         ScenePlanningStage,
         CinematicTreatmentStage,
+        DialogueGenerationStage,
         ScriptYamlGenerationStage,
         YamlRepairStage {
 
@@ -148,6 +151,23 @@ public class FakeScriptAiStages implements ChapterSummaryStage,
                         "动作与停顿",
                         "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。",
                         List.of("character_001")
+                ))
+        )));
+    }
+
+    @Override
+    public DialogueDraft draft(PipelineContext context) {
+        failIfConfigured(PipelineStage.DIALOGUE_GENERATION);
+        return new DialogueDraft(List.of(new DialogueDraft.SceneDialogues(
+                "scene_001",
+                1,
+                "chapter_1",
+                List.of(new DialogueDraft.DialogueLine(
+                        "林夜",
+                        "character_001",
+                        "别出声。跟紧我。",
+                        "压低声音",
+                        "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。"
                 ))
         )));
     }

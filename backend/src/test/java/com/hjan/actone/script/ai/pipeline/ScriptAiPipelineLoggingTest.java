@@ -95,6 +95,7 @@ class ScriptAiPipelineLoggingTest {
                 stages,
                 stages,
                 stages,
+                stages,
                 stages
         );
     }

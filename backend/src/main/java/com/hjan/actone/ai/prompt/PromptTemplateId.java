@@ -28,6 +28,12 @@ public enum PromptTemplateId {
             "prompt/v1/cinematic-treatment.st",
             List.of("chapter_summaries", "global_story_state", "scene_plan")
     ),
+    DIALOGUE_GENERATION(
+            "dialogue-generation",
+            "1.0.0",
+            "prompt/v1/dialogue-generation.st",
+            List.of("global_story_state", "scene_plan", "cinematic_treatment")
+    ),
     SCRIPT_YAML_GENERATION(
             "script-yaml-generation",
             "1.0.0",
@@ -40,6 +46,7 @@ public enum PromptTemplateId {
                     "global_story_state",
                     "scene_plans",
                     "cinematic_treatment",
+                    "dialogue_draft",
                     "schema_summary"
             )
     ),
