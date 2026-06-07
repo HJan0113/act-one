@@ -605,45 +605,7 @@ export function SourceReviewWorkbench({
   }
 
   return (
-    <div className="trace-workbench" aria-label="来源对照三栏视图">
-      <section className="studio-panel trace-panel trace-panel--source" aria-label="小说原文">
-        <div className="panel-heading">
-          <div>
-            <p className="panel-kicker">Novel Source</p>
-            <h2>小说原文</h2>
-          </div>
-          <StatusBadge label={hasExactExcerpt ? "摘录命中" : selectedChapter ? "章节定位" : "待定位"} tone={hasExactExcerpt ? "success" : selectedChapter ? "warning" : "neutral"} />
-        </div>
-
-        <div className="trace-column-body">
-          {selectedChapter ? (
-            <>
-              <div className="trace-source-card">
-                <span>{sourceChapterLabel(selectedChapter)}</span>
-                <strong>{selectedChapter.title}</strong>
-                <small>{selectedScene?.sourceChapterId || selectedChapter.id}</small>
-              </div>
-              {sourceExcerpt ? (
-                <blockquote className="trace-source-excerpt">
-                  <span>scene.source_excerpt</span>
-                  <p>{sourceExcerpt}</p>
-                </blockquote>
-              ) : null}
-              <article className="trace-source-text" aria-label="当前来源章节正文">
-                {renderHighlightedSource(selectedChapter.content, sourceExcerpt)}
-              </article>
-            </>
-          ) : (
-            <EmptyState
-              description="先导入小说并解析章节，或加载包含 chapter_index / source_chapter_id 的草稿。"
-              icon={<BookOpen size={18} />}
-              size="sm"
-              title="暂无可定位原文"
-            />
-          )}
-        </div>
-      </section>
-
+    <div className="trace-workbench" aria-label="来源对照工作台">
       <section className="studio-panel trace-panel trace-panel--yaml" aria-label="YAML 场景索引">
         <div className="panel-heading">
           <div>
@@ -687,7 +649,46 @@ export function SourceReviewWorkbench({
         </div>
       </section>
 
-      <section className="studio-panel trace-panel trace-panel--script" aria-label="可读剧本">
+      <div className="trace-detail-stack">
+        <section className="studio-panel trace-panel trace-panel--source" aria-label="小说原文">
+          <div className="panel-heading">
+            <div>
+              <p className="panel-kicker">Novel Source</p>
+              <h2>小说原文</h2>
+            </div>
+            <StatusBadge label={hasExactExcerpt ? "摘录命中" : selectedChapter ? "章节定位" : "待定位"} tone={hasExactExcerpt ? "success" : selectedChapter ? "warning" : "neutral"} />
+          </div>
+
+          <div className="trace-column-body">
+            {selectedChapter ? (
+              <>
+                <div className="trace-source-card">
+                  <span>{sourceChapterLabel(selectedChapter)}</span>
+                  <strong>{selectedChapter.title}</strong>
+                  <small>{selectedScene?.sourceChapterId || selectedChapter.id}</small>
+                </div>
+                {sourceExcerpt ? (
+                  <blockquote className="trace-source-excerpt">
+                    <span>scene.source_excerpt</span>
+                    <p>{sourceExcerpt}</p>
+                  </blockquote>
+                ) : null}
+                <article className="trace-source-text" aria-label="当前来源章节正文">
+                  {renderHighlightedSource(selectedChapter.content, sourceExcerpt)}
+                </article>
+              </>
+            ) : (
+              <EmptyState
+                description="先导入小说并解析章节，或加载包含 chapter_index / source_chapter_id 的草稿。"
+                icon={<BookOpen size={18} />}
+                size="sm"
+                title="暂无可定位原文"
+              />
+            )}
+          </div>
+        </section>
+
+        <section className="studio-panel trace-panel trace-panel--script" aria-label="可读剧本">
         <div className="panel-heading">
           <div>
             <p className="panel-kicker">Readable Script</p>
@@ -799,7 +800,8 @@ export function SourceReviewWorkbench({
             />
           )}
         </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }

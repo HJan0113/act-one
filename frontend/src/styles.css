@@ -1360,10 +1360,16 @@ h1 {
 
 .trace-workbench {
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) minmax(300px, 0.9fr) minmax(280px, 1fr);
+    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
     gap: var(--space-4);
     min-height: calc(100vh - 142px);
-    align-items: stretch;
+    align-items: start;
+}
+
+.trace-detail-stack {
+    display: grid;
+    gap: var(--space-4);
+    min-width: 0;
 }
 
 .trace-panel {
@@ -3189,7 +3195,7 @@ h1 {
 .trace-full-workbench {
   display: grid;
   gap: var(--space-4);
-  grid-template-columns: 1fr 360px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
 }
 
 .trace-side-panel {
