@@ -120,6 +120,25 @@ class AiIntermediateModelSerializationTest {
     }
 
     @Test
+    void pipelineConsistencyReportRoundTripsJsonAndSummarizesErrors() throws Exception {
+        PipelineConsistencyReport report = new PipelineConsistencyReport(
+                List.of(new PipelineConsistencyReport.Issue(
+                        "scene.character.unknown",
+                        "人物引用不存在：character_999",
+                        List.of("scene_001", "character_999")
+                )),
+                List.of()
+        );
+
+        String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(report);
+        PipelineConsistencyReport restored = objectMapper.readValue(json, PipelineConsistencyReport.class);
+
+        assertThat(restored).isEqualTo(report);
+        assertThat(restored.valid()).isFalse();
+        assertThat(restored.summary()).contains("人物引用不存在");
+    }
+
+    @Test
     void pipelineContextTracksStageTransitionsAndYamlOutput() throws Exception {
         PipelineContext context = PipelineContext.create(
                         "project_1",

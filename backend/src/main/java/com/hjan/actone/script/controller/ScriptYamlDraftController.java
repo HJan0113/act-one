@@ -6,10 +6,12 @@ import com.hjan.actone.script.model.ScriptDraftDetailResponse;
 import com.hjan.actone.script.model.ScriptDraftListItemResponse;
 import com.hjan.actone.script.model.ScriptDraftSaveRequest;
 import com.hjan.actone.script.model.ScriptDraftSaveResponse;
+import com.hjan.actone.script.model.ScriptConversionTaskResponse;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
 import com.hjan.actone.script.service.ScriptDraftService;
 import com.hjan.actone.script.service.ScriptYamlGenerationService;
+import com.hjan.actone.script.service.ScriptYamlStreamService;
 import jakarta.validation.Valid;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -31,11 +34,14 @@ import java.util.List;
 public class ScriptYamlDraftController {
 
     private final ScriptYamlGenerationService scriptYamlGenerationService;
+    private final ScriptYamlStreamService scriptYamlStreamService;
     private final ScriptDraftService scriptDraftService;
 
     public ScriptYamlDraftController(ScriptYamlGenerationService scriptYamlGenerationService,
+                                     ScriptYamlStreamService scriptYamlStreamService,
                                      ScriptDraftService scriptDraftService) {
         this.scriptYamlGenerationService = scriptYamlGenerationService;
+        this.scriptYamlStreamService = scriptYamlStreamService;
         this.scriptDraftService = scriptDraftService;
     }
 
@@ -43,6 +49,16 @@ public class ScriptYamlDraftController {
     public Result<ScriptYamlGenerateResponse> generateYamlFromText(
             @Valid @RequestBody ScriptYamlGenerateRequest request) {
         return Results.success(scriptYamlGenerationService.generateFromText(request));
+    }
+
+    @PostMapping(value = "/yaml/from-text/stream", produces = "text/event-stream;charset=UTF-8")
+    public SseEmitter streamGenerateYamlFromText(@Valid @RequestBody ScriptYamlGenerateRequest request) {
+        return scriptYamlStreamService.streamGenerateFromText(request);
+    }
+
+    @PostMapping("/tasks/{taskId}/cancel")
+    public Result<ScriptConversionTaskResponse> cancelTask(@PathVariable String taskId) {
+        return Results.success(scriptYamlStreamService.cancel(taskId));
     }
 
     @PostMapping

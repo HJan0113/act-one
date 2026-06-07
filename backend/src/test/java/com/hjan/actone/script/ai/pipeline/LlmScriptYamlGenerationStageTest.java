@@ -68,6 +68,7 @@ class LlmScriptYamlGenerationStageTest {
                             .contains("<cinematic_treatment>")
                             .contains("<dialogue_draft>")
                             .contains("<source_trace>")
+                            .contains("ai_expansion")
                             .contains("\"name\" : \"林夜\"")
                             .contains("\"sceneId\" : \"scene_001\"")
                             .contains("\"sourceExcerpt\" : \"林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。\"")
@@ -306,6 +307,7 @@ class LlmScriptYamlGenerationStageTest {
                     time: "雨夜子时"
                     scene_purpose: "建立林夜的任务与危险氛围。"
                     action: "林夜吹熄残烛，指节扣紧刀柄。"
+                    ai_expansion: true
                     dialogues:
                       - speaker: "林夜"
                         line: "别出声。跟紧我。"

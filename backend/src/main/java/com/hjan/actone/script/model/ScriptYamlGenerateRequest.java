@@ -11,6 +11,13 @@ public record ScriptYamlGenerateRequest(
         @Size(max = 512, message = "一句话梗概最多 512 个字符")
         String logline,
         @NotBlank(message = "小说正文不能为空")
-        String text
+        String text,
+        String projectId,
+        Boolean forceNewTask,
+        String resumeTaskId
 ) {
+
+    public ScriptYamlGenerateRequest(String title, String author, String logline, String text) {
+        this(title, author, logline, text, null, null, null);
+    }
 }

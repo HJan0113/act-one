@@ -56,6 +56,7 @@ class ScriptYamlCoreEndToEndTest {
             assertThat(scene.get("source_chapter_id")).asString().startsWith("chapter_");
             assertThat(scene.get("source_excerpt")).asString().isNotBlank();
             assertThat(scene.get("action")).asString().isNotBlank();
+            assertThat(scene.get("ai_expansion")).isInstanceOf(Boolean.class);
             assertThat(scene.get("dialogues")).isInstanceOf(List.class);
         });
         assertThat(scenes).anySatisfy(scene ->

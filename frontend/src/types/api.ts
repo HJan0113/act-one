@@ -42,9 +42,20 @@ export type ChapterPreviewData = {
 
 export type ScriptYamlGenerateRequest = {
   author: string;
+  forceNewTask?: boolean;
   logline: string;
+  projectId?: string;
+  resumeTaskId?: string;
   text: string;
   title: string;
+};
+
+export type ScriptAiUsageSummary = {
+  callCount: number;
+  completionTokens: number;
+  estimated: boolean;
+  promptTokens: number;
+  totalTokens: number;
 };
 
 export type ScriptYamlData = {
@@ -54,15 +65,61 @@ export type ScriptYamlData = {
   generationMode?: string | null;
   schemaVersion: string;
   title: string;
+  usageSummary?: ScriptAiUsageSummary | null;
   validationError?: string | null;
   validationStatus?: string | null;
   yaml: string;
+};
+
+export type ScriptYamlStreamEventName =
+  | "meta"
+  | "progress"
+  | "message"
+  | "validation"
+  | "finish"
+  | "cancel"
+  | "error"
+  | "done";
+
+export type ScriptYamlStreamPayload = {
+  message?: string | null;
+  progress?: number | null;
+  result?: ScriptYamlData | null;
+  stage?: string | null;
+  taskId?: string | null;
+  errorType?: string | null;
+  failedStage?: string | null;
+  resumeStage?: string | null;
+  retryable?: boolean | null;
+  valid?: boolean | null;
+  validationError?: string | null;
+  validationStatus?: string | null;
 };
 
 export type ScriptProjectCreateRequest = {
   description: string;
   text: string;
   title: string;
+};
+
+export type ScriptConversionTaskData = {
+  createTime?: string;
+  draftId?: string | null;
+  endTime?: string | null;
+  errorMessage?: string | null;
+  errorType?: string | null;
+  failedStage?: string | null;
+  message?: string | null;
+  modelId?: string | null;
+  progress?: number | null;
+  projectId: string;
+  resumeStage?: string | null;
+  retryable?: boolean | null;
+  schemaVersion?: string | null;
+  startTime?: string | null;
+  status: string;
+  taskId: string;
+  updateTime?: string;
 };
 
 export type ScriptProjectData = {

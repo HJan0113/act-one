@@ -18,7 +18,9 @@ import com.hjan.actone.script.service.ScriptYamlValidationResult;
 import com.hjan.actone.script.service.ScriptYamlValidator;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -44,8 +46,13 @@ class ScriptAiPipelineServiceTest {
         assertThat(result.context().currentStage()).isEqualTo(PipelineStage.COMPLETED);
         assertThat(result.context().chapterSummaries()).hasSize(3);
         assertThat(stages.summaryCalls).isEqualTo(3);
-        assertThat(stages.globalContext.chapterSummaries()).hasSize(3);
-        assertThat(stages.sceneContext.globalStoryState()).isEqualTo(GlobalStoryState.empty());
+        assertThat(stages.globalContexts).hasSize(3);
+        assertThat(stages.globalContexts)
+                .extracting(globalContext -> globalContext.chapterSummaries().get(0).chapterId())
+                .containsExactly("chapter_1", "chapter_2", "chapter_3");
+        assertThat(stages.sceneContext.globalStoryState().characters())
+                .extracting(GlobalStoryState.CharacterProfile::id)
+                .contains("character_001");
         assertThat(stages.cinematicContext.scenePlan().scenes()).hasSize(1);
         assertThat(stages.yamlContext.cinematicTreatment().scenes()).hasSize(1);
         assertThat(stages.dialogueContext.cinematicTreatment().scenes()).hasSize(1);
@@ -53,6 +60,174 @@ class ScriptAiPipelineServiceTest {
         assertThat(stages.yamlContext.sourceTrace().scenes()).hasSize(1);
         assertThat(stages.yamlContext.scenePlan().scenes()).hasSize(1);
         assertThat(stages.repairCalls).isZero();
+    }
+
+    @Test
+    void generateRollsGlobalStoryStateAcrossChapterSummariesAndKeepsConflicts() {
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline");
+        stages.rollingGlobalState = true;
+        ScriptAiPipelineService service = service(stages);
+
+        ScriptAiPipelineResult result = service.generate(request());
+
+        assertThat(result.valid()).isTrue();
+        assertThat(stages.globalContexts).hasSize(3);
+        assertThat(stages.globalContexts.get(0).globalStoryState()).isEqualTo(GlobalStoryState.empty());
+        assertThat(stages.globalContexts.get(1).globalStoryState().characters())
+                .extracting(GlobalStoryState.CharacterProfile::name)
+                .containsExactly("林夏");
+        assertThat(stages.globalContexts.get(2).globalStoryState().conflicts())
+                .extracting(GlobalStoryState.ConflictNote::description)
+                .anySatisfy(description -> assertThat(description).contains("角色冲突"));
+
+        GlobalStoryState finalState = result.context().globalStoryState();
+        assertThat(finalState.characters()).hasSize(2);
+        assertThat(finalState.characters().get(0).name()).isEqualTo("林夏");
+        assertThat(finalState.characters().get(0).aliases()).contains("小夏");
+        assertThat(finalState.conflicts()).singleElement()
+                .satisfies(conflict -> {
+                    assertThat(conflict.description()).contains("调查者 / 保护者");
+                    assertThat(conflict.sourceChapterIds()).containsExactly("chapter_1", "chapter_2");
+                });
+        assertThat(stages.sceneContext.globalStoryState()).isEqualTo(finalState);
+    }
+
+    @Test
+    void generateNotifiesObserverOfStageProgressAndValidation() {
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline");
+        ScriptAiPipelineService service = service(stages);
+        List<String> events = new ArrayList<>();
+
+        ScriptAiPipelineObserver observer = new ScriptAiPipelineObserver() {
+            @Override
+            public void onPipelineStart(PipelineContext context) {
+                events.add("pipeline:" + context.currentStage());
+            }
+
+            @Override
+            public void onStageStart(PipelineContext context, PipelineStage stage) {
+                events.add("start:" + stage);
+            }
+
+            @Override
+            public void onStageSuccess(PipelineContext context, PipelineStage stage) {
+                events.add("success:" + stage);
+            }
+
+            @Override
+            public void onValidation(PipelineContext context, ScriptYamlValidationResult validationResult) {
+                events.add("validation:" + validationResult.status());
+            }
+
+            @Override
+            public void onFallback(PipelineContext context, PipelineStage fallbackStage, String reason) {
+                events.add("fallback:" + fallbackStage);
+            }
+
+            @Override
+            public void onComplete(ScriptAiPipelineResult result) {
+                events.add("complete:" + result.context().currentStage());
+            }
+        };
+
+        ScriptAiPipelineResult result = service.generate(request(), observer);
+
+        assertThat(result.valid()).isTrue();
+        assertThat(events).containsSubsequence(
+                "pipeline:INIT",
+                "start:CHAPTER_SUMMARY",
+                "success:CHAPTER_SUMMARY",
+                "start:GLOBAL_STORY_EXTRACTION",
+                "success:GLOBAL_STORY_EXTRACTION",
+                "start:SCENE_PLANNING",
+                "success:SCENE_PLANNING",
+                "start:PSYCHOLOGICAL_VISUALIZATION",
+                "success:PSYCHOLOGICAL_VISUALIZATION",
+                "start:DIALOGUE_GENERATION",
+                "success:DIALOGUE_GENERATION",
+                "start:SOURCE_TRACE",
+                "success:SOURCE_TRACE",
+                "start:CONSISTENCY_CHECK",
+                "success:CONSISTENCY_CHECK",
+                "start:SCRIPT_YAML_GENERATION",
+                "success:SCRIPT_YAML_GENERATION",
+                "start:YAML_VALIDATION",
+                "success:YAML_VALIDATION",
+                "validation:valid",
+                "start:FACT_CONSTRAINT_CHECK",
+                "success:FACT_CONSTRAINT_CHECK",
+                "complete:COMPLETED"
+        );
+        assertThat(events).doesNotContain("fallback:CHAPTER_SUMMARY");
+    }
+
+    @Test
+    void generateStopsBeforeNextStageWhenObserverIsCanceled() {
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline");
+        ScriptAiPipelineService service = service(stages);
+        AtomicBoolean canceled = new AtomicBoolean(false);
+
+        ScriptAiPipelineObserver observer = new ScriptAiPipelineObserver() {
+            @Override
+            public void onStageSuccess(PipelineContext context, PipelineStage stage) {
+                if (stage == PipelineStage.CHAPTER_SUMMARY) {
+                    canceled.set(true);
+                }
+            }
+
+            @Override
+            public boolean isCanceled() {
+                return canceled.get();
+            }
+        };
+
+        assertThatThrownBy(() -> service.generate(request(), observer))
+                .isInstanceOf(ScriptAiPipelineCanceledException.class)
+                .hasMessageContaining("GLOBAL_STORY_EXTRACTION");
+        assertThat(stages.summaryCalls).isEqualTo(3);
+        assertThat(stages.globalContext).isNull();
+        assertThat(stages.repairCalls).isZero();
+    }
+
+    @Test
+    void generateContinuesFromCachedScenePlanWhenResumeStateExists() {
+        List<NovelChapter> chapters = chapterParser.parse(request().text());
+        FakeStages cachedStages = new FakeStages();
+        List<ChapterSummary> cachedSummaries = chapters.stream()
+                .map(cachedStages::summarize)
+                .toList();
+        PipelineContext cachedContext = PipelineContext.create(
+                        null,
+                        "测试剧本",
+                        "作者A",
+                        "主角在旧剧场面对三次选择。",
+                        chapters.size()
+                )
+                .withChapterSummaries(cachedSummaries);
+        GlobalStoryState cachedGlobalState = cachedStages.extract(cachedContext.withChapterSummaries(List.of(cachedSummaries.get(0))));
+        cachedContext = cachedContext.withGlobalStoryState(cachedGlobalState);
+        ScenePlan cachedScenePlan = cachedStages.plan(cachedContext);
+
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline");
+        ScriptAiPipelineService service = service(stages);
+
+        ScriptAiPipelineResult result = service.generate(
+                request(),
+                ScriptAiPipelineObserver.NOOP,
+                new ScriptAiPipelineResumeState(cachedSummaries, cachedGlobalState, cachedScenePlan)
+        );
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.fallback()).isFalse();
+        assertThat(stages.summaryCalls).isZero();
+        assertThat(stages.globalContext).isNull();
+        assertThat(stages.sceneContext).isNull();
+        assertThat(stages.cinematicContext.scenePlan()).isEqualTo(cachedScenePlan);
+        assertThat(stages.cinematicContext.chapterSummaries()).hasSize(3);
     }
 
     @Test
@@ -74,6 +249,24 @@ class ScriptAiPipelineServiceTest {
     }
 
     @Test
+    void generateRepairsFactConstraintFailureBeforeReturningResult() {
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline").replaceAll("(?m)^\\s*ai_expansion: false\\R", "");
+        stages.repairedYaml = validYaml("ai_pipeline");
+        ScriptAiPipelineService service = service(stages);
+
+        ScriptAiPipelineResult result = service.generate(request());
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.fallback()).isFalse();
+        assertThat(result.generationMode()).isEqualTo(ScriptAiGenerationMode.AI_PIPELINE);
+        assertThat(stages.repairCalls).isEqualTo(1);
+        assertThat(stages.repairContext.validationError())
+                .contains(ScriptYamlFactConstraintChecker.ERROR_PREFIX)
+                .contains("ai_expansion");
+    }
+
+    @Test
     void generateFallsBackToRuleBasedYamlWhenAiStageFails() {
         FakeStages stages = new FakeStages();
         stages.summaryFailure = new IllegalStateException("provider returned api-key=secret and raw novel");
@@ -92,6 +285,37 @@ class ScriptAiPipelineServiceTest {
                 .doesNotContain("generation_mode: \"rule_based_scaffold\"");
         assertThat(stages.summaryCalls).isEqualTo(1);
         assertThat(stages.repairCalls).isZero();
+    }
+
+    @Test
+    void generateRetriesStageAndReusesSuccessfulChapterSummaries() {
+        FakeStages stages = new FakeStages();
+        stages.generatedYaml = validYaml("ai_pipeline");
+        stages.summaryFailureChapterIndex = 2;
+        stages.summaryFailuresRemaining = 1;
+        ScriptAiPipelineService service = service(stages, new ScriptAiPipelineOptions(1));
+
+        ScriptAiPipelineResult result = service.generate(request());
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.fallback()).isFalse();
+        assertThat(stages.summaryCalls).isEqualTo(4);
+        assertThat(stages.chapterOneCalls).isEqualTo(1);
+        assertThat(stages.chapterTwoCalls).isEqualTo(2);
+    }
+
+    @Test
+    void generateFallsBackAfterConfiguredStageRetriesAreExhausted() {
+        FakeStages stages = new FakeStages();
+        stages.summaryFailure = new IllegalStateException("provider timeout");
+        ScriptAiPipelineService service = service(stages, new ScriptAiPipelineOptions(1));
+
+        ScriptAiPipelineResult result = service.generate(request());
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.fallback()).isTrue();
+        assertThat(result.fallbackReason()).contains("CHAPTER_SUMMARY");
+        assertThat(stages.summaryCalls).isEqualTo(2);
     }
 
     @Test
@@ -127,6 +351,10 @@ class ScriptAiPipelineServiceTest {
     }
 
     private ScriptAiPipelineService service(FakeStages stages) {
+        return service(stages, ScriptAiPipelineOptions.defaults());
+    }
+
+    private ScriptAiPipelineService service(FakeStages stages, ScriptAiPipelineOptions options) {
         return new ScriptAiPipelineService(
                 chapterParser,
                 yamlValidator,
@@ -138,7 +366,11 @@ class ScriptAiPipelineServiceTest {
                 stages,
                 stages,
                 stages,
-                stages
+                stages,
+                new GlobalStoryStateMerger(),
+                new PipelineConsistencyChecker(),
+                new ScriptYamlFactConstraintChecker(),
+                options
         );
     }
 
@@ -190,6 +422,7 @@ class ScriptAiPipelineServiceTest {
                     time: "深夜"
                     scene_purpose: "建立主角目标"
                     action: "林夏推开旧剧场的门。"
+                    ai_expansion: false
                     dialogues: []
                     source_excerpt: "林夏推开旧剧场的门。"
                 """.formatted(generationMode);
@@ -222,11 +455,17 @@ class ScriptAiPipelineServiceTest {
 
         private final SourceTraceStage sourceTraceStage = new DeterministicSourceTraceStage();
         private int summaryCalls;
+        private int chapterOneCalls;
+        private int chapterTwoCalls;
         private int repairCalls;
         private RuntimeException summaryFailure;
+        private int summaryFailureChapterIndex;
+        private int summaryFailuresRemaining;
         private String generatedYaml;
         private String repairedYaml;
+        private boolean rollingGlobalState;
         private PipelineContext globalContext;
+        private final List<PipelineContext> globalContexts = new ArrayList<>();
         private PipelineContext sceneContext;
         private PipelineContext cinematicContext;
         private PipelineContext dialogueContext;
@@ -237,8 +476,18 @@ class ScriptAiPipelineServiceTest {
         @Override
         public ChapterSummary summarize(NovelChapter chapter) {
             summaryCalls++;
+            if (chapter.index() == 1) {
+                chapterOneCalls++;
+            }
+            if (chapter.index() == 2) {
+                chapterTwoCalls++;
+            }
             if (summaryFailure != null) {
                 throw summaryFailure;
+            }
+            if (summaryFailureChapterIndex == chapter.index() && summaryFailuresRemaining > 0) {
+                summaryFailuresRemaining--;
+                throw new IllegalStateException("provider timeout");
             }
             SourceEvidence evidence = new SourceEvidence(
                     chapter.id(),
@@ -267,7 +516,98 @@ class ScriptAiPipelineServiceTest {
         @Override
         public GlobalStoryState extract(PipelineContext context) {
             globalContext = context;
-            return GlobalStoryState.empty();
+            globalContexts.add(context);
+            if (rollingGlobalState) {
+                return rollingState(context.chapterSummaries().get(0));
+            }
+            return defaultGlobalState(context.chapterSummaries().get(0));
+        }
+
+        private GlobalStoryState defaultGlobalState(ChapterSummary summary) {
+            String chapterId = summary.chapterId();
+            int chapterIndex = summary.chapterIndex();
+            return new GlobalStoryState(
+                    List.of(new GlobalStoryState.CharacterProfile(
+                            "character_001",
+                            "林夏",
+                            List.of(),
+                            "主角",
+                            "旧剧场匿名信事件的调查者。",
+                            chapterId,
+                            List.of(chapterId)
+                    )),
+                    List.of(new GlobalStoryState.LocationProfile(
+                            "location_%03d".formatted(chapterIndex),
+                            "旧剧场",
+                            "匿名信和后台暗门的核心地点。",
+                            List.of(chapterId)
+                    )),
+                    List.of(new GlobalStoryState.TimelineEvent(
+                            "timeline_%03d".formatted(chapterIndex),
+                            chapterIndex,
+                            chapterId,
+                            "第 " + chapterIndex + " 次选择",
+                            summary.summary()
+                    )),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    List.of()
+            );
+        }
+
+        private GlobalStoryState rollingState(ChapterSummary summary) {
+            String chapterId = summary.chapterId();
+            int chapterIndex = summary.chapterIndex();
+            List<GlobalStoryState.CharacterProfile> characters = switch (chapterIndex) {
+                case 1 -> List.of(new GlobalStoryState.CharacterProfile(
+                        "character_001",
+                        "林夏",
+                        List.of(),
+                        "调查者",
+                        "推开旧剧场大门，开始追查匿名信。",
+                        chapterId,
+                        List.of(chapterId)
+                ));
+                case 2 -> List.of(new GlobalStoryState.CharacterProfile(
+                        "character_002",
+                        "小夏",
+                        List.of("林夏"),
+                        "保护者",
+                        "面对旧友拦阻时选择保护对方秘密。",
+                        chapterId,
+                        List.of(chapterId)
+                ));
+                default -> List.of(new GlobalStoryState.CharacterProfile(
+                        "character_003",
+                        "旧友",
+                        List.of(),
+                        "知情者",
+                        "多年未见的朋友，知道后台暗门的真相。",
+                        chapterId,
+                        List.of(chapterId)
+                ));
+            };
+            return new GlobalStoryState(
+                    characters,
+                    List.of(new GlobalStoryState.LocationProfile(
+                            "location_%03d".formatted(chapterIndex),
+                            chapterIndex == 2 ? "后台暗门" : "旧剧场",
+                            "第 " + chapterIndex + " 章关键地点。",
+                            List.of(chapterId)
+                    )),
+                    List.of(new GlobalStoryState.TimelineEvent(
+                            "timeline_%03d".formatted(chapterIndex),
+                            chapterIndex,
+                            chapterId,
+                            "第 " + chapterIndex + " 次选择",
+                            summary.summary()
+                    )),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    List.of()
+            );
         }
 
         @Override
@@ -281,7 +621,7 @@ class ScriptAiPipelineServiceTest {
                     "旧剧场",
                     "旧剧场",
                     "深夜",
-                    List.of("林夏"),
+                    List.of("character_001"),
                     "建立主角目标",
                     "是否进入旧剧场",
                     List.of(new ScenePlan.Beat(

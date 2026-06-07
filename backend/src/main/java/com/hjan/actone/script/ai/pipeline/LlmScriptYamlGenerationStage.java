@@ -25,7 +25,7 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
     private static final double YAML_TEMPERATURE = 0.15D;
     private static final double YAML_TOP_P = 0.8D;
     private static final int YAML_MAX_TOKENS = 8192;
-    private static final Duration YAML_TIMEOUT = Duration.ofSeconds(120);
+    private static final Duration DEFAULT_YAML_TIMEOUT = Duration.ofSeconds(120);
     private static final Pattern LEADING_CODE_FENCE =
             Pattern.compile("^```[\\w.+-]*[\\t ]*\\n?");
     private static final Pattern TRAILING_CODE_FENCE =
@@ -34,20 +34,30 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
             顶层必须包含 schema_version、kind、metadata、source、characters、acts、scenes。
             schema_version 固定为 "1.0"，kind 固定为 "screenplay_draft"。
             source.type 固定为 "novel"，source.generation_mode 固定为 "ai_pipeline"。
-            scenes 每项必须包含 id、act_id、chapter_index、source_chapter_id、title、location、time、scene_purpose、action、dialogues、source_excerpt。
+            scenes 每项必须包含 id、act_id、chapter_index、source_chapter_id、title、location、time、scene_purpose、action、dialogues、source_excerpt、ai_expansion。
             dialogues 每项应包含 speaker、line，可包含 emotion。
+            ai_expansion 为 boolean；当 action 或 dialogues 含源文摘录外的影视化/对白改写时必须为 true。
             """;
 
     private final LLMService llmService;
     private final PromptTemplateService promptTemplateService;
     private final ObjectMapper objectMapper;
+    private final Duration timeout;
 
     public LlmScriptYamlGenerationStage(LLMService llmService,
                                         PromptTemplateService promptTemplateService,
                                         ObjectMapper objectMapper) {
+        this(llmService, promptTemplateService, objectMapper, DEFAULT_YAML_TIMEOUT);
+    }
+
+    public LlmScriptYamlGenerationStage(LLMService llmService,
+                                        PromptTemplateService promptTemplateService,
+                                        ObjectMapper objectMapper,
+                                        Duration timeout) {
         this.llmService = Objects.requireNonNull(llmService, "LLMService 不能为空");
         this.promptTemplateService = Objects.requireNonNull(promptTemplateService, "PromptTemplateService 不能为空");
         this.objectMapper = Objects.requireNonNull(objectMapper, "ObjectMapper 不能为空");
+        this.timeout = ScriptAiTimeouts.requirePositive(timeout, DEFAULT_YAML_TIMEOUT, "YAML 生成 timeout");
     }
 
     @Override
@@ -90,7 +100,7 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
                 YAML_TEMPERATURE,
                 YAML_TOP_P,
                 YAML_MAX_TOKENS,
-                YAML_TIMEOUT,
+                timeout,
                 ChatResponseFormat.TEXT
         ));
         return cleanYaml(response);

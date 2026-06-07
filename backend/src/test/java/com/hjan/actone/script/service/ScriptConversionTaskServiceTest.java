@@ -164,6 +164,66 @@ class ScriptConversionTaskServiceTest {
     }
 
     @Test
+    void markFailedRecordsRecoverableMetadataForInjectedFailure() {
+        ScriptConversionTaskDO task = task("task_1", "project_1");
+        when(taskMapper.selectById("task_1")).thenReturn(task);
+
+        var response = service.markFailed(
+                "task_1",
+                PipelineStage.SCRIPT_YAML_GENERATION,
+                new IllegalStateException("provider timeout")
+        );
+
+        assertThat(response.status()).isEqualTo(ScriptConversionTaskService.STATUS_FAILED);
+        assertThat(response.failedStage()).isEqualTo(PipelineStage.SCRIPT_YAML_GENERATION.name());
+        assertThat(response.errorType()).isEqualTo(IllegalStateException.class.getSimpleName());
+        assertThat(response.retryable()).isTrue();
+        assertThat(response.resumeStage()).isEqualTo(PipelineStage.PSYCHOLOGICAL_VISUALIZATION.name());
+        assertThat(response.message())
+                .contains("errorType=IllegalStateException")
+                .contains("retryable=true")
+                .contains("resumeStage=PSYCHOLOGICAL_VISUALIZATION");
+    }
+
+    @Test
+    void retryFailedReopensRetryableTaskFromResumeStage() {
+        ScriptConversionTaskDO task = task("task_1", "project_1");
+        task.setStatus(ScriptConversionTaskService.STATUS_FAILED);
+        task.setProgress(86);
+        task.setStartTime(LocalDateTime.of(2026, 6, 6, 11, 0));
+        task.setEndTime(LocalDateTime.of(2026, 6, 6, 12, 0));
+        task.setErrorMessage("provider timeout");
+        task.setMessage("stage=SCRIPT_YAML_GENERATION; errorType=IllegalStateException; retryable=true; resumeStage=PSYCHOLOGICAL_VISUALIZATION; 转换失败");
+        when(taskMapper.selectById("task_1")).thenReturn(task);
+
+        var response = service.retryFailed("task_1");
+
+        assertThat(response.status()).isEqualTo(ScriptConversionTaskService.STATUS_PENDING);
+        assertThat(response.progress()).isZero();
+        assertThat(response.errorMessage()).isNull();
+        assertThat(response.startTime()).isNull();
+        assertThat(response.endTime()).isNull();
+        assertThat(response.message())
+                .contains("stage=PSYCHOLOGICAL_VISUALIZATION")
+                .contains("retryOf=SCRIPT_YAML_GENERATION")
+                .contains("从安全阶段继续");
+        verify(taskMapper).updateById(task);
+    }
+
+    @Test
+    void retryFailedRejectsNonRetryableTask() {
+        ScriptConversionTaskDO task = task("task_1", "project_1");
+        task.setStatus(ScriptConversionTaskService.STATUS_FAILED);
+        task.setMessage("stage=INIT; errorType=ClientException; retryable=false; resumeStage=CHAPTER_SUMMARY; 转换失败");
+        when(taskMapper.selectById("task_1")).thenReturn(task);
+
+        assertThatThrownBy(() -> service.retryFailed("task_1"))
+                .isInstanceOf(ClientException.class)
+                .hasMessageContaining("不可重试");
+        verify(taskMapper, never()).updateById(task);
+    }
+
+    @Test
     void markCanceledStoresCanceledStatus() {
         ScriptConversionTaskDO task = task("task_1", "project_1");
         when(taskMapper.selectById("task_1")).thenReturn(task);
@@ -175,6 +235,26 @@ class ScriptConversionTaskServiceTest {
                 .contains("stage=SCENE_PLANNING")
                 .contains("用户停止生成");
         assertThat(response.endTime()).isNotNull();
+    }
+
+    @Test
+    void terminalCanceledTaskCannotBeOverwrittenByLaterPipelineUpdates() {
+        ScriptConversionTaskDO task = task("task_1", "project_1");
+        task.setStatus(ScriptConversionTaskService.STATUS_CANCELED);
+        task.setProgress(32);
+        task.setMessage("stage=SCENE_PLANNING; 用户停止生成");
+        when(taskMapper.selectById("task_1")).thenReturn(task);
+
+        var running = service.markRunning("task_1", PipelineStage.SCRIPT_YAML_GENERATION, 88, "后台继续执行");
+        var success = service.markSuccess("task_1", "draft_1", "生成完成");
+        var failed = service.markFailed("task_1", PipelineStage.SCRIPT_YAML_GENERATION, "后台失败");
+
+        assertThat(running.status()).isEqualTo(ScriptConversionTaskService.STATUS_CANCELED);
+        assertThat(success.status()).isEqualTo(ScriptConversionTaskService.STATUS_CANCELED);
+        assertThat(failed.status()).isEqualTo(ScriptConversionTaskService.STATUS_CANCELED);
+        assertThat(success.draftId()).isNull();
+        assertThat(success.progress()).isEqualTo(32);
+        verify(taskMapper, never()).updateById(any(ScriptConversionTaskDO.class));
     }
 
     @Test

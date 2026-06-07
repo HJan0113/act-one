@@ -12,8 +12,13 @@ public record ScriptAiPipelineResult(
         boolean fallback,
         String fallbackReason,
         ScriptYamlValidationResult validationResult,
-        PipelineContext context
+        PipelineContext context,
+        ScriptAiUsageSummary usageSummary
 ) {
+
+    public ScriptAiPipelineResult {
+        usageSummary = usageSummary == null ? ScriptAiUsageSummary.empty() : usageSummary;
+    }
 
     public boolean valid() {
         return validationResult != null && validationResult.valid();

@@ -30,18 +30,27 @@ public class LlmCinematicTreatmentStage implements CinematicTreatmentStage {
     private static final double TREATMENT_TEMPERATURE = 0.2D;
     private static final double TREATMENT_TOP_P = 0.8D;
     private static final int TREATMENT_MAX_TOKENS = 4096;
-    private static final Duration TREATMENT_TIMEOUT = Duration.ofSeconds(90);
+    private static final Duration DEFAULT_TREATMENT_TIMEOUT = Duration.ofSeconds(90);
 
     private final LLMService llmService;
     private final PromptTemplateService promptTemplateService;
     private final ObjectMapper objectMapper;
+    private final Duration timeout;
 
     public LlmCinematicTreatmentStage(LLMService llmService,
                                       PromptTemplateService promptTemplateService,
                                       ObjectMapper objectMapper) {
+        this(llmService, promptTemplateService, objectMapper, DEFAULT_TREATMENT_TIMEOUT);
+    }
+
+    public LlmCinematicTreatmentStage(LLMService llmService,
+                                      PromptTemplateService promptTemplateService,
+                                      ObjectMapper objectMapper,
+                                      Duration timeout) {
         this.llmService = Objects.requireNonNull(llmService, "LLMService 不能为空");
         this.promptTemplateService = Objects.requireNonNull(promptTemplateService, "PromptTemplateService 不能为空");
         this.objectMapper = Objects.requireNonNull(objectMapper, "ObjectMapper 不能为空");
+        this.timeout = ScriptAiTimeouts.requirePositive(timeout, DEFAULT_TREATMENT_TIMEOUT, "心理影视化 timeout");
     }
 
     @Override
@@ -71,7 +80,7 @@ public class LlmCinematicTreatmentStage implements CinematicTreatmentStage {
                 TREATMENT_TEMPERATURE,
                 TREATMENT_TOP_P,
                 TREATMENT_MAX_TOKENS,
-                TREATMENT_TIMEOUT,
+                timeout,
                 ChatResponseFormat.JSON_OBJECT
         ));
         CinematicTreatment treatment = parseTreatment(response);

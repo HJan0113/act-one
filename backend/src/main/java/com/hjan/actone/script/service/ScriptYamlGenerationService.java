@@ -1,7 +1,9 @@
 package com.hjan.actone.script.service;
 
 import com.hjan.actone.script.ai.pipeline.ScriptAiGenerationMode;
+import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineObserver;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineResult;
+import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineResumeState;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineService;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
@@ -32,9 +34,20 @@ public class ScriptYamlGenerationService {
     }
 
     public ScriptYamlGenerateResponse generateFromText(ScriptYamlGenerateRequest request) {
+        return generateFromText(request, ScriptAiPipelineObserver.NOOP);
+    }
+
+    public ScriptYamlGenerateResponse generateFromText(ScriptYamlGenerateRequest request,
+                                                       ScriptAiPipelineObserver observer) {
+        return generateFromText(request, observer, ScriptAiPipelineResumeState.empty());
+    }
+
+    public ScriptYamlGenerateResponse generateFromText(ScriptYamlGenerateRequest request,
+                                                       ScriptAiPipelineObserver observer,
+                                                       ScriptAiPipelineResumeState resumeState) {
         ScriptAiPipelineService aiPipelineService = aiPipelineProvider.getIfAvailable();
         if (aiPipelineService != null) {
-            return fromAiPipeline(aiPipelineService.generate(request));
+            return fromAiPipeline(aiPipelineService.generate(request, observer, resumeState));
         }
         return ruleBasedScaffold(request);
     }
@@ -50,7 +63,8 @@ public class ScriptYamlGenerationService {
                 result.fallback(),
                 result.fallbackReason(),
                 validation == null ? null : validation.status(),
-                validation == null ? null : validation.errorMessage()
+                validation == null ? null : validation.errorMessage(),
+                result.usageSummary()
         );
     }
 
@@ -66,7 +80,8 @@ public class ScriptYamlGenerationService {
                 false,
                 null,
                 validation.status(),
-                validation.errorMessage()
+                validation.errorMessage(),
+                null
         );
     }
 }

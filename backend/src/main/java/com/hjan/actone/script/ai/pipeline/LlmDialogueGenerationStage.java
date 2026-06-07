@@ -32,18 +32,27 @@ public class LlmDialogueGenerationStage implements DialogueGenerationStage {
     private static final double DIALOGUE_TEMPERATURE = 0.3D;
     private static final double DIALOGUE_TOP_P = 0.85D;
     private static final int DIALOGUE_MAX_TOKENS = 4096;
-    private static final Duration DIALOGUE_TIMEOUT = Duration.ofSeconds(90);
+    private static final Duration DEFAULT_DIALOGUE_TIMEOUT = Duration.ofSeconds(90);
 
     private final LLMService llmService;
     private final PromptTemplateService promptTemplateService;
     private final ObjectMapper objectMapper;
+    private final Duration timeout;
 
     public LlmDialogueGenerationStage(LLMService llmService,
                                       PromptTemplateService promptTemplateService,
                                       ObjectMapper objectMapper) {
+        this(llmService, promptTemplateService, objectMapper, DEFAULT_DIALOGUE_TIMEOUT);
+    }
+
+    public LlmDialogueGenerationStage(LLMService llmService,
+                                      PromptTemplateService promptTemplateService,
+                                      ObjectMapper objectMapper,
+                                      Duration timeout) {
         this.llmService = Objects.requireNonNull(llmService, "LLMService 不能为空");
         this.promptTemplateService = Objects.requireNonNull(promptTemplateService, "PromptTemplateService 不能为空");
         this.objectMapper = Objects.requireNonNull(objectMapper, "ObjectMapper 不能为空");
+        this.timeout = ScriptAiTimeouts.requirePositive(timeout, DEFAULT_DIALOGUE_TIMEOUT, "对白生成 timeout");
     }
 
     @Override
@@ -73,7 +82,7 @@ public class LlmDialogueGenerationStage implements DialogueGenerationStage {
                 DIALOGUE_TEMPERATURE,
                 DIALOGUE_TOP_P,
                 DIALOGUE_MAX_TOKENS,
-                DIALOGUE_TIMEOUT,
+                timeout,
                 ChatResponseFormat.JSON_OBJECT
         ));
         DialogueDraft draft = parseDraft(response);

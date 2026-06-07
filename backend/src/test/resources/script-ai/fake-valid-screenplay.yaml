@@ -31,6 +31,7 @@ scenes:
     scene_purpose: "建立林夜的任务与危险氛围"
     action: |-
       林夜吹熄残烛，刀锋在黑暗里出鞘半寸。
+    ai_expansion: true
     dialogues: []
     source_excerpt: |-
       林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。
@@ -44,6 +45,7 @@ scenes:
     scene_purpose: "把同一章节拆成第二个可拍场景，推进刺杀即将发生"
     action: |-
       刀锋出鞘半寸，寒光切开雨夜，林夜侧脸没有半分波澜。
+    ai_expansion: true
     dialogues:
       - speaker: "林夜"
         speaker_character_id: "character_001"

@@ -20,11 +20,14 @@ import {
     AppShell,
     ChapterList,
     type ChapterOutline,
+    ConsistencyWorkbench,
     ConversionProgress,
     InputPanel,
     type ProgressStep,
     ScriptPreviewPanel,
+    CharacterWorkbench,
     Sidebar,
+    SourceTraceWorkbench,
     TaskConsole,
     type TaskStatus,
     type TaskSummary,
@@ -36,16 +39,18 @@ import {isAuthExpiredError} from "./services/apiClient";
 import {fetchCurrentUser, login as loginWithPassword, logout as logoutSession} from "./services/authService";
 import {readStoredAuth, removeStoredAuth, writeStoredAuth} from "./services/authStorage";
 import {
+    cancelGenerationTask as cancelScriptGenerationTask,
     createProjectFromText,
     exportDraftYaml as exportDraftYamlFile,
-    generateYaml as generateScriptYaml,
     getDraftDetail,
     listDrafts as listProjectDrafts,
     listMyProjects,
     previewChapters as previewNovelChapters,
-    saveDraft as saveScriptDraft
+    saveDraft as saveScriptDraft,
+    streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
-import type {AuthSession, ScriptDraftListItem, ScriptProjectListItem} from "./types/api";
+import type {AuthSession, ScriptDraftListItem, ScriptProjectListItem, ScriptYamlStreamPayload} from "./types/api";
+import {parseScriptYamlCharacters, parseScriptYamlRelationships, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
 
 const placeholderYaml = `schema_version: "1.0"
 kind: "screenplay_draft"
@@ -72,7 +77,7 @@ const defaultLoginUsername = "admin";
 const defaultLoginPassword = "admin";
 const chapterHeadingPattern = /^第\s*([0-9一二三四五六七八九十百千万两〇零]+)\s*[章节回集部卷幕].*$/gm;
 
-type ConversionTaskState = Omit<TaskSummary, "canCancel">;
+type ConversionTaskState = Omit<TaskSummary, "canCancel" | "canRetry">;
 
 function App() {
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => readStoredAuth());
@@ -103,6 +108,7 @@ function App() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [yamlDraft, setYamlDraft] = useState("");
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
+  const [activeTraceSceneId, setActiveTraceSceneId] = useState("");
   const [validationStatus, setValidationStatus] = useState("pending");
   const [validationError, setValidationError] = useState("");
   const [generationMode, setGenerationMode] = useState("");
@@ -118,6 +124,9 @@ function App() {
   const canExport = useMemo(() => draftId.length > 0 && !exportLoading, [draftId, exportLoading]);
   const canRefreshDrafts = useMemo(() => projectId.length > 0 && !draftLoading, [projectId, draftLoading]);
   const chapterOutline = useMemo(() => parseChapterOutline(novelText), [novelText]);
+  const characterCards = useMemo(() => parseScriptYamlCharacters(yamlDraft), [yamlDraft]);
+  const relationships = useMemo(() => parseScriptYamlRelationships(yamlDraft), [yamlDraft]);
+  const traceScenes = useMemo(() => parseScriptYamlScenes(yamlDraft), [yamlDraft]);
   const selectedChapter = useMemo(
     () => chapterOutline.find((chapter) => chapter.index === activeChapterIndex) || chapterOutline[0],
     [activeChapterIndex, chapterOutline]
@@ -132,10 +141,16 @@ function App() {
     const taskSummary = useMemo<TaskSummary>(
         () => ({
             ...conversionTask,
-            canCancel: yamlLoading && Boolean(generationAbortRef.current)
+            canCancel: yamlLoading && Boolean(generationAbortRef.current),
+            canRetry:
+                !yamlLoading &&
+                conversionTask.status === "failed" &&
+                isBackendTaskId(conversionTask.taskId) &&
+                conversionTask.retryable !== false
         }),
         [conversionTask, yamlLoading]
     );
+    const generateButtonLabel = taskSummary.canRetry ? "继续生成" : "开始生成";
   const workflowSteps = useMemo(
     () =>
       createWorkflowSteps({
@@ -176,6 +191,19 @@ function App() {
         }),
         [conversionTask.status, isValid, novelText, previewLoading, yamlDraft, yamlLoading]
     );
+
+  useEffect(() => {
+    if (traceScenes.length === 0) {
+      if (activeTraceSceneId) {
+        setActiveTraceSceneId("");
+      }
+      return;
+    }
+
+    if (!traceScenes.some((scene) => scene.id === activeTraceSceneId)) {
+      setActiveTraceSceneId(traceScenes[0].id);
+    }
+  }, [activeTraceSceneId, traceScenes]);
 
   useEffect(() => {
     const token = authSession?.token;
@@ -372,8 +400,13 @@ function App() {
 
   async function generateYaml() {
     if (!canGenerate) return;
+      const resumeTaskId =
+          conversionTask.status === "failed" && isBackendTaskId(conversionTask.taskId)
+              ? conversionTask.taskId
+              : "";
       const controller = new AbortController();
       const taskId = createLocalTaskId();
+      let streamTaskId = resumeTaskId || taskId;
       generationAbortRef.current = controller;
       setActiveView("pipeline");
     setYamlLoading(true);
@@ -382,20 +415,90 @@ function App() {
       setConversionTask({
           currentStage: "AI Pipeline 编排",
           errorMessage: "",
-          message: "同步生成已提交，后端正在执行摘要、抽取、场景规划、对白和 YAML 生成。",
-          progress: 42,
+          message: resumeTaskId ? "正在从失败任务的安全阶段继续。" : "流式生成已提交，正在等待后端 meta / progress 事件。",
+          progress: 4,
           status: "running",
-          taskId
+          taskId: streamTaskId
       });
+
+      const updateTaskFromStream = (payload: ScriptYamlStreamPayload, status: TaskStatus = "running") => {
+          if (payload.taskId) {
+              streamTaskId = payload.taskId;
+          }
+          setConversionTask((current) => ({
+              ...current,
+              currentStage: pipelineStageLabel(payload.stage) || current.currentStage,
+              errorMessage:
+                  status === "failed"
+                      ? payload.validationError || payload.message || current.errorMessage
+                      : status === "running"
+                          ? ""
+                          : current.errorMessage,
+              errorType: payload.errorType || (status === "running" ? undefined : current.errorType),
+              failedStage: payload.failedStage || (status === "failed" ? payload.stage || current.failedStage : current.failedStage),
+              message: payload.message || current.message,
+              progress: nextTaskProgress(payload.progress, current.progress),
+              resumeStage: payload.resumeStage || current.resumeStage,
+              retryable: payload.retryable ?? current.retryable,
+              status,
+              taskId: payload.taskId || current.taskId || streamTaskId,
+              usageSummary: payload.result?.usageSummary || current.usageSummary
+          }));
+      };
+
     try {
+        const activeProjectId = await ensureProject();
       const data = await requestWithAuth((token) =>
-        generateScriptYaml(
+        streamGenerateScriptYaml(
           {
             author,
+            forceNewTask: !resumeTaskId,
             logline,
+            projectId: activeProjectId,
+            resumeTaskId: resumeTaskId || undefined,
             text: novelText,
             title
           },
+            {
+                onCancel: (payload) => {
+                    updateTaskFromStream(payload, "canceled");
+                    setValidationStatus("pending");
+                    setYamlMessage(payload.message || "生成已停止，未写入新的 YAML 草稿。");
+                },
+                onError: (payload) => {
+                    updateTaskFromStream(payload, "failed");
+                    setYamlMessage(payload.message || "YAML 生成失败。");
+                },
+                onFinish: (payload) => {
+                    updateTaskFromStream(payload, "success");
+                },
+                onMessage: (payload) => {
+                    updateTaskFromStream(payload);
+                    if (payload.message) {
+                        setYamlMessage(payload.message);
+                    }
+                },
+                onMeta: updateTaskFromStream,
+                onProgress: (payload) => {
+                    updateTaskFromStream(payload);
+                    if (payload.message) {
+                        setYamlMessage(payload.message);
+                    }
+                },
+                onValidation: (payload) => {
+                    updateTaskFromStream(payload);
+                    if (payload.validationStatus) {
+                        const stageLabel = pipelineStageLabel(payload.stage) || "校验";
+                        setValidationStatus(payload.validationStatus);
+                        setValidationError(payload.validationError || "");
+                        setYamlMessage(
+                            payload.validationStatus === "valid"
+                                ? `${stageLabel}通过，等待完成事件。`
+                                : payload.validationError || `${stageLabel}未通过，等待自动修复或兜底结果。`
+                        );
+                    }
+                }
+            },
             token,
             controller.signal
         )
@@ -418,9 +521,10 @@ function App() {
             currentStage: data.validationStatus === "valid" ? "Schema 校验通过" : "YAML 已生成",
             errorMessage: data.validationError || "",
             message: nextYamlMessage,
-            progress: data.validationStatus === "valid" ? 92 : 84,
+            progress: data.validationStatus === "valid" ? 100 : 96,
             status: data.validationStatus === "invalid" ? "failed" : "success",
-            taskId
+            taskId: streamTaskId,
+            usageSummary: data.usageSummary
         });
         setActiveView("result");
     } catch (error) {
@@ -430,12 +534,16 @@ function App() {
         setYamlMessage(errorMessage);
         setConversionTask((current) => ({
             ...current,
-            currentStage: aborted ? "已停止" : "生成失败",
+            currentStage: aborted
+                ? "已停止"
+                : current.currentStage && current.currentStage !== "AI Pipeline 编排"
+                    ? current.currentStage
+                    : "生成失败",
             errorMessage: aborted ? "" : errorMessage,
-            message: aborted ? errorMessage : "请检查模型配置、网络或输入文本后重试。",
+            message: aborted ? errorMessage : current.message || "请检查模型配置、网络或输入文本后重试。",
             progress: aborted ? Math.max(current.progress, 20) : Math.max(current.progress, 42),
             status: aborted ? "canceled" : "failed",
-            taskId
+            taskId: streamTaskId
         }));
         setActiveView(aborted ? "source" : "pipeline");
     } finally {
@@ -444,18 +552,37 @@ function App() {
     }
   }
 
-    function stopGeneration() {
+    async function stopGeneration() {
         if (!generationAbortRef.current) return;
-        generationAbortRef.current.abort();
+        const controller = generationAbortRef.current;
+        const taskId = conversionTask.taskId;
         setYamlMessage("正在停止生成请求...");
         setConversionTask((current) => ({
             ...current,
             currentStage: "停止中",
             errorMessage: "",
-            message: "已发送停止请求，正在释放前端生成连接。",
+            message: isBackendTaskId(taskId) ? "已发送后端取消请求，正在释放生成任务。" : "正在释放前端生成连接。",
             progress: Math.max(current.progress, 20),
             status: "canceled"
         }));
+        try {
+            if (isBackendTaskId(taskId)) {
+                const data = await requestWithAuth((token) => cancelScriptGenerationTask(taskId, token));
+                setConversionTask((current) => ({
+                    ...current,
+                    currentStage: pipelineStageLabel(extractTaskStage(data.message)) || "已停止",
+                    errorMessage: "",
+                    message: data.message || "任务已取消，后续阶段结果会被忽略。",
+                    progress: nextTaskProgress(data.progress, current.progress),
+                    status: "canceled",
+                    taskId: data.taskId
+                }));
+            }
+        } catch (error) {
+            setYamlMessage(error instanceof Error ? error.message : "停止生成失败，已中止前端连接。");
+        } finally {
+            controller.abort();
+        }
     }
 
   async function copyYaml() {
@@ -733,7 +860,7 @@ function App() {
                     projectId={projectId}
                     title={generatedTitle || title}
                 >
-                    <TaskConsole onCancel={stopGeneration} summary={taskSummary}/>
+                    <TaskConsole onCancel={stopGeneration} onRetry={generateYaml} summary={taskSummary}/>
                     <ConversionProgress steps={workflowSteps}/>
                 </Sidebar>
       }
@@ -755,7 +882,7 @@ function App() {
                 onClick={generateYaml}
                 variant="primary"
               >
-                  开始生成
+                  {generateButtonLabel}
               </ActionButton>
                 <ActionButton
                     disabled={!taskSummary.canCancel}
@@ -820,7 +947,7 @@ function App() {
             {activeView === "pipeline" ? (
                 <div className="page-grid page-grid--pipeline">
                     <div className="studio-panel page-side-panel">
-                        <TaskConsole onCancel={stopGeneration} summary={taskSummary}/>
+                        <TaskConsole onCancel={stopGeneration} onRetry={generateYaml} summary={taskSummary}/>
                     </div>
                     <div className="studio-panel page-side-panel">
                         <ConversionProgress steps={workflowSteps}/>
@@ -837,9 +964,9 @@ function App() {
                         <div className="task-details__body">
                             <p>{taskSummary.errorMessage || taskSummary.message}</p>
                             <div className="task-detail-list">
-                                <span>后续接入 SSE 后，此页会实时显示 `meta / progress / validation / finish / error` 事件。</span>
-                                <span>停止生成已支持前端请求中止，后端取消接口落地后会切换为真实任务取消。</span>
-                                <span>阶段结果暂存、失败恢复和超长文本分块会继续挂在此页。</span>
+                                <span>此页实时显示后端 `meta / progress / validation / finish / error` 事件。</span>
+                                <span>停止生成会调用后端取消接口，并中止当前流式连接。</span>
+                                <span>失败后保留小说输入与任务 ID，可从控制台或顶部按钮继续生成。</span>
                             </div>
                         </div>
                     </section>
@@ -847,6 +974,34 @@ function App() {
             ) : null}
 
             {activeView === "result" ? scriptPanel : null}
+
+            {activeView === "trace" ? (
+                <SourceTraceWorkbench
+                    activeSceneId={activeTraceSceneId}
+                    chapters={chapterOutline}
+                    onSelectScene={setActiveTraceSceneId}
+                    scenes={traceScenes}
+                    yamlReady={Boolean(yamlDraft.trim())}
+                />
+            ) : null}
+
+            {activeView === "characters" ? (
+                <CharacterWorkbench
+                    characters={characterCards}
+                    relationships={relationships}
+                    scenes={traceScenes}
+                    yamlReady={Boolean(yamlDraft.trim())}
+                />
+            ) : null}
+
+            {activeView === "consistency" ? (
+                <ConsistencyWorkbench
+                    characters={characterCards}
+                    chapters={chapterOutline}
+                    scenes={traceScenes}
+                    yamlReady={Boolean(yamlDraft.trim())}
+                />
+            ) : null}
 
             {activeView === "archive" ? (
                 <div className="archive-grid">
@@ -1035,6 +1190,7 @@ function parseChapterOutline(text: string): ChapterOutline[] {
     const normalizedExcerpt = content.replace(/\s+/g, " ").slice(0, 160);
 
     return {
+      content,
       excerpt: normalizedExcerpt,
       id: `chapter-${index + 1}`,
       index: index + 1,
@@ -1130,8 +1286,47 @@ function createLocalTaskId() {
     return `local-${Date.now().toString(36)}`;
 }
 
+function isBackendTaskId(taskId: string) {
+    return Boolean(taskId) && !taskId.startsWith("local-") && !taskId.startsWith("actone-");
+}
+
+function extractTaskStage(message?: string | null) {
+    return message?.match(/stage=([A-Z_]+)/)?.[1] || "";
+}
+
+const pipelineStageLabels: Record<string, string> = {
+    CHAPTER_SUMMARY: "章节摘要",
+    COMPLETED: "转换完成",
+    CONSISTENCY_CHECK: "一致性校验",
+    DIALOGUE_GENERATION: "对白生成",
+    FACT_CONSTRAINT_CHECK: "事实约束",
+    GLOBAL_STORY_EXTRACTION: "全局故事抽取",
+    INIT: "任务初始化",
+    PSYCHOLOGICAL_VISUALIZATION: "心理影视化",
+    SCENE_PLANNING: "场景规划",
+    SCRIPT_YAML_GENERATION: "YAML 生成",
+    SOURCE_TRACE: "源文追溯",
+    YAML_REPAIR: "YAML 自动修复",
+    YAML_VALIDATION: "Schema 校验"
+};
+
+function pipelineStageLabel(stage?: string | null) {
+    if (!stage) {
+        return "";
+    }
+    return pipelineStageLabels[stage] || stage;
+}
+
+function nextTaskProgress(value: number | null | undefined, current: number) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return current;
+    }
+    const normalized = Math.max(0, Math.min(100, Math.round(value)));
+    return Math.max(current, normalized);
+}
+
 function isAbortError(error: unknown) {
-    return error instanceof DOMException && error.name === "AbortError";
+    return error instanceof DOMException && error.name === "AbortError" || error instanceof Error && error.name === "AbortError";
 }
 
 function createWorkflowSteps({

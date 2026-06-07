@@ -16,20 +16,26 @@ import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.LlmScriptYamlGenerationStage;
 import com.hjan.actone.script.ai.pipeline.LlmYamlRepairStage;
+import com.hjan.actone.script.ai.pipeline.PipelineConsistencyChecker;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
+import com.hjan.actone.script.ai.pipeline.ScriptAiMeteredLlmService;
+import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineOptions;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineService;
 import com.hjan.actone.script.ai.pipeline.ScriptYamlGenerationStage;
+import com.hjan.actone.script.ai.pipeline.ScriptYamlFactConstraintChecker;
 import com.hjan.actone.script.ai.pipeline.YamlRepairStage;
 import com.hjan.actone.script.service.NovelChapterParser;
 import com.hjan.actone.script.service.ScriptYamlDraftService;
 import com.hjan.actone.script.service.ScriptYamlValidator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@EnableConfigurationProperties(ScriptAiProperties.class)
 public class ScriptAiConfiguration {
 
     @Bean
@@ -45,12 +51,30 @@ public class ScriptAiConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(PipelineConsistencyChecker.class)
+    public PipelineConsistencyChecker pipelineConsistencyChecker() {
+        return new PipelineConsistencyChecker();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(ScriptYamlFactConstraintChecker.class)
+    public ScriptYamlFactConstraintChecker scriptYamlFactConstraintChecker() {
+        return new ScriptYamlFactConstraintChecker();
+    }
+
+    @Bean
     @ConditionalOnBean({LLMService.class, PromptTemplateService.class, ObjectMapper.class})
     @ConditionalOnMissingBean(ChapterSummaryStage.class)
     public ChapterSummaryStage chapterSummaryStage(LLMService llmService,
                                                    PromptTemplateService promptTemplateService,
-                                                   ObjectMapper objectMapper) {
-        return new LlmChapterSummaryStage(llmService, promptTemplateService, objectMapper);
+                                                   ObjectMapper objectMapper,
+                                                   ScriptAiProperties scriptAiProperties) {
+        return new LlmChapterSummaryStage(
+                ScriptAiMeteredLlmService.wrap(llmService),
+                promptTemplateService,
+                objectMapper,
+                scriptAiProperties.getTimeouts().getChapterSummary()
+        );
     }
 
     @Bean
@@ -59,8 +83,15 @@ public class ScriptAiConfiguration {
     public GlobalStoryExtractionStage globalStoryExtractionStage(LLMService llmService,
                                                                  PromptTemplateService promptTemplateService,
                                                                  ObjectMapper objectMapper,
-                                                                 GlobalStoryStateMerger globalStoryStateMerger) {
-        return new LlmGlobalStoryExtractionStage(llmService, promptTemplateService, objectMapper, globalStoryStateMerger);
+                                                                 GlobalStoryStateMerger globalStoryStateMerger,
+                                                                 ScriptAiProperties scriptAiProperties) {
+        return new LlmGlobalStoryExtractionStage(
+                ScriptAiMeteredLlmService.wrap(llmService),
+                promptTemplateService,
+                objectMapper,
+                globalStoryStateMerger,
+                scriptAiProperties.getTimeouts().getGlobalStoryExtraction()
+        );
     }
 
     @Bean
@@ -68,8 +99,14 @@ public class ScriptAiConfiguration {
     @ConditionalOnMissingBean(ScenePlanningStage.class)
     public ScenePlanningStage scenePlanningStage(LLMService llmService,
                                                  PromptTemplateService promptTemplateService,
-                                                 ObjectMapper objectMapper) {
-        return new LlmScenePlanningStage(llmService, promptTemplateService, objectMapper);
+                                                 ObjectMapper objectMapper,
+                                                 ScriptAiProperties scriptAiProperties) {
+        return new LlmScenePlanningStage(
+                ScriptAiMeteredLlmService.wrap(llmService),
+                promptTemplateService,
+                objectMapper,
+                scriptAiProperties.getTimeouts().getScenePlanning()
+        );
     }
 
     @Bean
@@ -77,8 +114,14 @@ public class ScriptAiConfiguration {
     @ConditionalOnMissingBean(CinematicTreatmentStage.class)
     public CinematicTreatmentStage cinematicTreatmentStage(LLMService llmService,
                                                            PromptTemplateService promptTemplateService,
-                                                           ObjectMapper objectMapper) {
-        return new LlmCinematicTreatmentStage(llmService, promptTemplateService, objectMapper);
+                                                           ObjectMapper objectMapper,
+                                                           ScriptAiProperties scriptAiProperties) {
+        return new LlmCinematicTreatmentStage(
+                ScriptAiMeteredLlmService.wrap(llmService),
+                promptTemplateService,
+                objectMapper,
+                scriptAiProperties.getTimeouts().getCinematicTreatment()
+        );
     }
 
     @Bean
@@ -86,8 +129,14 @@ public class ScriptAiConfiguration {
     @ConditionalOnMissingBean(DialogueGenerationStage.class)
     public DialogueGenerationStage dialogueGenerationStage(LLMService llmService,
                                                            PromptTemplateService promptTemplateService,
-                                                           ObjectMapper objectMapper) {
-        return new LlmDialogueGenerationStage(llmService, promptTemplateService, objectMapper);
+                                                           ObjectMapper objectMapper,
+                                                           ScriptAiProperties scriptAiProperties) {
+        return new LlmDialogueGenerationStage(
+                ScriptAiMeteredLlmService.wrap(llmService),
+                promptTemplateService,
+                objectMapper,
+                scriptAiProperties.getTimeouts().getDialogueGeneration()
+        );
     }
 
     @Bean
@@ -95,15 +144,27 @@ public class ScriptAiConfiguration {
     @ConditionalOnMissingBean(ScriptYamlGenerationStage.class)
     public ScriptYamlGenerationStage scriptYamlGenerationStage(LLMService llmService,
                                                                PromptTemplateService promptTemplateService,
-                                                               ObjectMapper objectMapper) {
-        return new LlmScriptYamlGenerationStage(llmService, promptTemplateService, objectMapper);
+                                                               ObjectMapper objectMapper,
+                                                               ScriptAiProperties scriptAiProperties) {
+        return new LlmScriptYamlGenerationStage(
+                ScriptAiMeteredLlmService.wrap(llmService),
+                promptTemplateService,
+                objectMapper,
+                scriptAiProperties.getTimeouts().getScriptYamlGeneration()
+        );
     }
 
     @Bean
     @ConditionalOnBean({LLMService.class, PromptTemplateService.class})
     @ConditionalOnMissingBean(YamlRepairStage.class)
-    public YamlRepairStage yamlRepairStage(LLMService llmService, PromptTemplateService promptTemplateService) {
-        return new LlmYamlRepairStage(llmService, promptTemplateService);
+    public YamlRepairStage yamlRepairStage(LLMService llmService,
+                                           PromptTemplateService promptTemplateService,
+                                           ScriptAiProperties scriptAiProperties) {
+        return new LlmYamlRepairStage(
+                ScriptAiMeteredLlmService.wrap(llmService),
+                promptTemplateService,
+                scriptAiProperties.getTimeouts().getYamlRepair()
+        );
     }
 
     @Bean
@@ -118,7 +179,10 @@ public class ScriptAiConfiguration {
             DialogueGenerationStage.class,
             SourceTraceStage.class,
             ScriptYamlGenerationStage.class,
-            YamlRepairStage.class
+            YamlRepairStage.class,
+            GlobalStoryStateMerger.class,
+            PipelineConsistencyChecker.class,
+            ScriptYamlFactConstraintChecker.class
     })
     @ConditionalOnMissingBean(ScriptAiPipelineService.class)
     public ScriptAiPipelineService scriptAiPipelineService(NovelChapterParser chapterParser,
@@ -131,7 +195,11 @@ public class ScriptAiConfiguration {
                                                            DialogueGenerationStage dialogueGenerationStage,
                                                            SourceTraceStage sourceTraceStage,
                                                            ScriptYamlGenerationStage scriptYamlGenerationStage,
-                                                           YamlRepairStage yamlRepairStage) {
+                                                           YamlRepairStage yamlRepairStage,
+                                                           GlobalStoryStateMerger globalStoryStateMerger,
+                                                           PipelineConsistencyChecker consistencyChecker,
+                                                           ScriptYamlFactConstraintChecker factConstraintChecker,
+                                                           ScriptAiProperties scriptAiProperties) {
         return new ScriptAiPipelineService(
                 chapterParser,
                 yamlValidator,
@@ -143,7 +211,11 @@ public class ScriptAiConfiguration {
                 dialogueGenerationStage,
                 sourceTraceStage,
                 scriptYamlGenerationStage,
-                yamlRepairStage
+                yamlRepairStage,
+                globalStoryStateMerger,
+                consistencyChecker,
+                factConstraintChecker,
+                new ScriptAiPipelineOptions(scriptAiProperties.getMaxStageRetries())
         );
     }
 }

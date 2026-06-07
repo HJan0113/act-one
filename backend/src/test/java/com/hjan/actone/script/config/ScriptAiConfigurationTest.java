@@ -19,9 +19,11 @@ import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.LlmScriptYamlGenerationStage;
 import com.hjan.actone.script.ai.pipeline.LlmYamlRepairStage;
+import com.hjan.actone.script.ai.pipeline.PipelineConsistencyChecker;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineService;
+import com.hjan.actone.script.ai.pipeline.ScriptYamlFactConstraintChecker;
 import com.hjan.actone.script.ai.pipeline.ScriptYamlGenerationStage;
 import com.hjan.actone.script.ai.pipeline.YamlRepairStage;
 import com.hjan.actone.script.service.NovelChapterParser;
@@ -30,6 +32,8 @@ import com.hjan.actone.script.service.ScriptYamlValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.io.DefaultResourceLoader;
+
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -46,6 +50,8 @@ class ScriptAiConfigurationTest {
                 .withBean(LLMService.class, StubLlmService::new)
                 .run(context -> {
                     assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
+                    assertThat(context).hasSingleBean(PipelineConsistencyChecker.class);
+                    assertThat(context).hasSingleBean(ScriptYamlFactConstraintChecker.class);
                     assertThat(context).hasSingleBean(ChapterSummaryStage.class);
                     assertThat(context).hasSingleBean(GlobalStoryExtractionStage.class);
                     assertThat(context).hasSingleBean(ScenePlanningStage.class);
@@ -85,9 +91,28 @@ class ScriptAiConfigurationTest {
     }
 
     @Test
+    void bindsScriptAiCostAndTimeoutProperties() {
+        contextRunner
+                .withPropertyValues(
+                        "script.ai.max-stage-retries=2",
+                        "script.ai.timeouts.chapter-summary=7s",
+                        "script.ai.timeouts.script-yaml-generation=30s"
+                )
+                .run(context -> {
+                    assertThat(context).hasSingleBean(ScriptAiProperties.class);
+                    ScriptAiProperties properties = context.getBean(ScriptAiProperties.class);
+                    assertThat(properties.getMaxStageRetries()).isEqualTo(2);
+                    assertThat(properties.getTimeouts().getChapterSummary()).isEqualTo(Duration.ofSeconds(7));
+                    assertThat(properties.getTimeouts().getScriptYamlGeneration()).isEqualTo(Duration.ofSeconds(30));
+                });
+    }
+
+    @Test
     void doesNotRegisterChapterSummaryStageWithoutLlmService() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
+            assertThat(context).hasSingleBean(PipelineConsistencyChecker.class);
+            assertThat(context).hasSingleBean(ScriptYamlFactConstraintChecker.class);
             assertThat(context).hasSingleBean(SourceTraceStage.class);
             assertThat(context.getBean(SourceTraceStage.class))
                     .isInstanceOf(DeterministicSourceTraceStage.class);

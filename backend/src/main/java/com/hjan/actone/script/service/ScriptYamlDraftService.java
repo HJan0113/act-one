@@ -40,6 +40,7 @@ public class ScriptYamlDraftService {
                 false,
                 null,
                 null,
+                null,
                 null
         );
     }
