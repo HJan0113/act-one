@@ -100,10 +100,12 @@ class AiClientConfigurationTest {
                         "url: https://dashscope.aliyuncs.com",
                         "api-key: ${BAILIAN_API_KEY:}",
                         "chat: /compatible-mode/v1/chat/completions",
-                        "default-model: qwen3-max",
+                        "default-model: deepseek-v4-flash",
                         "id: qwen3-max",
+                        "id: deepseek-v4-flash",
                         "provider: bailian",
                         "model: qwen3-max",
+                        "model: deepseek-v4-flash",
                         "selection:",
                         "failure-threshold: 2",
                         "open-duration-ms: 30000"
@@ -115,10 +117,9 @@ class AiClientConfigurationTest {
                 new FileSystemResource(applicationYaml)
         );
         String defaultModel = property(propertySources, "ai.chat.default-model");
-        String candidateId = property(propertySources, "ai.chat.candidates[0].id");
-        String candidateProvider = property(propertySources, "ai.chat.candidates[0].provider");
+        String candidateProvider = providerForCandidate(propertySources, defaultModel);
 
-        assertThat(defaultModel).isEqualTo(candidateId);
+        assertThat(candidateProvider).isNotBlank();
         assertThat(propertySources)
                 .anySatisfy(source -> assertThat(source.containsProperty(
                         "ai.providers." + candidateProvider + ".url"
@@ -140,5 +141,18 @@ class AiClientConfigurationTest {
                 .map(Object::toString)
                 .findFirst()
                 .orElse(null);
+    }
+
+    private String providerForCandidate(List<PropertySource<?>> sources, String candidateId) {
+        for (int index = 0; index < 10; index++) {
+            String id = property(sources, "ai.chat.candidates[" + index + "].id");
+            if (id == null) {
+                return null;
+            }
+            if (candidateId.equals(id)) {
+                return property(sources, "ai.chat.candidates[" + index + "].provider");
+            }
+        }
+        return null;
     }
 }

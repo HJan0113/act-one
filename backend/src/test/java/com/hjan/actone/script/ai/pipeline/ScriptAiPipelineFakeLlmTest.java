@@ -51,7 +51,8 @@ class ScriptAiPipelineFakeLlmTest {
                 .contains("generation_mode: \"ai_pipeline\"")
                 .contains("破庙伏杀");
         assertThat(stages.summaryCalls()).isEqualTo(3);
-        assertThat(stages.repairCalls()).isZero();
+        assertThat(stages.scenePlanningContext()).isNotNull();
+        assertThat(stages.yamlGenerationContext()).isNotNull();
     }
 
     @Test
@@ -92,51 +93,17 @@ class ScriptAiPipelineFakeLlmTest {
     }
 
     @Test
-    void fakeLlmUntraceableSourceFallsBackExplicitly() {
+    void fakeLlmIllegalYamlResponseFallsBackWithoutRepair() {
         FakeScriptAiStages stages = new FakeScriptAiStages()
-                .failingAt(PipelineStage.SOURCE_TRACE, new IllegalStateException("raw source trace failure"));
+                .generatedYaml(ScriptAiTestFixtures.invalidYaml());
 
         ScriptAiPipelineResult result = service(stages).generate(ScriptAiTestFixtures.sampleRequest());
 
         assertThat(result.valid()).isTrue();
         assertThat(result.fallback()).isTrue();
         assertThat(result.generationMode()).isEqualTo(ScriptAiGenerationMode.RULE_BASED_FALLBACK);
-        assertThat(result.fallbackReason())
-                .contains("SOURCE_TRACE")
-                .doesNotContain("raw source trace failure");
+        assertThat(result.fallbackReason()).contains("YAML Schema 校验失败");
         assertThat(result.yaml()).contains("generation_mode: \"rule_based_fallback\"");
-    }
-
-    @Test
-    void fakeLlmIllegalYamlResponseCanBeRepairedByFixedFixture() {
-        FakeScriptAiStages stages = new FakeScriptAiStages()
-                .generatedYaml(ScriptAiTestFixtures.invalidYaml())
-                .repairedYaml(ScriptAiTestFixtures.validYaml());
-
-        ScriptAiPipelineResult result = service(stages).generate(ScriptAiTestFixtures.sampleRequest());
-
-        assertThat(result.valid()).isTrue();
-        assertThat(result.fallback()).isFalse();
-        assertThat(result.generationMode()).isEqualTo(ScriptAiGenerationMode.AI_PIPELINE);
-        assertThat(result.yaml()).contains("generation_mode: \"ai_pipeline\"");
-        assertThat(stages.repairCalls()).isEqualTo(1);
-    }
-
-    @Test
-    void fakeLlmRepairFailureFallsBackExplicitly() {
-        FakeScriptAiStages stages = new FakeScriptAiStages()
-                .generatedYaml(ScriptAiTestFixtures.invalidYaml())
-                .failingAt(PipelineStage.YAML_REPAIR, new IllegalStateException("repair raw provider body"));
-
-        ScriptAiPipelineResult result = service(stages).generate(ScriptAiTestFixtures.sampleRequest());
-
-        assertThat(result.valid()).isTrue();
-        assertThat(result.fallback()).isTrue();
-        assertThat(result.generationMode()).isEqualTo(ScriptAiGenerationMode.RULE_BASED_FALLBACK);
-        assertThat(result.fallbackReason())
-                .contains("YAML_REPAIR")
-                .doesNotContain("repair raw provider body");
-        assertThat(stages.repairCalls()).isEqualTo(1);
     }
 
     private ScriptAiPipelineService service(FakeScriptAiStages stages) {
@@ -144,11 +111,6 @@ class ScriptAiPipelineFakeLlmTest {
                 chapterParser,
                 yamlValidator,
                 ruleBasedDraftService,
-                stages,
-                stages,
-                stages,
-                stages,
-                stages,
                 stages,
                 stages,
                 stages

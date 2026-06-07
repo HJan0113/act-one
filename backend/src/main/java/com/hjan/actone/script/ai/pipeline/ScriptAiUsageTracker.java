@@ -24,6 +24,26 @@ final class ScriptAiUsageTracker implements AutoCloseable {
         return tracker;
     }
 
+    static ScriptAiUsageTracker currentTracker() {
+        return CURRENT.get();
+    }
+
+    static Scope bind(ScriptAiUsageTracker tracker) {
+        ScriptAiUsageTracker previous = CURRENT.get();
+        if (tracker == null) {
+            CURRENT.remove();
+        } else {
+            CURRENT.set(tracker);
+        }
+        return () -> {
+            if (previous == null) {
+                CURRENT.remove();
+                return;
+            }
+            CURRENT.set(previous);
+        };
+    }
+
     static void record(ChatRequest request, ChatResponse response) {
         ScriptAiUsageTracker tracker = CURRENT.get();
         if (tracker != null) {
@@ -36,7 +56,7 @@ final class ScriptAiUsageTracker implements AutoCloseable {
         return tracker == null ? ScriptAiUsageSummary.empty() : tracker.summary();
     }
 
-    ScriptAiUsageSummary summary() {
+    synchronized ScriptAiUsageSummary summary() {
         return new ScriptAiUsageSummary(callCount, promptTokens, completionTokens, totalTokens, estimated);
     }
 
@@ -47,7 +67,7 @@ final class ScriptAiUsageTracker implements AutoCloseable {
         }
     }
 
-    private void add(ChatRequest request, ChatResponse response) {
+    private synchronized void add(ChatRequest request, ChatResponse response) {
         callCount++;
         ChatUsage usage = response == null ? null : response.usage();
         int nextPromptTokens = usage == null || usage.promptTokens() == null
@@ -90,5 +110,12 @@ final class ScriptAiUsageTracker implements AutoCloseable {
         }
         int codePoints = value.codePointCount(0, value.length());
         return Math.max(1, (int) Math.ceil(codePoints / 2D));
+    }
+
+    @FunctionalInterface
+    interface Scope extends AutoCloseable {
+
+        @Override
+        void close();
     }
 }

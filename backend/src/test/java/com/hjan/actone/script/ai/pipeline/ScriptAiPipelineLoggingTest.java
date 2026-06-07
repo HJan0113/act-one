@@ -36,19 +36,19 @@ class ScriptAiPipelineLoggingTest {
         String logs = formattedLogs(appender);
         assertThat(result.context().taskId()).startsWith("task_");
         assertThat(logs)
-                .contains("event=actone_ai_pipeline_start")
-                .contains("event=actone_ai_stage_start")
-                .contains("event=actone_ai_stage_success")
-                .contains("event=actone_ai_yaml_validation_result")
-                .contains("event=actone_ai_pipeline_complete")
+                .contains("管线启动")
+                .contains("阶段开始")
+                .contains("阶段成功")
+                .contains("YAML校验结果")
+                .contains("管线完成")
                 .contains("taskId=" + result.context().taskId())
                 .contains("stage=CHAPTER_SUMMARY")
                 .contains("stage=YAML_VALIDATION")
                 .contains("model=n/a")
                 .contains("retry=0")
-                .contains("durationMs=")
-                .contains("validationStatus=valid")
-                .contains("generationMode=ai_pipeline")
+                .contains("耗时=")
+                .contains("校验状态=valid")
+                .contains("生成模式=ai_pipeline")
                 .doesNotContain("夜雨孤庙", "林夜缓缓睁开眼", "破庙伏杀", "api-key");
     }
 
@@ -74,14 +74,14 @@ class ScriptAiPipelineLoggingTest {
         String logs = formattedLogs(appender);
         assertThat(result.fallback()).isTrue();
         assertThat(logs)
-                .contains("event=actone_ai_stage_failure")
-                .contains("event=actone_ai_pipeline_fallback")
-                .contains("event=actone_ai_pipeline_fallback_success")
-                .contains("event=actone_ai_pipeline_complete")
+                .contains("阶段失败")
+                .contains("AI管线降级")
+                .contains("降级成功")
+                .contains("管线完成")
                 .contains("taskId=" + result.context().taskId())
                 .contains("stage=SCRIPT_YAML_GENERATION")
-                .contains("errorType=RemoteException")
-                .contains("generationMode=rule_based_fallback")
+                .contains("错误类型=RemoteException")
+                .contains("生成模式=rule_based_fallback")
                 .doesNotContain("Read timed out", "api-key", "secret", "完整小说正文", "破庙伏杀");
     }
 
@@ -90,11 +90,6 @@ class ScriptAiPipelineLoggingTest {
                 chapterParser,
                 yamlValidator,
                 ruleBasedDraftService,
-                stages,
-                stages,
-                stages,
-                stages,
-                stages,
                 stages,
                 stages,
                 stages

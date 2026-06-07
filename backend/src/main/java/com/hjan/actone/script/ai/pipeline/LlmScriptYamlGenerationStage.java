@@ -36,10 +36,15 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
     private static final String SCHEMA_SUMMARY = """
             顶层必须包含 schema_version、kind、metadata、source、characters、acts、scenes。
             schema_version 固定为 "1.0"，kind 固定为 "screenplay_draft"。
-            source.type 固定为 "novel"，source.generation_mode 固定为 "ai_pipeline"。
+            source 必须包含 type（固定 "novel"）、generation_mode（固定 "ai_pipeline"）、chapter_count（正整数，与项目章节数一致）。
+            acts 每项必须包含 id、title、chapter_range（对象，含 start 和 end 正整数，start <= end）。
             scenes 每项必须包含 id、act_id、chapter_index、source_chapter_id、title、location、time、scene_purpose、action、dialogues、source_excerpt、ai_expansion。
+            act_id 必须引用 acts 中已定义的 id；chapter_index 不能超过 source.chapter_count。
             dialogues 每项应包含 speaker、line，可包含 emotion。
-            ai_expansion 为 boolean；当 action 或 dialogues 含源文摘录外的影视化/对白改写时必须为 true。
+            characters 需要从 chapter_summaries 与 scene_plan 中归纳人物名或稳定人物标识。
+            action 需要把心理、情绪和抽象叙述转译为可拍动作、表情、道具、沉默或转场。
+            dialogues 需要基于场景冲突生成可编辑对白，避免角色口吻趋同。
+            ai_expansion 为 boolean；当 action 或 dialogues 含源文摘录外的影视化、压缩、转场或对白改写时必须为 true。
             """;
 
     private final LLMService llmService;
@@ -66,24 +71,15 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
     @Override
     public String generate(PipelineContext context) {
         Objects.requireNonNull(context, "PipelineContext 不能为空");
-        if (context.globalStoryState().characters().isEmpty()) {
-            throw new IllegalArgumentException("globalStoryState 不能为空");
+        if (context.chapterSummaries().isEmpty()) {
+            throw new IllegalArgumentException("chapterSummaries 不能为空");
         }
         if (context.scenePlan() == null || context.scenePlan().scenes().isEmpty()) {
             throw new IllegalArgumentException("scenePlan 不能为空");
         }
-        if (context.cinematicTreatment() == null || context.cinematicTreatment().scenes().isEmpty()) {
-            throw new IllegalArgumentException("cinematicTreatment 不能为空");
-        }
-        if (context.dialogueDraft() == null || context.dialogueDraft().scenes().isEmpty()) {
-            throw new IllegalArgumentException("dialogueDraft 不能为空");
-        }
-        if (context.sourceTrace() == null || context.sourceTrace().scenes().isEmpty()) {
-            throw new IllegalArgumentException("sourceTrace 不能为空");
-        }
 
         long startedNanos = System.nanoTime();
-        log.info("开始YAML生成 taskId={} sceneCount={}", context.taskId(), context.scenePlan().scenes().size());
+        log.info("开始YAML生成 taskId={} 场景数={}", context.taskId(), context.scenePlan().scenes().size());
         RenderedPrompt prompt = promptTemplateService.render(
                 PromptTemplateId.SCRIPT_YAML_GENERATION,
                 Map.of(
@@ -91,11 +87,8 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
                         "author", optionalValue(context.author()),
                         "logline", optionalValue(context.logline()),
                         "chapter_count", context.chapterCount(),
-                        "global_story_state", serialize(context.globalStoryState(), "全局故事状态序列化失败"),
-                        "scene_plans", serialize(context.scenePlan(), "场景规划序列化失败"),
-                        "cinematic_treatment", serialize(context.cinematicTreatment(), "心理影视化结果序列化失败"),
-                        "dialogue_draft", serialize(context.dialogueDraft(), "剧本对白序列化失败"),
-                        "source_trace", serialize(context.sourceTrace(), "源文追溯序列化失败"),
+                        "chapter_summaries", serialize(context.chapterSummaries(), "章节摘要序列化失败"),
+                        "scene_plan", serialize(context.scenePlan(), "场景规划序列化失败"),
                         "schema_summary", SCHEMA_SUMMARY
                 )
         );
@@ -109,10 +102,11 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
                 ChatResponseFormat.TEXT
         ));
         String yaml = cleanYaml(response);
-        log.info("完成YAML生成 taskId={} durationMs={} yamlLength={}",
+        log.info("完成YAML生成 taskId={} 耗时={}ms YAML长度={} 响应模型={}",
                 context.taskId(),
                 TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos),
-                yaml.length());
+                yaml.length(),
+                response.model());
         return yaml;
     }
 

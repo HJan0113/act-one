@@ -32,7 +32,7 @@ import {
     ScriptReadableView,
     CharacterWorkbench,
     Sidebar,
-    SourceTraceWorkbench,
+    SourceReviewWorkbench,
     StoryboardPanel,
     type ScriptStyleVariant,
     scriptStyleVariantOptions,
@@ -533,7 +533,7 @@ function App() {
                         setYamlMessage(
                             payload.validationStatus === "valid"
                                 ? `${stageLabel}通过，等待完成事件。`
-                                : payload.validationError || `${stageLabel}未通过，等待自动修复或兜底结果。`
+                                : payload.validationError || `${stageLabel}未通过，等待规则兜底结果。`
                         );
                     }
                 }
@@ -1440,7 +1440,7 @@ function App() {
 
             {activeView === "trace" ? (
                 <div className="trace-full-workbench">
-                    <SourceTraceWorkbench
+                    <SourceReviewWorkbench
                         activeDraftId={draftId}
                         activeSceneId={activeTraceSceneId}
                         chapters={chapterOutline}
@@ -1947,16 +1947,9 @@ function extractTaskStage(message?: string | null) {
 const pipelineStageLabels: Record<string, string> = {
     CHAPTER_SUMMARY: "章节摘要",
     COMPLETED: "转换完成",
-    CONSISTENCY_CHECK: "一致性校验",
-    DIALOGUE_GENERATION: "对白生成",
-    FACT_CONSTRAINT_CHECK: "事实约束",
-    GLOBAL_STORY_EXTRACTION: "全局故事抽取",
     INIT: "任务初始化",
-    PSYCHOLOGICAL_VISUALIZATION: "心理影视化",
     SCENE_PLANNING: "场景规划",
     SCRIPT_YAML_GENERATION: "YAML 生成",
-    SOURCE_TRACE: "源文追溯",
-    YAML_REPAIR: "YAML 自动修复",
     YAML_VALIDATION: "Schema 校验"
 };
 

@@ -408,16 +408,9 @@ function usageSummaryLabel(summary: TaskSummary["usageSummary"]) {
 const stageLabels: Record<string, string> = {
     CHAPTER_SUMMARY: "章节摘要",
     COMPLETED: "转换完成",
-    CONSISTENCY_CHECK: "一致性校验",
-    DIALOGUE_GENERATION: "对白生成",
-    FACT_CONSTRAINT_CHECK: "事实约束",
-    GLOBAL_STORY_EXTRACTION: "全局故事抽取",
     INIT: "任务初始化",
-    PSYCHOLOGICAL_VISUALIZATION: "心理影视化",
     SCENE_PLANNING: "场景规划",
     SCRIPT_YAML_GENERATION: "YAML 生成",
-    SOURCE_TRACE: "源文追溯",
-    YAML_REPAIR: "YAML 自动修复",
     YAML_VALIDATION: "Schema 校验"
 };
 
@@ -664,7 +657,7 @@ export function InputPanel({
   );
 }
 
-type SourceTraceWorkbenchProps = {
+type SourceReviewWorkbenchProps = {
   activeDraftId: string;
   activeSceneId: string;
   chapters: ChapterOutline[];
@@ -675,7 +668,7 @@ type SourceTraceWorkbenchProps = {
   yamlReady: boolean;
 };
 
-export function SourceTraceWorkbench({
+export function SourceReviewWorkbench({
   activeDraftId,
   activeSceneId,
   chapters,
@@ -684,7 +677,7 @@ export function SourceTraceWorkbench({
   refining,
   scenes,
   yamlReady
-}: SourceTraceWorkbenchProps) {
+}: SourceReviewWorkbenchProps) {
   const [refineInstruction, setRefineInstruction] = useState("");
   const selectedScene = scenes.find((scene) => scene.id === activeSceneId) || scenes[0];
   const selectedChapter = selectedScene
@@ -705,7 +698,7 @@ export function SourceTraceWorkbench({
   }
 
   return (
-    <div className="trace-workbench" aria-label="源文追溯三栏对照">
+    <div className="trace-workbench" aria-label="来源对照三栏视图">
       <section className="studio-panel trace-panel trace-panel--source" aria-label="小说原文">
         <div className="panel-heading">
           <div>
@@ -865,13 +858,13 @@ export function SourceTraceWorkbench({
                 </ActionButton>
               </section>
 
-              <section className="visualization-candidates" aria-label="心理描写局部影视化候选">
+              <section className="visualization-candidates" aria-label="心理描写可拍动作候选">
                 <div className="visualization-candidates__heading">
-                  <span>心理影视化</span>
-                  <strong>{buildPsychologicalCandidates(selectedScene).length} 个候选</strong>
+                  <span>可拍动作候选</span>
+                  <strong>{buildFilmableCandidates(selectedScene).length} 个候选</strong>
                 </div>
                 <div className="visualization-candidates__list">
-                  {buildPsychologicalCandidates(selectedScene).map((candidate) => (
+                  {buildFilmableCandidates(selectedScene).map((candidate) => (
                     <article className="visualization-candidate" key={candidate.type}>
                       <header>
                         <span>{candidate.type}</span>
@@ -939,14 +932,14 @@ function renderHighlightedSource(content: string, excerpt: string): ReactNode {
   );
 }
 
-type PsychologicalCandidate = {
+type FilmableCandidate = {
   after: string;
   before: string;
   title: string;
   type: string;
 };
 
-function buildPsychologicalCandidates(scene: ScriptTraceScene): PsychologicalCandidate[] {
+function buildFilmableCandidates(scene: ScriptTraceScene): FilmableCandidate[] {
   const before = compactCandidateText(scene.action || scene.sourceExcerpt || scene.scenePurpose || scene.title);
   const evidence = compactCandidateText(scene.sourceExcerpt || scene.action || scene.title);
   const location = scene.location && scene.location !== "待补充" ? scene.location : "现场";
