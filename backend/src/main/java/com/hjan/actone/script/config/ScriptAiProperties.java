@@ -24,8 +24,14 @@ public class ScriptAiProperties {
     @Data
     public static class Concurrency {
 
-        private int chapterSummaryCorePoolSize = 2;
+        private int chapterSummaryCorePoolSize = 4;
         private int chapterSummaryMaxPoolSize = 4;
         private int chapterSummaryQueueCapacity = 64;
+        private int scenePlanningCorePoolSize = 3;
+        private int scenePlanningMaxPoolSize = 3;
+        private int scenePlanningQueueCapacity = 32;
+        private int yamlGenerationCorePoolSize = 3;
+        private int yamlGenerationMaxPoolSize = 3;
+        private int yamlGenerationQueueCapacity = 32;
     }
 }

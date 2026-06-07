@@ -9,6 +9,7 @@
 - author: {{author}}
 - logline: {{logline}}
 - chapter_count: {{chapter_count}}
+- generation_scope: {{generation_scope}}
 
 <chapter_summaries>
 {{chapter_summaries}}
@@ -30,6 +31,8 @@
 5. characters、acts、scenes 必须是数组；characters 从 chapter_summaries 和 scene_plan 中归纳，id 稳定、name 可读。
 6. scene 的 act_id、chapter_index、source_chapter_id、title、location、time、scene_purpose、source_excerpt 必须来自 scene_plan 或章节摘要，不得改变原作关键事实。
 7. scene.action 必须把心理描写、抽象情绪和叙述性信息转译为可拍的动作、表情、道具、空间调度、沉默或转场。
-8. scene.dialogues 必须基于 scene.conflict、scene.beats 和章节摘要生成可编辑对白；speaker 使用角色名或”旁白”，避免所有角色同一种口吻。
+8. scene.dialogues 必须基于 scene.conflict、scene.beats 和章节摘要生成可编辑对白；speaker 使用角色名或”旁白”，避免所有角色同一种口吻；每个场景通常 1-2 句对白。
 9. 每个 scene 必须输出布尔字段 ai_expansion；当 action 或 dialogues 包含源文摘录外的影视化、压缩、转场或对白改写时设为 true；只有完全由 source_excerpt 直接支撑时才设为 false。
 10. 每个 scene 必须保留 source_excerpt，便于用户回看来源；创作性扩展必须控制在不改变人物目标、关键事件和因果关系的范围内。
+11. 如果 generation_scope 是批次，只生成本批 scene_plan 中的 scenes；scene id 在本批内从 scene_001 开始，系统会在合并时重排全局 ID。
+12. 控制输出规模：action 控制在 80 个中文字符以内，source_excerpt 控制在 60 个中文字符以内。

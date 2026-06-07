@@ -1,5 +1,6 @@
 package com.hjan.actone.script.ai.pipeline;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hjan.actone.ai.model.ChatRequest;
 import com.hjan.actone.ai.model.ChatResponse;
@@ -21,6 +22,7 @@ import org.springframework.core.io.DefaultResourceLoader;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -54,7 +56,7 @@ class LlmScriptYamlGenerationStageTest {
         assertThat(request.model()).isNull();
         assertThat(request.temperature()).isEqualTo(0.15D);
         assertThat(request.topP()).isEqualTo(0.8D);
-        assertThat(request.maxTokens()).isEqualTo(8192);
+        assertThat(request.maxTokens()).isEqualTo(4096);
         assertThat(request.timeout()).isEqualTo(Duration.ofSeconds(120));
         assertThat(request.messages()).singleElement()
                 .satisfies(message -> {
@@ -62,10 +64,11 @@ class LlmScriptYamlGenerationStageTest {
                     assertThat(message.content())
                             .contains("<chapter_summaries>")
                             .contains("<scene_plan>")
+                            .contains("generation_scope: 完整剧本")
                             .contains("ai_expansion")
-                            .contains("\"characters\" : [ \"林夜\"")
-                            .contains("\"id\" : \"scene_001\"")
-                            .contains("\"sourceExcerpt\" : \"林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。\"")
+                            .contains("\"characters\":[\"林夜\"")
+                            .contains("\"id\":\"scene_001\"")
+                            .contains("\"sourceExcerpt\":\"林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。\"")
                             .doesNotContain(
                                     "{{chapter_summaries}}",
                                     "{{scene_plan}}",
@@ -75,6 +78,19 @@ class LlmScriptYamlGenerationStageTest {
                                     "<source_trace>"
                             );
                 });
+    }
+
+    @Test
+    void generateSplitsLargeScenePlanAndMergesYaml() {
+        BatchAwareYamlLlmService llmService = new BatchAwareYamlLlmService();
+        LlmScriptYamlGenerationStage stage = stage(llmService);
+
+        String yaml = stage.generate(manySceneContext());
+
+        assertThat(llmService.requests()).hasSize(2);
+        assertThat(yaml).contains("scene_001", "scene_007");
+        ScriptYamlValidationResult validationResult = validator.validate(yaml);
+        assertThat(validationResult.valid()).isTrue();
     }
 
     @Test
@@ -139,7 +155,7 @@ class LlmScriptYamlGenerationStageTest {
                 .hasMessage("scenePlan 不能为空");
     }
 
-    private LlmScriptYamlGenerationStage stage(RecordingLlmService llmService) {
+    private LlmScriptYamlGenerationStage stage(LLMService llmService) {
         return new LlmScriptYamlGenerationStage(
                 llmService,
                 new ClasspathPromptTemplateService(new DefaultResourceLoader()),
@@ -197,6 +213,62 @@ class LlmScriptYamlGenerationStageTest {
                 )),
                 "林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。"
         )));
+    }
+
+    private PipelineContext manySceneContext() {
+        return PipelineContext.create("project_1", "夜雨孤庙", "测试作者", "杀手林夜改变刺杀目标。", 7)
+                .withChapterSummaries(List.of(
+                        summary("chapter_1", 1),
+                        summary("chapter_2", 2),
+                        summary("chapter_3", 3),
+                        summary("chapter_4", 4),
+                        summary("chapter_5", 5),
+                        summary("chapter_6", 6),
+                        summary("chapter_7", 7)
+                ))
+                .withScenePlan(new ScenePlan(List.of(
+                        scene(1),
+                        scene(2),
+                        scene(3),
+                        scene(4),
+                        scene(5),
+                        scene(6),
+                        scene(7)
+                )));
+    }
+
+    private ChapterSummary summary(String chapterId, int chapterIndex) {
+        SourceEvidence evidence = new SourceEvidence(chapterId, chapterIndex, "第 " + chapterIndex + " 章来源摘录。");
+        return new ChapterSummary(
+                chapterId,
+                chapterIndex,
+                "第 " + chapterIndex + " 章",
+                "第 " + chapterIndex + " 章摘要。",
+                List.of(new ChapterSummary.KeyEvent("event_%03d".formatted(chapterIndex), "关键事件。", List.of(evidence))),
+                List.of("林夜"),
+                List.of("破庙"),
+                List.of("雨夜"),
+                List.of("选择冲突"),
+                List.of(new ChapterSummary.InnerState("林夜", "犹豫。", evidence)),
+                List.of(evidence)
+        );
+    }
+
+    private ScenePlan.Scene scene(int chapterIndex) {
+        return new ScenePlan.Scene(
+                "scene_%03d".formatted(chapterIndex),
+                "act_1",
+                chapterIndex,
+                "chapter_" + chapterIndex,
+                "第 " + chapterIndex + " 场",
+                "破庙",
+                "雨夜",
+                List.of("林夜"),
+                "推进第 " + chapterIndex + " 章。",
+                "选择冲突。",
+                List.of(new ScenePlan.Beat("林夜行动。", "第 " + chapterIndex + " 章来源摘录。", List.of("林夜"))),
+                "第 " + chapterIndex + " 章来源摘录。"
+        );
     }
 
     private String validYaml() {
@@ -272,6 +344,90 @@ class LlmScriptYamlGenerationStageTest {
 
         List<ChatRequest> requests() {
             return requests;
+        }
+    }
+
+    private final class BatchAwareYamlLlmService implements LLMService {
+
+        private final List<ChatRequest> requests = new ArrayList<>();
+
+        @Override
+        public ChatResponse chat(ChatRequest request) {
+            requests.add(request);
+            try {
+                Map<String, Object> scenePlan = objectMapper.readValue(
+                        between(request.messages().get(0).content(), "<scene_plan>", "</scene_plan>").strip(),
+                        new TypeReference<>() {
+                        }
+                );
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> scenes = (List<Map<String, Object>>) scenePlan.get("scenes");
+                return ChatResponse.text(batchYaml(scenes));
+            } catch (Exception ex) {
+                throw new IllegalStateException(ex);
+            }
+        }
+
+        private List<ChatRequest> requests() {
+            return requests;
+        }
+
+        private String batchYaml(List<Map<String, Object>> scenes) {
+            StringBuilder yaml = new StringBuilder();
+            yaml.append("""
+                    schema_version: "1.0"
+                    kind: "screenplay_draft"
+                    metadata:
+                      title: "夜雨孤庙"
+                    source:
+                      type: "novel"
+                      chapter_count: 7
+                      generation_mode: "ai_pipeline"
+                    characters:
+                      - id: "character_001"
+                        name: "林夜"
+                        role: "主角"
+                        description: "江湖暗刃。"
+                    acts:
+                      - id: "act_1"
+                        title: "第一幕"
+                        chapter_range:
+                          start: 1
+                          end: 7
+                        dramatic_function: "建立选择"
+                    scenes:
+                    """);
+            for (Map<String, Object> scene : scenes) {
+                yaml.append("  - id: \"").append(text(scene.get("id"))).append("\"\n");
+                yaml.append("    act_id: \"act_1\"\n");
+                yaml.append("    chapter_index: ").append(scene.get("chapterIndex")).append('\n');
+                yaml.append("    source_chapter_id: \"").append(text(scene.get("sourceChapterId"))).append("\"\n");
+                yaml.append("    title: \"").append(text(scene.get("title"))).append("\"\n");
+                yaml.append("    location: \"").append(text(scene.get("location"))).append("\"\n");
+                yaml.append("    time: \"").append(text(scene.get("time"))).append("\"\n");
+                yaml.append("    scene_purpose: \"").append(text(scene.get("scenePurpose"))).append("\"\n");
+                yaml.append("    action: \"林夜观察四周。\"\n");
+                yaml.append("    dialogues:\n");
+                yaml.append("      - speaker: \"林夜\"\n");
+                yaml.append("        line: \"继续。\"\n");
+                yaml.append("        emotion: \"克制\"\n");
+                yaml.append("    source_excerpt: \"").append(text(scene.get("sourceExcerpt"))).append("\"\n");
+                yaml.append("    ai_expansion: true\n");
+            }
+            return yaml.toString();
+        }
+
+        private String between(String value, String start, String end) {
+            int startIndex = value.indexOf(start);
+            int endIndex = value.indexOf(end);
+            if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex) {
+                throw new IllegalArgumentException("缺少片段：" + start);
+            }
+            return value.substring(startIndex + start.length(), endIndex);
+        }
+
+        private String text(Object value) {
+            return value == null ? "" : value.toString();
         }
     }
 }

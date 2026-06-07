@@ -47,10 +47,10 @@
   ]
 }
 
-3. keyEvents 按发生顺序列出，保留 3-6 个关键事件，不新增原文没有的人物、事件或关系。
+3. keyEvents 按发生顺序列出，只保留 2-3 个最关键事件，不新增原文没有的人物、事件或关系。
 4. keyEvents[].evidence 是数组，即使只有一条原文摘录也要写成 [{...}]。
 5. innerStates[].evidence 是单个对象 {...}，不是数组。
-6. sourceEvidence 保留 3-5 项即可；每个 keyEvent 的 evidence 只保留 1 条最能支持事件的摘录。
-7. 所有 excerpt 必须是短摘录，控制在 80 个中文字符以内，不要复制整段原文，不要换行。
-8. summary 控制在 120 个中文字符以内；description 控制在 60 个中文字符以内。
-9. innerStates 只识别心理、情绪和不可直接拍摄的叙述，暂不进行影视化改写。
+6. sourceEvidence 只保留 1-2 项；每个 keyEvent 的 evidence 只保留 1 条最能支持事件的摘录。
+7. 所有 excerpt 必须是短摘录，控制在 40-60 个中文字符以内，不要复制整段原文，不要换行。
+8. summary 控制在 80 个中文字符以内；description 控制在 40 个中文字符以内。
+9. innerStates 最多 2 项，只识别心理、情绪和不可直接拍摄的叙述，暂不进行影视化改写。

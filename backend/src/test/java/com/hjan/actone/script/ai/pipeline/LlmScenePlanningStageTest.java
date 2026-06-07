@@ -47,17 +47,37 @@ class LlmScenePlanningStageTest {
         assertThat(request.model()).isNull();
         assertThat(request.temperature()).isEqualTo(0.2D);
         assertThat(request.topP()).isEqualTo(0.8D);
-        assertThat(request.maxTokens()).isEqualTo(16384);
+        assertThat(request.maxTokens()).isEqualTo(8192);
         assertThat(request.timeout()).isEqualTo(Duration.ofSeconds(90));
         assertThat(request.messages()).singleElement()
                 .satisfies(message -> {
                     assertThat(message.role()).isEqualTo(ChatRole.USER);
                     assertThat(message.content())
                             .contains("<chapter_summaries>")
-                            .contains("\"chapterId\" : \"chapter_1\"")
+                            .contains("\"chapterId\":\"chapter_1\"")
                             .doesNotContain("<global_story_state>")
                             .doesNotContain("{{chapter_summaries}}");
                 });
+    }
+
+    @Test
+    void planSplitsLargeSummaryListAndReindexesMergedScenes() {
+        BatchAwareScenePlanLlmService llmService = new BatchAwareScenePlanLlmService();
+        LlmScenePlanningStage stage = stage(llmService);
+
+        ScenePlan plan = stage.plan(PipelineContext.create("project_1", "夜雨孤庙", null, null, 4)
+                .withChapterSummaries(List.of(
+                        summary("chapter_1", 1, "第一章事件。"),
+                        summary("chapter_2", 2, "第二章事件。"),
+                        summary("chapter_3", 3, "第三章事件。"),
+                        summary("chapter_4", 4, "第四章事件。")
+                )));
+
+        assertThat(llmService.requests()).hasSize(2);
+        assertThat(plan.scenes()).extracting(ScenePlan.Scene::id)
+                .containsExactly("scene_001", "scene_002", "scene_003", "scene_004");
+        assertThat(plan.scenes()).extracting(ScenePlan.Scene::sourceChapterId)
+                .containsExactly("chapter_1", "chapter_2", "chapter_3", "chapter_4");
     }
 
     @Test
@@ -154,7 +174,7 @@ class LlmScenePlanningStageTest {
                 .hasMessage("chapterSummaries 不能为空");
     }
 
-    private LlmScenePlanningStage stage(RecordingLlmService llmService) {
+    private LlmScenePlanningStage stage(LLMService llmService) {
         return new LlmScenePlanningStage(
                 llmService,
                 new ClasspathPromptTemplateService(new DefaultResourceLoader()),
@@ -263,6 +283,51 @@ class LlmScenePlanningStageTest {
 
         List<ChatRequest> requests() {
             return List.copyOf(requests);
+        }
+    }
+
+    private final class BatchAwareScenePlanLlmService implements LLMService {
+
+        private final List<ChatRequest> requests = new ArrayList<>();
+
+        @Override
+        public ChatResponse chat(ChatRequest request) {
+            requests.add(request);
+            String prompt = request.messages().get(0).content();
+            List<ChapterSummary> summaries = List.of(
+                            summary("chapter_1", 1, "第一章事件。"),
+                            summary("chapter_2", 2, "第二章事件。"),
+                            summary("chapter_3", 3, "第三章事件。"),
+                            summary("chapter_4", 4, "第四章事件。")
+                    ).stream()
+                    .filter(summary -> prompt.contains("\"chapterId\":\"" + summary.chapterId() + "\""))
+                    .toList();
+            List<ScenePlan.Scene> scenes = new ArrayList<>();
+            for (ChapterSummary summary : summaries) {
+                scenes.add(new ScenePlan.Scene(
+                        "scene_%03d".formatted(scenes.size() + 1),
+                        "act_1",
+                        summary.chapterIndex(),
+                        summary.chapterId(),
+                        summary.title(),
+                        "破庙",
+                        "雨夜",
+                        List.of("林夜"),
+                        "推进本章核心事件。",
+                        "主角面对选择。",
+                        List.of(new ScenePlan.Beat(summary.summary(), summary.sourceEvidence().get(0).excerpt(), List.of("林夜"))),
+                        summary.sourceEvidence().get(0).excerpt()
+                ));
+            }
+            try {
+                return ChatResponse.text(objectMapper.writeValueAsString(new ScenePlan(scenes)));
+            } catch (Exception ex) {
+                throw new IllegalStateException(ex);
+            }
+        }
+
+        private List<ChatRequest> requests() {
+            return requests;
         }
     }
 }

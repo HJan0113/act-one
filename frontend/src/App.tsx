@@ -66,7 +66,15 @@ import {
     saveDraft as saveScriptDraft,
     streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
-import type {AuthSession, ScriptDraftListItem, ScriptDemoNovelData, ScriptProjectListItem, ScriptStoryboardData, ScriptYamlStreamPayload} from "./types/api";
+import type {
+    AuthSession,
+    ScriptDraftListItem,
+    ScriptDemoNovelData,
+    ScriptProjectListItem,
+    ScriptStoryboardData,
+    ScriptYamlStreamEventName,
+    ScriptYamlStreamPayload
+} from "./types/api";
 import type {ScriptDialogueVoiceRewriteData, ScriptRhythmAnalysisData, ScriptSceneRefineData} from "./types/api";
 import {parseScriptYamlCharacters, parseScriptYamlRelationships, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
 
@@ -96,6 +104,26 @@ const defaultLoginPassword = "admin";
 const chapterHeadingPattern = /^第\s*([0-9一二三四五六七八九十百千万两〇零]+)\s*[章节回集部卷幕].*$/gm;
 
 type ConversionTaskState = Omit<TaskSummary, "canCancel" | "canRetry">;
+
+type PipelineTimelineEvent = {
+    eventName: ScriptYamlStreamEventName | "local";
+    id: string;
+    message: string;
+    progress?: number;
+    stage: string;
+    timestamp: number;
+    tone: StatusTone;
+};
+
+type PipelineTimelineEventInput = Omit<PipelineTimelineEvent, "id" | "timestamp">;
+
+type PipelineStageFlowItem = {
+    detail: string;
+    label: string;
+    progress: number;
+    stage: string;
+    status: ProgressStep["status"];
+};
 
 type DeleteTarget = {
   id: string;
@@ -146,12 +174,14 @@ function App() {
   const [activeTraceSceneId, setActiveTraceSceneId] = useState("");
   const [validationStatus, setValidationStatus] = useState("pending");
   const [validationError, setValidationError] = useState("");
-  const [generationMode, setGenerationMode] = useState("");
-  const [fallbackReason, setFallbackReason] = useState("");
+    const [generationMode, setGenerationMode] = useState("");
+    const [fallbackReason, setFallbackReason] = useState("");
     const [conversionTask, setConversionTask] = useState<ConversionTaskState>(() => createInitialTask());
+    const [pipelineEvents, setPipelineEvents] = useState<PipelineTimelineEvent[]>([]);
     const [activeView, setActiveView] = useState<WorkspaceView>("source");
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const generationAbortRef = useRef<AbortController | null>(null);
+    const pipelineEventIdRef = useRef(0);
 
   const hasNovelText = useMemo(() => novelText.trim().length > 0, [novelText]);
   const canPreview = useMemo(() => hasNovelText && !previewLoading, [hasNovelText, previewLoading]);
@@ -216,6 +246,17 @@ function App() {
           yamlMessage
       ]
   );
+    const pipelineStageFlow = useMemo(
+        () => createPipelineStageFlow({
+            conversionTask,
+            isValid,
+            previewLoading,
+            validationStatus,
+            yamlDraft,
+            yamlLoading
+        }),
+        [conversionTask, isValid, previewLoading, validationStatus, yamlDraft, yamlLoading]
+    );
     const topBarStatus = useMemo(
         () => getTopBarStatus({
             isValid,
@@ -227,6 +268,36 @@ function App() {
         }),
         [conversionTask.status, isValid, novelText, previewLoading, yamlDraft, yamlLoading]
     );
+
+    function createPipelineTimelineEvent(input: PipelineTimelineEventInput): PipelineTimelineEvent {
+        pipelineEventIdRef.current += 1;
+        return {
+            ...input,
+            id: `pipeline-event-${pipelineEventIdRef.current}`,
+            timestamp: Date.now()
+        };
+    }
+
+    function resetPipelineTimeline(input: PipelineTimelineEventInput) {
+        setPipelineEvents([createPipelineTimelineEvent(input)]);
+    }
+
+    function appendPipelineTimeline(input: PipelineTimelineEventInput) {
+        const nextEvent = createPipelineTimelineEvent(input);
+        setPipelineEvents((current) => {
+            const latest = current[0];
+            if (
+                latest &&
+                latest.eventName === nextEvent.eventName &&
+                latest.message === nextEvent.message &&
+                latest.stage === nextEvent.stage &&
+                latest.progress === nextEvent.progress
+            ) {
+                return current;
+            }
+            return [nextEvent, ...current].slice(0, 16);
+        });
+    }
 
   useEffect(() => {
     if (traceScenes.length === 0) {
@@ -357,13 +428,22 @@ function App() {
             currentStage: "等待章节解析",
             message: "文本已更新，请先解析章节再开始 AI 转换。",
             progress: 8,
+            stage: "INIT",
             status: "ready"
+        });
+        resetPipelineTimeline({
+            eventName: "local",
+            message: "小说文本已更新，等待章节解析。",
+            progress: 8,
+            stage: "小说输入",
+            tone: "info"
         });
     } else {
       setIsValid(false);
       setChapterCount(0);
       setMessage(initialChapterMessage);
         setConversionTask(createInitialTask());
+        setPipelineEvents([]);
     }
   }
 
@@ -405,8 +485,16 @@ function App() {
           errorMessage: "",
           message: "正在识别章节标题、正文边界和章节数量。",
           progress: Math.max(current.progress, 12),
+          stage: "INIT",
           status: "running"
       }));
+      appendPipelineTimeline({
+          eventName: "local",
+          message: "开始解析章节标题与正文边界。",
+          progress: 12,
+          stage: "章节解析",
+          tone: "active"
+      });
     try {
       const data = await requestWithAuth((token) => previewNovelChapters(novelText, token));
       setIsValid(data.valid);
@@ -418,8 +506,16 @@ function App() {
             errorMessage: data.valid ? "" : data.message,
             message: data.valid ? "章节解析通过，可以开始生成剧本 YAML。" : data.message,
             progress: data.valid ? 20 : 14,
+            stage: "INIT",
             status: data.valid ? "ready" : "failed"
         }));
+        appendPipelineTimeline({
+            eventName: "local",
+            message: data.valid ? `章节解析通过，识别 ${data.chapterCount} 个章节。` : data.message,
+            progress: data.valid ? 20 : 14,
+            stage: "章节解析",
+            tone: data.valid ? "success" : "danger"
+        });
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "章节解析失败。";
       setIsValid(false);
@@ -430,8 +526,16 @@ function App() {
             errorMessage,
             message: "请检查章节格式后重试。",
             progress: Math.max(current.progress, 10),
+            stage: "INIT",
             status: "failed"
         }));
+        appendPipelineTimeline({
+            eventName: "local",
+            message: errorMessage,
+            progress: 10,
+            stage: "章节解析",
+            tone: "danger"
+        });
     } finally {
       setPreviewLoading(false);
     }
@@ -456,8 +560,16 @@ function App() {
           errorMessage: "",
           message: resumeTaskId ? "正在从失败任务的安全阶段继续。" : "流式生成已提交，正在等待后端 meta / progress 事件。",
           progress: 4,
+          stage: "INIT",
           status: "running",
           taskId: streamTaskId
+      });
+      resetPipelineTimeline({
+          eventName: "local",
+          message: resumeTaskId ? "已提交继续生成请求，等待后端恢复安全阶段。" : "已提交 AI 转换请求，等待后端创建任务。",
+          progress: 4,
+          stage: "任务提交",
+          tone: "active"
       });
 
       const updateTaskFromStream = (payload: ScriptYamlStreamPayload, status: TaskStatus = "running") => {
@@ -479,6 +591,7 @@ function App() {
               progress: nextTaskProgress(payload.progress, current.progress),
               resumeStage: payload.resumeStage || current.resumeStage,
               retryable: payload.retryable ?? current.retryable,
+              stage: payload.stage || current.stage,
               status,
               taskId: payload.taskId || current.taskId || streamTaskId,
               usageSummary: payload.result?.usageSummary || current.usageSummary
@@ -510,6 +623,9 @@ function App() {
                 },
                 onFinish: (payload) => {
                     updateTaskFromStream(payload, "success");
+                },
+                onEvent: (eventName, payload) => {
+                    appendPipelineTimeline(createStreamTimelineEvent(eventName, payload));
                 },
                 onMessage: (payload) => {
                     updateTaskFromStream(payload);
@@ -563,9 +679,17 @@ function App() {
             errorMessage: data.validationError || "",
             message: nextYamlMessage,
             progress: data.validationStatus === "valid" ? 100 : 96,
+            stage: data.validationStatus === "valid" ? "COMPLETED" : "YAML_VALIDATION",
             status: data.validationStatus === "invalid" ? "failed" : "success",
             taskId: streamTaskId,
             usageSummary: data.usageSummary
+        });
+        appendPipelineTimeline({
+            eventName: "local",
+            message: nextYamlMessage,
+            progress: data.validationStatus === "valid" ? 100 : 96,
+            stage: data.validationStatus === "valid" ? "转换完成" : "Schema 校验",
+            tone: data.validationStatus === "invalid" ? "danger" : "success"
         });
         setActiveView("result");
     } catch (error) {
@@ -586,6 +710,13 @@ function App() {
             status: aborted ? "canceled" : "failed",
             taskId: streamTaskId
         }));
+        appendPipelineTimeline({
+            eventName: "local",
+            message: errorMessage,
+            progress: aborted ? undefined : 42,
+            stage: aborted ? "停止生成" : "生成失败",
+            tone: aborted ? "warning" : "danger"
+        });
         setActiveView(aborted ? "source" : "pipeline");
     } finally {
         generationAbortRef.current = null;
@@ -606,6 +737,13 @@ function App() {
             progress: Math.max(current.progress, 20),
             status: "canceled"
         }));
+        appendPipelineTimeline({
+            eventName: "local",
+            message: isBackendTaskId(taskId) ? "已发送后端取消请求。" : "正在中止前端流式连接。",
+            progress: Math.max(conversionTask.progress, 20),
+            stage: "停止生成",
+            tone: "warning"
+        });
         try {
             if (isBackendTaskId(taskId)) {
                 const data = await requestWithAuth((token) => cancelScriptGenerationTask(taskId, token));
@@ -618,6 +756,13 @@ function App() {
                     status: "canceled",
                     taskId: data.taskId
                 }));
+                appendPipelineTimeline({
+                    eventName: "local",
+                    message: data.message || "后端任务已取消。",
+                    progress: data.progress ?? undefined,
+                    stage: pipelineStageLabel(extractTaskStage(data.message)) || "停止生成",
+                    tone: "warning"
+                });
             }
         } catch (error) {
             setYamlMessage(error instanceof Error ? error.message : "停止生成失败，已中止前端连接。");
@@ -1229,23 +1374,6 @@ function App() {
             yamlPlaceholder={placeholderYaml}
         />
     );
-    const runtimeStepTitle = yamlLoading
-        ? "生成进行中"
-        : isValid
-            ? taskSummary.canRetry
-                ? "下一步：继续生成"
-                : "下一步：开始 AI 转换"
-            : "下一步：解析章节";
-    const runtimeStepDescription = yamlLoading
-        ? "正在生成剧本 YAML，可在这里停止当前任务。"
-        : isValid
-            ? taskSummary.canRetry
-                ? "上次任务失败，可从后端返回的安全阶段继续生成。"
-                : "章节解析已通过，点击按钮会创建 AI 生成任务，完成后自动进入结果页。"
-            : hasNovelText
-                ? "先解析章节；解析通过后，这里会切换为开始 AI 转换。"
-                : "先导入演示小说、上传文件或粘贴正文，再解析章节。";
-
     return (
         <AppShell
             activeView={activeView}
@@ -1360,55 +1488,110 @@ function App() {
                     <div className="studio-panel page-side-panel">
                         <ConversionProgress steps={workflowSteps}/>
                     </div>
-                    <section className="studio-panel task-details" aria-label="AI 转换下一步操作">
+                    <section className="studio-panel task-details pipeline-execution" aria-label="AI 转换执行流程">
                         <div className="panel-heading">
                             <div>
-                                <p className="panel-kicker">Pipeline Action</p>
-                                <h2>下一步操作</h2>
+                                <p className="panel-kicker">Pipeline Runtime</p>
+                                <h2>AI 转换执行流程</h2>
                             </div>
                             <StatusBadge label={taskSummary.currentStage}
-                                         tone={taskSummary.status === "failed" ? "danger" : "info"}/>
+                                         tone={taskStatusBadgeTone(taskSummary.status)}/>
                         </div>
-                        <div className="task-details__body">
-                            <p>这里是 AI 转换任务运行区：显示当前任务状态，并提供解析、开始生成、停止或继续生成的入口。</p>
-                            <div className="task-details__primary">
-                                <div className="task-details__primary-copy">
-                                    <strong>{runtimeStepTitle}</strong>
-                                    <span>{taskSummary.errorMessage || runtimeStepDescription}</span>
+                        <div className="pipeline-execution__body">
+                            <div className="pipeline-execution__summary" data-status={taskSummary.status}>
+                                <div className="pipeline-execution__metric">
+                                    <span>进度</span>
+                                    <strong>{taskSummary.progress}%</strong>
                                 </div>
-                                {yamlLoading ? (
-                                    <ActionButton
-                                        disabled={!taskSummary.canCancel}
-                                        icon={<CircleStop aria-hidden="true" size={16}/>}
-                                        onClick={stopGeneration}
-                                        variant="ghost"
-                                    >
-                                        停止生成
-                                    </ActionButton>
-                                ) : isValid ? (
-                                    <ActionButton
-                                        disabled={!canGenerate}
-                                        icon={taskSummary.canRetry ? <RefreshCcw aria-hidden="true" size={16}/> : <Wand2 aria-hidden="true" size={16}/>}
-                                        onClick={generateYaml}
-                                        variant="primary"
-                                    >
-                                        {taskSummary.canRetry ? "继续生成" : "开始 AI 转换"}
-                                    </ActionButton>
-                                ) : (
-                                    <ActionButton
-                                        disabled={!canPreview}
-                                        icon={previewLoading ? <Loader2 aria-hidden="true" className="spin" size={16}/> : <Play aria-hidden="true" size={16}/>}
-                                        onClick={previewChapters}
-                                        variant="secondary"
-                                    >
-                                        {hasNovelText ? "解析章节" : "等待小说输入"}
-                                    </ActionButton>
-                                )}
+                                <div className="pipeline-execution__current">
+                                    <strong>{taskSummary.currentStage}</strong>
+                                    <p>{taskSummary.errorMessage || taskSummary.message}</p>
+                                </div>
+                                <div className="pipeline-execution__actions">
+                                    {yamlLoading ? (
+                                        <ActionButton
+                                            disabled={!taskSummary.canCancel}
+                                            icon={<CircleStop aria-hidden="true" size={16}/>}
+                                            onClick={stopGeneration}
+                                            variant="ghost"
+                                        >
+                                            停止生成
+                                        </ActionButton>
+                                    ) : isValid ? (
+                                        <ActionButton
+                                            disabled={!canGenerate}
+                                            icon={taskSummary.canRetry ? <RefreshCcw aria-hidden="true" size={16}/> : <Wand2 aria-hidden="true" size={16}/>}
+                                            onClick={generateYaml}
+                                            variant="primary"
+                                        >
+                                            {taskSummary.canRetry ? "继续生成" : "开始 AI 转换"}
+                                        </ActionButton>
+                                    ) : (
+                                        <ActionButton
+                                            disabled={!canPreview}
+                                            icon={previewLoading ? <Loader2 aria-hidden="true" className="spin" size={16}/> : <Play aria-hidden="true" size={16}/>}
+                                            onClick={previewChapters}
+                                            variant="secondary"
+                                        >
+                                            {hasNovelText ? "解析章节" : "等待小说输入"}
+                                        </ActionButton>
+                                    )}
+                                </div>
+                                <progress aria-label="AI 转换总进度" className="pipeline-execution__meter" max={100} value={taskSummary.progress}/>
                             </div>
-                            <div className="task-detail-list">
-                                <span>流程：导入小说 → 解析章节 → 开始 AI 转换 → 查看并保存 YAML。</span>
-                                <span>生成时会同步显示后端进度、校验结果、完成状态或失败原因。</span>
-                                <span>失败后保留小说输入与任务 ID，可在这里、控制台或顶部按钮继续生成。</span>
+
+                            <div className="pipeline-execution__main">
+                                <div className="pipeline-stage-flow" aria-label="Pipeline 阶段流">
+                                    <div className="pipeline-block-heading">
+                                        <span>阶段流</span>
+                                        <small>{pipelineFlowStatusLabel(pipelineStageFlow)}</small>
+                                    </div>
+                                    <ol>
+                                        {pipelineStageFlow.map((step) => (
+                                            <li data-status={step.status} key={step.stage}>
+                                                <span className="pipeline-stage-flow__index">{step.progress}%</span>
+                                                <div>
+                                                    <strong>{step.label}</strong>
+                                                    <small>{step.detail}</small>
+                                                </div>
+                                                <StatusBadge label={pipelineStepStatusLabel(step.status)} tone={pipelineStepTone(step.status)}/>
+                                            </li>
+                                        ))}
+                                    </ol>
+                                </div>
+
+                                <div className="pipeline-live-log" aria-label="Pipeline 实时输出">
+                                    <div className="pipeline-block-heading">
+                                        <span>实时输出</span>
+                                        <small>{pipelineEvents.length > 0 ? `最近 ${pipelineEvents.length} 条` : "等待事件"}</small>
+                                    </div>
+                                    {pipelineEvents.length > 0 ? (
+                                        <ol>
+                                            {pipelineEvents.map((event) => (
+                                                <li key={event.id}>
+                                                    <time>{formatTimelineTime(event.timestamp)}</time>
+                                                    <div>
+                                                        <div className="pipeline-live-log__row">
+                                                            <strong>{event.stage}</strong>
+                                                            <StatusBadge label={streamEventLabel(event.eventName)} tone={event.tone}/>
+                                                        </div>
+                                                        <p>{event.message}</p>
+                                                        {typeof event.progress === "number" ? (
+                                                            <span className="pipeline-live-log__progress">{event.progress}%</span>
+                                                        ) : null}
+                                                    </div>
+                                                </li>
+                                            ))}
+                                        </ol>
+                                    ) : (
+                                        <div className="pipeline-live-log__empty">等待后端事件</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="pipeline-execution__meta">
+                                <span>Task ID <strong>{taskSummary.taskId || "未创建"}</strong></span>
+                                <span>模型调用 <strong>{formatUsageSummary(taskSummary.usageSummary)}</strong></span>
                             </div>
                         </div>
                     </section>
@@ -1927,6 +2110,7 @@ function createInitialTask(): ConversionTaskState {
         errorMessage: "",
         message: "导入或粘贴小说正文后开始转换。",
         progress: 0,
+        stage: "",
         status: "idle",
         taskId: ""
     };
@@ -1960,6 +2144,63 @@ function pipelineStageLabel(stage?: string | null) {
     return pipelineStageLabels[stage] || stage;
 }
 
+const pipelineStageRuntime = [
+    {
+        detail: "创建任务、解析章节、建立可恢复上下文",
+        label: "任务初始化",
+        stage: "INIT",
+        startProgress: 2,
+        successProgress: 8
+    },
+    {
+        detail: "并发提炼章节摘要、人物、冲突和证据摘录",
+        label: "章节摘要",
+        stage: "CHAPTER_SUMMARY",
+        startProgress: 10,
+        successProgress: 30
+    },
+    {
+        detail: "按章节批次规划场景、节拍和来源映射",
+        label: "场景规划",
+        stage: "SCENE_PLANNING",
+        startProgress: 32,
+        successProgress: 52
+    },
+    {
+        detail: "按场景批次生成剧本 YAML 片段并合并",
+        label: "YAML 生成",
+        stage: "SCRIPT_YAML_GENERATION",
+        startProgress: 60,
+        successProgress: 82
+    },
+    {
+        detail: "执行 Schema 校验，必要时进入规则兜底",
+        label: "Schema 校验",
+        stage: "YAML_VALIDATION",
+        startProgress: 88,
+        successProgress: 96
+    },
+    {
+        detail: "返回 YAML、校验结果和模型调用统计",
+        label: "转换完成",
+        stage: "COMPLETED",
+        startProgress: 100,
+        successProgress: 100
+    }
+] as const;
+
+const streamEventLabels: Record<ScriptYamlStreamEventName | "local", string> = {
+    cancel: "取消",
+    done: "关闭",
+    error: "错误",
+    finish: "完成",
+    local: "本地",
+    message: "消息",
+    meta: "任务",
+    progress: "进度",
+    validation: "校验"
+};
+
 function nextTaskProgress(value: number | null | undefined, current: number) {
     if (typeof value !== "number" || !Number.isFinite(value)) {
         return current;
@@ -1968,8 +2209,216 @@ function nextTaskProgress(value: number | null | undefined, current: number) {
     return Math.max(current, normalized);
 }
 
+function optionalTaskProgress(value: number | null | undefined) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return undefined;
+    }
+    return Math.max(0, Math.min(100, Math.round(value)));
+}
+
 function isAbortError(error: unknown) {
     return error instanceof DOMException && error.name === "AbortError" || error instanceof Error && error.name === "AbortError";
+}
+
+function createStreamTimelineEvent(eventName: ScriptYamlStreamEventName, payload: ScriptYamlStreamPayload): PipelineTimelineEventInput {
+    const stage = pipelineStageLabel(payload.stage) || "AI Pipeline";
+    return {
+        eventName,
+        message: payload.message || streamEventMessage(eventName, payload),
+        progress: optionalTaskProgress(payload.progress),
+        stage,
+        tone: streamEventTone(eventName, payload)
+    };
+}
+
+function streamEventMessage(eventName: ScriptYamlStreamEventName, payload: ScriptYamlStreamPayload) {
+    if (eventName === "validation") {
+        return payload.validationStatus === "valid"
+            ? "Schema 校验通过。"
+            : payload.validationError || "Schema 校验返回结果。";
+    }
+    if (eventName === "finish") {
+        return "生成结果已返回。";
+    }
+    if (eventName === "cancel") {
+        return "生成任务已停止。";
+    }
+    if (eventName === "error") {
+        return payload.validationError || "生成任务失败。";
+    }
+    if (eventName === "meta") {
+        return payload.taskId ? `任务已创建：${payload.taskId}` : "任务元数据已返回。";
+    }
+    if (eventName === "done") {
+        return "流式连接已关闭。";
+    }
+    return "后端进度已更新。";
+}
+
+function streamEventTone(eventName: ScriptYamlStreamEventName, payload: ScriptYamlStreamPayload): StatusTone {
+    if (eventName === "error") {
+        return "danger";
+    }
+    if (eventName === "cancel") {
+        return "warning";
+    }
+    if (eventName === "finish" || payload.validationStatus === "valid") {
+        return "success";
+    }
+    if (eventName === "validation" && payload.validationStatus && payload.validationStatus !== "valid") {
+        return "danger";
+    }
+    if (eventName === "progress") {
+        return "active";
+    }
+    return "info";
+}
+
+function createPipelineStageFlow({
+    conversionTask,
+    isValid,
+    previewLoading,
+    validationStatus,
+    yamlDraft,
+    yamlLoading
+}: {
+    conversionTask: ConversionTaskState;
+    isValid: boolean;
+    previewLoading: boolean;
+    validationStatus: string;
+    yamlDraft: string;
+    yamlLoading: boolean;
+}): PipelineStageFlowItem[] {
+    const currentStage = conversionTask.stage || stageKeyFromLabel(conversionTask.currentStage);
+    const hasYaml = yamlDraft.trim().length > 0;
+    const progress = conversionTask.progress;
+    const taskFailed = conversionTask.status === "failed";
+    const taskCanceled = conversionTask.status === "canceled";
+    const taskComplete = conversionTask.status === "success" || validationStatus === "valid";
+
+    return pipelineStageRuntime.map((step) => {
+        let status: ProgressStep["status"] = "idle";
+        if (taskComplete || progress >= step.successProgress) {
+            status = "complete";
+        } else if (currentStage === step.stage) {
+            status = taskFailed ? "error" : taskCanceled ? "warning" : "active";
+        } else if (progress >= step.startProgress && progress < step.successProgress) {
+            status = taskFailed ? "error" : taskCanceled ? "warning" : "active";
+        }
+
+        if (step.stage === "INIT") {
+            if (previewLoading) {
+                status = "active";
+            } else if (isValid || progress >= step.successProgress || hasYaml) {
+                status = "complete";
+            }
+        }
+        if ((taskFailed || validationStatus === "invalid") && currentStage === step.stage) {
+            status = "error";
+        }
+        if (taskCanceled && currentStage === step.stage) {
+            status = "warning";
+        }
+        if (step.stage === "COMPLETED" && taskFailed) {
+            status = "idle";
+        }
+
+        return {
+            detail: step.detail,
+            label: step.label,
+            progress: step.successProgress,
+            stage: step.stage,
+            status
+        };
+    });
+}
+
+function stageKeyFromLabel(label: string) {
+    return Object.entries(pipelineStageLabels).find(([, value]) => value === label)?.[0] || "";
+}
+
+function pipelineStepStatusLabel(status: ProgressStep["status"]) {
+    if (status === "complete") {
+        return "完成";
+    }
+    if (status === "active") {
+        return "执行中";
+    }
+    if (status === "error") {
+        return "失败";
+    }
+    if (status === "warning") {
+        return "已停止";
+    }
+    return "等待";
+}
+
+function pipelineFlowStatusLabel(steps: PipelineStageFlowItem[]) {
+    if (steps.some((step) => step.status === "error")) {
+        return "失败";
+    }
+    if (steps.some((step) => step.status === "warning")) {
+        return "已停止";
+    }
+    if (steps.some((step) => step.status === "active")) {
+        return "执行中";
+    }
+    if (steps.every((step) => step.status === "complete")) {
+        return "完成";
+    }
+    return "等待";
+}
+
+function pipelineStepTone(status: ProgressStep["status"]): StatusTone {
+    if (status === "complete") {
+        return "success";
+    }
+    if (status === "active") {
+        return "active";
+    }
+    if (status === "error") {
+        return "danger";
+    }
+    if (status === "warning") {
+        return "warning";
+    }
+    return "neutral";
+}
+
+function taskStatusBadgeTone(status: TaskStatus): StatusTone {
+    if (status === "running") {
+        return "active";
+    }
+    if (status === "success") {
+        return "success";
+    }
+    if (status === "failed") {
+        return "danger";
+    }
+    if (status === "canceled" || status === "ready") {
+        return "warning";
+    }
+    return "neutral";
+}
+
+function streamEventLabel(eventName: ScriptYamlStreamEventName | "local") {
+    return streamEventLabels[eventName] || eventName;
+}
+
+function formatTimelineTime(timestamp: number) {
+    return new Date(timestamp).toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+    });
+}
+
+function formatUsageSummary(summary: TaskSummary["usageSummary"]) {
+    if (!summary || summary.callCount <= 0) {
+        return "待返回";
+    }
+    const tokenPrefix = summary.estimated ? "~" : "";
+    return `${summary.callCount} 次 / ${tokenPrefix}${summary.totalTokens} tokens`;
 }
 
 function createWorkflowSteps({

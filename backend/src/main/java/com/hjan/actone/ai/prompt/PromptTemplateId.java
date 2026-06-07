@@ -25,6 +25,7 @@ public enum PromptTemplateId {
                     "author",
                     "logline",
                     "chapter_count",
+                    "generation_scope",
                     "chapter_summaries",
                     "scene_plan",
                     "schema_summary"

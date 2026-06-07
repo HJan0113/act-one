@@ -73,6 +73,7 @@ export type TaskSummary = {
     progress: number;
     resumeStage?: string;
     retryable?: boolean | null;
+    stage?: string | null;
     status: TaskStatus;
     taskId: string;
     usageSummary?: {

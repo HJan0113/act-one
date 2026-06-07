@@ -107,7 +107,9 @@ class ScriptAiPipelineReducedChainFakeLlmTest {
         Map<String, Object> document = parseYaml(result.yaml());
         assertThat(document).containsKeys("schema_version", "kind", "source", "characters", "acts", "scenes");
         assertThat(asList(document.get("scenes"))).isNotEmpty();
-        assertThat(llmService.callCount()).isEqualTo(result.chapterCount() + 2);
+        int scenePlanCalls = (result.chapterCount() + 2) / 3;
+        int yamlCalls = (asList(document.get("scenes")).size() + 5) / 6;
+        assertThat(llmService.callCount()).isEqualTo(result.chapterCount() + scenePlanCalls + yamlCalls);
     }
 
     @SuppressWarnings("unchecked")
@@ -183,30 +185,37 @@ class ScriptAiPipelineReducedChainFakeLlmTest {
         }
 
         private String scenePlanResponse(String prompt) throws JsonProcessingException {
-            List<ChapterSummary> summaries = objectMapper.readValue(
+            List<Map<String, Object>> summaries = objectMapper.readValue(
                     between(prompt, "<chapter_summaries>", "</chapter_summaries>").strip(),
                     new TypeReference<>() {
                     }
             );
             List<ScenePlan.Scene> scenes = new ArrayList<>();
-            for (ChapterSummary summary : summaries) {
+            for (Map<String, Object> summary : summaries) {
+                String chapterId = text(summary.get("chapterId"));
+                int chapterIndex = ((Number) summary.get("chapterIndex")).intValue();
+                List<String> characters = stringList(summary.get("characters"));
+                List<String> locations = stringList(summary.get("locations"));
+                List<String> times = stringList(summary.get("time"));
+                List<String> conflicts = stringList(summary.get("conflicts"));
+                String excerpt = firstString(summary.get("evidence"));
                 scenes.add(new ScenePlan.Scene(
                         "scene_%03d".formatted(scenes.size() + 1),
                         "act_1",
-                        summary.chapterIndex(),
-                        summary.chapterId(),
-                        summary.title(),
-                        summary.locations().isEmpty() ? "新沪市" : summary.locations().get(0),
-                        summary.timeExpressions().isEmpty() ? "夜" : summary.timeExpressions().get(0),
-                        summary.characters().isEmpty() ? List.of("林溯") : summary.characters(),
+                        chapterIndex,
+                        chapterId,
+                        text(summary.get("title")),
+                        locations.isEmpty() ? "新沪市" : locations.get(0),
+                        times.isEmpty() ? "夜" : times.get(0),
+                        characters.isEmpty() ? List.of("林溯") : characters,
                         "把章节核心事件整理为可拍摄场景。",
-                        summary.conflicts().isEmpty() ? "主角面对未知危险。" : summary.conflicts().get(0),
+                        conflicts.isEmpty() ? "主角面对未知危险。" : conflicts.get(0),
                         List.of(new ScenePlan.Beat(
-                                summary.summary(),
-                                summary.sourceEvidence().get(0).excerpt(),
-                                summary.characters().isEmpty() ? List.of("林溯") : summary.characters()
+                                text(summary.get("summary")),
+                                excerpt,
+                                characters.isEmpty() ? List.of("林溯") : characters
                         )),
-                        summary.sourceEvidence().get(0).excerpt()
+                        excerpt
                 ));
             }
             return objectMapper.writeValueAsString(new ScenePlan(scenes));
@@ -295,6 +304,22 @@ class ScriptAiPipelineReducedChainFakeLlmTest {
         private String excerpt(String content) {
             String normalized = content.replace("\n", " ").strip();
             return normalized.substring(0, Math.min(60, normalized.length()));
+        }
+
+        @SuppressWarnings("unchecked")
+        private List<String> stringList(Object value) {
+            return value instanceof List<?> values
+                    ? values.stream().map(Object::toString).toList()
+                    : List.of();
+        }
+
+        private String firstString(Object value) {
+            List<String> values = stringList(value);
+            return values.isEmpty() ? "缺少来源摘录" : values.get(0);
+        }
+
+        private String text(Object value) {
+            return value == null ? "" : value.toString();
         }
 
         private void appendQuoted(StringBuilder yaml, String key, String value, int indent) {
