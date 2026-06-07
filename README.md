@@ -7,17 +7,13 @@ Act One 是一个 AI 小说转剧本 YAML 工作台。它面向小说作者和�
 ## 目录
 
 - [项目定位](#项目定位)
-- [当前项目情况](#当前项目情况)
 - [核心链路](#核心链路)
 - [功能清单](#功能清单)
 - [技术栈](#技术栈)
 - [系统结构](#系统结构)
 - [快速启动](#快速启动)
-- [配置说明](#配置说明)
 - [数据库结构](#数据库结构)
-- [API 概览](#api-概览)
 - [测试与质量](#测试与质量)
-- [项目边界与风险](#项目边界与风险)
 - [参考文档](#参考文档)
 
 ## 项目定位
@@ -37,21 +33,6 @@ Act One 的目标是让小说改编剧本的早期阶段更可控：
 - 编剧团队把长文本拆成场景、幕结构和对白草稿。
 - AI 应用开发中演示“模型编排 + 结构化生成 + 可追溯降级”的完整链路。
 
-不适合直接作为生产系统使用的部分见[项目边界与风险](#项目边界与风险)。
-
-## 当前项目情况
-
-| 维度 | 当前情况 | 结论 |
-| --- | --- | --- |
-| 产品形态 | 前后端分离的单体应用，提供登录、项目、草稿、AI 转换和演示小说工作流 | 已具备本地演示和毕业设计/答辩级完整流程 |
-| 后端 | Spring Boot 3.5.7 + Java 17，单 Maven 模块，按包边界隔离 `ai`、`infra.ai`、`script.ai`、`script`、`user` | 架构边界清晰，但尚未拆成多 Maven 模块 |
-| 前端 | React 18 + TypeScript + Vite，页面状态主要集中在 `App.tsx`，API 调用抽到 `services` 和 `types` | 适合当前工作台规模，后续复杂化时应继续拆页面和状态 |
-| AI 能力 | OpenAI-compatible Chat 接口，配置了百炼和 SiliconFlow Provider，默认模型候选走优先级和健康状态筛选 | 具备多模型容错基础，质量依赖真实 API Key 和模型稳定性 |
-| 生成链路 | 章节解析 -> 章节摘要 -> 场景规划 -> YAML 生成 -> Schema 校验 -> 成功或规则降级 | 比一次性 Prompt 更稳定，阶段边界可测试、可恢复 |
-| 数据持久化 | PostgreSQL，包含用户、项目、章节、转换任务、阶段结果、草稿和草稿版本表 | 支持保存项目/草稿和持久化阶段结果 |
-| 实时反馈 | SSE 返回 `meta`、`message`、`progress`、`validation`、`finish`、`cancel`、`error`、`done` 事件 | 前端可展示阶段进度、取消和失败信息 |
-| 质量保障 | 后端已有 31 个测试类，本地 `mvn test` 验证通过 169 个测试 | 后端核心链路测试较完整，前端目前以类型检查和构建为主 |
-| 部署成熟度 | 需要手动初始化数据库和配置环境变量，无 Docker、无数据库迁移框架 | 当前更接近开发/演示态，生产化仍需补齐部署和安全能力 |
 
 ## 核心链路
 
@@ -91,7 +72,6 @@ script.ai Pipeline
 
 当前配置里聊天模型候选来自 `application.yml`：
 
-- `qwen3-max`
 - `qwen3.7-max-2026-05-17`
 - `deepseek-v4-flash`
 
@@ -205,9 +185,7 @@ ai         -> JDK only
 
 初始化脚本会创建 `act_one` 数据库、建表并插入默认管理员。
 
-```bash
-psql -U postgres -f backend/src/main/resources/db/schema_pg.sql
-```
+脚本路径：sql/act-one.sql
 
 默认管理员账号仅用于本地演示：
 
@@ -218,7 +196,7 @@ password: admin
 
 ### 2. 配置后端环境变量
 
-可以在 `backend/.env` 中放本地环境变量。该文件不应提交到 Git。
+可以在 `backend/.env` 中放本地环境变量。当前已将.env.example放入根目录，修改为自己的配置即可
 
 ```bash
 export ACT_ONE_DB_URL=jdbc:postgresql://localhost:5432/act_one?client_encoding=UTF8
@@ -262,74 +240,6 @@ http://localhost:5173
 ```
 
 `frontend/vite.config.ts` 已将 `/api` 代理到 `http://localhost:10001`。
-
-### 5. 推荐演示流程
-
-1. 访问 `http://localhost:5173`。
-2. 使用 `admin / admin` 登录。
-3. 点击内置演示小说《星轨回音》或粘贴自己的小说文本。
-4. 先做章节预览，确认识别到不少于 3 章。
-5. 创建项目并开始流式生成 YAML。
-6. 查看生成模式、校验状态、阶段进度和 YAML 内容。
-7. 保存草稿，进入追溯、节奏分析、分镜建议或对白改写。
-8. 导出 YAML 文件。
-
-## 配置说明
-
-主要配置位于 `backend/src/main/resources/application.yml`。
-
-### 数据库
-
-| 环境变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `ACT_ONE_DB_URL` | `jdbc:postgresql://localhost:5432/act_one?client_encoding=UTF8` | PostgreSQL JDBC 地址 |
-| `ACT_ONE_DB_USERNAME` | `postgres` | 数据库用户名 |
-| `ACT_ONE_DB_PASSWORD` | 空 | 数据库密码 |
-| `ACT_ONE_DB_CONNECTION_TIMEOUT` | `5000` | Hikari 连接超时 |
-| `ACT_ONE_DB_MAX_POOL_SIZE` | `10` | Hikari 最大连接数 |
-| `ACT_ONE_DB_MIN_IDLE` | `5` | Hikari 最小空闲连接数 |
-
-### AI Provider
-
-| 环境变量 | 说明 |
-| --- | --- |
-| `BAILIAN_API_KEY` | 阿里云百炼 OpenAI-compatible Chat API Key |
-| `SILICONFLOW_API_KEY` | SiliconFlow Chat API Key |
-
-Provider 默认地址：
-
-| Provider | Base URL | Chat Endpoint |
-| --- | --- | --- |
-| `bailian` | `https://dashscope.aliyuncs.com` | `/compatible-mode/v1/chat/completions` |
-| `siliconflow` | `https://api.siliconflow.cn` | `/v1/chat/completions` |
-
-### AI Pipeline
-
-| 环境变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `ACT_ONE_SCRIPT_AI_MAX_STAGE_RETRIES` | `1` | 每个 AI 阶段最大重试次数 |
-| `ACT_ONE_SCRIPT_AI_CHAPTER_SUMMARY_TIMEOUT` | `240s` | 章节摘要阶段超时 |
-| `ACT_ONE_SCRIPT_AI_SCENE_PLANNING_TIMEOUT` | `600s` | 场景规划阶段超时 |
-| `ACT_ONE_SCRIPT_AI_YAML_GENERATION_TIMEOUT` | `360s` | YAML 生成阶段超时 |
-| `ACT_ONE_SCRIPT_AI_CHAPTER_SUMMARY_*` | 见 `application.yml` | 章节摘要线程池配置 |
-| `ACT_ONE_SCRIPT_AI_SCENE_PLANNING_*` | 见 `application.yml` | 场景规划线程池配置 |
-| `ACT_ONE_SCRIPT_AI_YAML_GENERATION_*` | 见 `application.yml` | YAML 生成线程池配置 |
-
-## 数据库结构
-
-初始化脚本：`backend/src/main/resources/db/schema_pg.sql`
-
-| 表 | 作用 |
-| --- | --- |
-| `t_user` | 用户和默认管理员 |
-| `t_script_project` | 小说转剧本项目 |
-| `t_script_chapter` | 项目下的章节文本 |
-| `t_script_conversion_task` | 转换任务状态、进度、失败原因 |
-| `t_script_stage_result` | AI Pipeline 阶段结果暂存，用于安全恢复 |
-| `t_script_draft` | 剧本 YAML 草稿 |
-| `t_script_draft_revision` | 草稿版本表 |
-
-当前项目没有接入 Flyway 或 Liquibase。数据库结构变更需要手动维护 SQL 脚本。
 
 ## API 概览
 
@@ -413,34 +323,6 @@ npm run build
 
 该命令会先运行 `tsc --noEmit`，再执行 Vite 生产构建。
 
-## 项目边界与风险
-
-当前项目已经能支撑完整演示和本地开发，但仍有明显生产化缺口：
-
-| 风险 | 当前状态 | 建议 |
-| --- | --- | --- |
-| 密码安全 | 默认管理员和用户密码为明文存储 | 接入密码哈希、密码策略和初始化时强制改密 |
-| 默认账号 | SQL 脚本插入 `admin / admin` | 仅本地演示使用，生产环境必须删除或替换 |
-| 数据库迁移 | 仅有手写 `schema_pg.sql` | 引入 Flyway 或 Liquibase 管理版本迁移 |
-| 部署方式 | 无 Docker Compose、无生产配置模板 | 增加容器化部署和环境变量样例 |
-| SSE 任务状态 | 运行中任务 Map 在内存中，阶段结果可持久化 | 多实例部署前需要外部任务协调或队列 |
-| 前端架构 | 页面状态集中在 `App.tsx` | 功能继续增加时应拆路由、状态和工作台子页面 |
-| 模型质量 | 依赖外部模型和 Prompt 输出稳定性 | 增加真实样本评测集、失败样例回归和成本统计 |
-| 权限模型 | 已有 Sa-Token 和管理员角色，业务资源隔离较基础 | 强化项目/草稿归属校验和审计日志 |
-
-## 参考文档
-
-| 文档 | 内容 |
-| --- | --- |
-| `docs/script-yaml-schema.md` | 剧本 YAML Schema v1 字段说明 |
-| `docs/ai-pipeline-skeleton.md` | AI Pipeline 阶段边界和失败策略 |
-| `docs/ai-intermediate-models.md` | 章节摘要、场景规划和上下文中间模型 |
-| `docs/ai-prompt-templates.md` | Prompt 模板说明 |
-| `docs/ai-pipeline-logging.md` | AI Pipeline 日志与可观测性 |
-| `docs/backend-package-boundaries.md` | 后端包边界和依赖方向 |
-| `docs/frontend-api-layer.md` | 前端 API 与类型层约束 |
-| `docs/demo-script.md` | 演示脚本 |
-| `notice/` | 项目分析、规划、演讲稿和过程材料 |
 
 ## Git 远程仓库
 

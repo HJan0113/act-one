@@ -84,12 +84,12 @@ ai:
         priority: 1
       - id: qwen3.7-max
         provider: bailian
-        model: deepseek-v4-flash
+        model: qwen3.7-max
         enabled: true
         priority: 4
       - id: qwen3.7-max-2026-05-20
         provider: bailian
-        model: deepseek-v4-flash
+        model: qwen3.7-max-2026-05-20
         enabled: true
         priority: 2
   selection:
