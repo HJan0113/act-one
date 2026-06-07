@@ -5,9 +5,15 @@ import com.hjan.actone.common.context.LoginUser;
 import com.hjan.actone.common.context.UserContext;
 import com.hjan.actone.common.exception.ClientException;
 import com.hjan.actone.script.dao.entity.ScriptChapterDO;
+import com.hjan.actone.script.dao.entity.ScriptConversionTaskDO;
+import com.hjan.actone.script.dao.entity.ScriptDraftDO;
 import com.hjan.actone.script.dao.entity.ScriptProjectDO;
+import com.hjan.actone.script.dao.entity.ScriptStageResultDO;
 import com.hjan.actone.script.dao.mapper.ScriptChapterMapper;
+import com.hjan.actone.script.dao.mapper.ScriptConversionTaskMapper;
+import com.hjan.actone.script.dao.mapper.ScriptDraftMapper;
 import com.hjan.actone.script.dao.mapper.ScriptProjectMapper;
+import com.hjan.actone.script.dao.mapper.ScriptStageResultMapper;
 import com.hjan.actone.script.model.NovelChapter;
 import com.hjan.actone.script.model.ScriptProjectCreateRequest;
 import com.hjan.actone.script.model.ScriptProjectCreateResponse;
@@ -30,13 +36,22 @@ public class ScriptProjectService {
     private final NovelChapterParser chapterParser;
     private final ScriptProjectMapper projectMapper;
     private final ScriptChapterMapper chapterMapper;
+    private final ScriptDraftMapper draftMapper;
+    private final ScriptConversionTaskMapper taskMapper;
+    private final ScriptStageResultMapper stageResultMapper;
 
     public ScriptProjectService(NovelChapterParser chapterParser,
                                 ScriptProjectMapper projectMapper,
-                                ScriptChapterMapper chapterMapper) {
+                                ScriptChapterMapper chapterMapper,
+                                ScriptDraftMapper draftMapper,
+                                ScriptConversionTaskMapper taskMapper,
+                                ScriptStageResultMapper stageResultMapper) {
         this.chapterParser = chapterParser;
         this.projectMapper = projectMapper;
         this.chapterMapper = chapterMapper;
+        this.draftMapper = draftMapper;
+        this.taskMapper = taskMapper;
+        this.stageResultMapper = stageResultMapper;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -77,6 +92,30 @@ public class ScriptProjectService {
         return projects.stream().map(this::toListItem).toList();
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public void delete(String projectId) {
+        String normalizedProjectId = requireText(projectId, "项目 ID 不能为空。");
+        requireOwnedProject(normalizedProjectId);
+
+        List<ScriptConversionTaskDO> tasks = taskMapper.selectList(new LambdaQueryWrapper<ScriptConversionTaskDO>()
+                .eq(ScriptConversionTaskDO::getProjectId, normalizedProjectId));
+        List<String> taskIds = tasks.stream()
+                .map(ScriptConversionTaskDO::getId)
+                .filter(StringUtils::hasText)
+                .toList();
+        if (!taskIds.isEmpty()) {
+            stageResultMapper.delete(new LambdaQueryWrapper<ScriptStageResultDO>()
+                    .in(ScriptStageResultDO::getTaskId, taskIds));
+        }
+        taskMapper.delete(new LambdaQueryWrapper<ScriptConversionTaskDO>()
+                .eq(ScriptConversionTaskDO::getProjectId, normalizedProjectId));
+        draftMapper.delete(new LambdaQueryWrapper<ScriptDraftDO>()
+                .eq(ScriptDraftDO::getProjectId, normalizedProjectId));
+        chapterMapper.delete(new LambdaQueryWrapper<ScriptChapterDO>()
+                .eq(ScriptChapterDO::getProjectId, normalizedProjectId));
+        projectMapper.deleteById(normalizedProjectId);
+    }
+
     private String resolveTitle(String title, List<NovelChapter> chapters) {
         if (StringUtils.hasText(title)) {
             return title.trim();
@@ -92,6 +131,23 @@ public class ScriptProjectService {
             return null;
         }
         return value.trim();
+    }
+
+    private String requireText(String value, String message) {
+        if (!StringUtils.hasText(value)) {
+            throw new ClientException(message);
+        }
+        return value.trim();
+    }
+
+    private ScriptProjectDO requireOwnedProject(String projectId) {
+        ScriptProjectDO project = projectMapper.selectOne(new LambdaQueryWrapper<ScriptProjectDO>()
+                .eq(ScriptProjectDO::getId, projectId)
+                .eq(ScriptProjectDO::getCreatedBy, UserContext.requireUser().userId()));
+        if (project == null) {
+            throw new ClientException("项目不存在或无权访问");
+        }
+        return project;
     }
 
     private ScriptProjectListItemResponse toListItem(ScriptProjectDO project) {

@@ -1,4 +1,4 @@
-import type {ChangeEvent, ReactNode} from "react";
+import {useState, type ChangeEvent, type ReactNode} from "react";
 import {
     Activity,
     BookOpen,
@@ -7,6 +7,7 @@ import {
     CircleStop,
     ClipboardCopy,
     Code2,
+    Film,
     FileDown,
     FileInput,
     FileText,
@@ -15,6 +16,7 @@ import {
     ListChecks,
     PanelLeftClose,
     PanelLeftOpen,
+    Radio,
     RefreshCcw,
     Save,
     ScrollText,
@@ -26,6 +28,7 @@ import {
 import {ActionButton} from "./ActionButton";
 import {EmptyState} from "./EmptyState";
 import {StatusBadge, type StatusTone} from "./StatusBadge";
+import type {ScriptCharacterDensityMetric, ScriptRhythmAnalysisData, ScriptSceneRhythmMetric, ScriptStoryboardData, ShotSuggestion} from "../types/api";
 import type {ScriptCharacterCard, ScriptRelationship, ScriptTraceScene} from "../utils/scriptYamlTrace";
 
 export type ChapterOutline = {
@@ -85,7 +88,53 @@ export type ValidationCheck = {
   state: "fail" | "pass" | "pending" | "warn";
 };
 
-export type WorkspaceView = "archive" | "characters" | "consistency" | "pipeline" | "result" | "source" | "trace";
+export type AiChangeSummary = {
+  changes: Array<{
+    detail: string;
+    tone: StatusTone;
+    type: "表达" | "格式" | "节奏" | "事实";
+  }>;
+  riskWarnings: string[];
+  sceneIds: string[];
+  summary: string;
+  validationStatus: string;
+};
+
+export type ScriptStyleVariant = "broadcast" | "screenplay" | "short_drama" | "stage";
+
+export const scriptStyleVariantOptions: Array<{
+  detail: string;
+  label: string;
+  prompt: string;
+  value: ScriptStyleVariant;
+}> = [
+  {
+    detail: "保留场景动作、对白、调度，适合常规影视剧本。",
+    label: "影视剧",
+    prompt: "强化镜头可拍性、场面调度、动作节奏和对白表演，保持原剧情事实不变。",
+    value: "screenplay"
+  },
+  {
+    detail: "更短节奏、更强钩子，适合连续反转和高密度冲突。",
+    label: "短剧",
+    prompt: "压缩铺垫，突出开场钩子、场景冲突、反转节点和强情绪对白，保持原剧情事实不变。",
+    value: "short_drama"
+  },
+  {
+    detail: "突出舞台空间、出入场、灯光和可演台词。",
+    label: "舞台剧",
+    prompt: "强化舞台调度、出入场、灯光/道具提示和可朗读台词，保持原剧情事实不变。",
+    value: "stage"
+  },
+  {
+    detail: "以声音叙事，强化旁白、环境音和对白辨识度。",
+    label: "广播剧",
+    prompt: "强化声音线索、环境音、旁白过渡和角色口吻辨识度，保持原剧情事实不变。",
+    value: "broadcast"
+  }
+];
+
+export type WorkspaceView = "archive" | "characters" | "consistency" | "heatmap" | "pipeline" | "preview" | "result" | "source" | "trace";
 
 type AppShellProps = {
     activeView: WorkspaceView;
@@ -193,6 +242,18 @@ const workspaceNavItems: Array<{
         icon: <ShieldCheck size={18} aria-hidden="true"/>,
         id: "consistency",
         label: "校验"
+    },
+    {
+        detail: "可读全剧本",
+        icon: <ScrollText size={18} aria-hidden="true"/>,
+        id: "preview",
+        label: "预览"
+    },
+    {
+        detail: "冲突与热度",
+        icon: <Activity size={18} aria-hidden="true"/>,
+        id: "heatmap",
+        label: "热力"
     },
     {
         detail: "项目与草稿",
@@ -604,20 +665,27 @@ export function InputPanel({
 }
 
 type SourceTraceWorkbenchProps = {
+  activeDraftId: string;
   activeSceneId: string;
   chapters: ChapterOutline[];
+  refining: boolean;
   scenes: ScriptTraceScene[];
+  onRefineScene: (sceneId: string, instruction: string) => Promise<void> | void;
   onSelectScene: (sceneId: string) => void;
   yamlReady: boolean;
 };
 
 export function SourceTraceWorkbench({
+  activeDraftId,
   activeSceneId,
   chapters,
+  onRefineScene,
   onSelectScene,
+  refining,
   scenes,
   yamlReady
 }: SourceTraceWorkbenchProps) {
+  const [refineInstruction, setRefineInstruction] = useState("");
   const selectedScene = scenes.find((scene) => scene.id === activeSceneId) || scenes[0];
   const selectedChapter = selectedScene
     ? chapters.find(
@@ -626,6 +694,15 @@ export function SourceTraceWorkbench({
     : undefined;
   const sourceExcerpt = selectedScene?.sourceExcerpt.trim() || "";
   const hasExactExcerpt = Boolean(selectedChapter?.content && sourceExcerpt && selectedChapter.content.includes(sourceExcerpt));
+  const canRefine = Boolean(activeDraftId && selectedScene && refineInstruction.trim() && !refining);
+
+  async function submitRefinement() {
+    if (!selectedScene || !canRefine) {
+      return;
+    }
+    await onRefineScene(selectedScene.id, refineInstruction.trim());
+    setRefineInstruction("");
+  }
 
   return (
     <div className="trace-workbench" aria-label="源文追溯三栏对照">
@@ -764,6 +841,54 @@ export function SourceTraceWorkbench({
                 <span>角色</span>
                 <strong>{sceneCharactersLabel(selectedScene)}</strong>
               </footer>
+
+              <section className="scene-refine-box" aria-label="局部命令式精修">
+                <div className="scene-refine-box__heading">
+                  <span>局部精修</span>
+                  <strong>{activeDraftId ? "基于已保存草稿" : "需先保存草稿"}</strong>
+                </div>
+                <textarea
+                  disabled={!activeDraftId || refining}
+                  maxLength={1000}
+                  onChange={(event) => setRefineInstruction(event.target.value)}
+                  placeholder="例如：增强悬疑感，保留事实不变，补一句压低声音的对白。"
+                  value={refineInstruction}
+                />
+                <ActionButton
+                  disabled={!canRefine}
+                  icon={<Sparkles aria-hidden="true" className={refining ? "spin" : ""} size={15} />}
+                  onClick={submitRefinement}
+                  size="sm"
+                  variant="primary"
+                >
+                  生成 patch
+                </ActionButton>
+              </section>
+
+              <section className="visualization-candidates" aria-label="心理描写局部影视化候选">
+                <div className="visualization-candidates__heading">
+                  <span>心理影视化</span>
+                  <strong>{buildPsychologicalCandidates(selectedScene).length} 个候选</strong>
+                </div>
+                <div className="visualization-candidates__list">
+                  {buildPsychologicalCandidates(selectedScene).map((candidate) => (
+                    <article className="visualization-candidate" key={candidate.type}>
+                      <header>
+                        <span>{candidate.type}</span>
+                        <strong>{candidate.title}</strong>
+                      </header>
+                      <div>
+                        <small>Before</small>
+                        <p>{candidate.before}</p>
+                      </div>
+                      <div>
+                        <small>After</small>
+                        <p>{candidate.after}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
             </article>
           ) : (
             <EmptyState
@@ -814,10 +939,57 @@ function renderHighlightedSource(content: string, excerpt: string): ReactNode {
   );
 }
 
+type PsychologicalCandidate = {
+  after: string;
+  before: string;
+  title: string;
+  type: string;
+};
+
+function buildPsychologicalCandidates(scene: ScriptTraceScene): PsychologicalCandidate[] {
+  const before = compactCandidateText(scene.action || scene.sourceExcerpt || scene.scenePurpose || scene.title);
+  const evidence = compactCandidateText(scene.sourceExcerpt || scene.action || scene.title);
+  const location = scene.location && scene.location !== "待补充" ? scene.location : "现场";
+  return [
+    {
+      after: `${location}里，人物停住动作，视线落在一个具体细节上，再用一次短促的动作打断沉默。`,
+      before,
+      title: "把内心犹豫改成可拍动作",
+      type: "动作"
+    },
+    {
+      after: `人物没有解释情绪，只让呼吸、眼神和手部细节变化承接“${evidence}”。`,
+      before,
+      title: "用表情和身体反应替代心理旁白",
+      type: "表情"
+    },
+    {
+      after: `加入一个可见道具承载压力：人物触碰、握紧或避开它，让选择通过物件关系被看见。`,
+      before,
+      title: "用道具承接心理压力",
+      type: "道具"
+    },
+    {
+      after: `删除解释性句子，保留环境声和停顿，让对方的下一句对白推动人物做出选择。`,
+      before,
+      title: "用沉默和节奏制造转折",
+      type: "沉默"
+    }
+  ];
+}
+
+function compactCandidateText(value: string) {
+  const compacted = value.replace(/\s+/g, " ").trim();
+  return compacted.length > 120 ? `${compacted.slice(0, 120)}...` : compacted || "当前场景暂无可对比文本。";
+}
+
 type CharacterWorkbenchProps = {
+  activeDraftId: string;
   characters: ScriptCharacterCard[];
   relationships: ScriptRelationship[];
+  rewritingVoice: boolean;
   scenes: ScriptTraceScene[];
+  onRewriteVoice: (speaker: string, instruction: string) => Promise<void> | void;
   yamlReady: boolean;
 };
 
@@ -836,11 +1008,16 @@ type RelationshipView = {
 };
 
 export function CharacterWorkbench({
+  activeDraftId,
   characters,
+  onRewriteVoice,
   relationships,
+  rewritingVoice,
   scenes,
   yamlReady
 }: CharacterWorkbenchProps) {
+  const [voiceInstruction, setVoiceInstruction] = useState("");
+  const [voiceSpeaker, setVoiceSpeaker] = useState("");
   const candidateCharacters = characters.length > 0 ? characters : deriveCharacterCandidates(scenes);
   const usingCandidates = characters.length === 0 && candidateCharacters.length > 0;
   const characterStats = createCharacterStats(candidateCharacters, scenes);
@@ -848,6 +1025,16 @@ export function CharacterWorkbench({
     relationships.length > 0
       ? relationships.map((relationship) => createRelationshipView(relationship, candidateCharacters))
       : inferRelationshipViews(candidateCharacters, scenes);
+  const selectedVoiceSpeaker = voiceSpeaker || candidateCharacters[0]?.name || "";
+  const canRewriteVoice = Boolean(activeDraftId && selectedVoiceSpeaker && voiceInstruction.trim() && !rewritingVoice);
+
+  async function submitVoiceRewrite() {
+    if (!canRewriteVoice) {
+      return;
+    }
+    await onRewriteVoice(selectedVoiceSpeaker, voiceInstruction.trim());
+    setVoiceInstruction("");
+  }
 
   return (
     <div className="character-workbench" aria-label="人物卡片与关系数据">
@@ -928,6 +1115,47 @@ export function CharacterWorkbench({
         </div>
 
         <div className="relationship-list">
+          <section className="voice-rewrite-box" aria-label="对白口吻一致性与重写">
+            <div className="voice-rewrite-box__heading">
+              <span>口吻重写</span>
+              <strong>{activeDraftId ? "多场景 patch" : "需先保存草稿"}</strong>
+            </div>
+            <label>
+              <span>人物</span>
+              <select
+                disabled={!activeDraftId || rewritingVoice || candidateCharacters.length === 0}
+                onChange={(event) => setVoiceSpeaker(event.target.value)}
+                value={selectedVoiceSpeaker}
+              >
+                {candidateCharacters.length > 0 ? (
+                  candidateCharacters.map((character) => (
+                    <option key={characterIdentity(character)} value={character.name}>
+                      {character.name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">暂无人物</option>
+                )}
+              </select>
+            </label>
+            <textarea
+              disabled={!activeDraftId || rewritingVoice || candidateCharacters.length === 0}
+              maxLength={1000}
+              onChange={(event) => setVoiceInstruction(event.target.value)}
+              placeholder="例如：统一为冷静、短句、带观察细节的侦查口吻，不改变事实。"
+              value={voiceInstruction}
+            />
+            <ActionButton
+              disabled={!canRewriteVoice}
+              icon={<Sparkles aria-hidden="true" className={rewritingVoice ? "spin" : ""} size={15} />}
+              onClick={submitVoiceRewrite}
+              size="sm"
+              variant="primary"
+            >
+              重写对白
+            </ActionButton>
+          </section>
+
           {relationshipViews.length > 0 ? (
             relationshipViews.map((relationship) => (
               <article className="relationship-item" key={relationship.id}>
@@ -1363,6 +1591,278 @@ function chapterIndexFromId(chapterId: string) {
   return match ? Number(match[1]) : 0;
 }
 
+type AiChangeSummaryPanelProps = {
+  summary: AiChangeSummary | null;
+};
+
+export function AiChangeSummaryPanel({summary}: AiChangeSummaryPanelProps) {
+  return (
+    <section className="studio-panel ai-change-panel" aria-label="AI 改动解释与差异摘要">
+      <div className="panel-heading">
+        <div>
+          <p className="panel-kicker">AI Change Log</p>
+          <h2>改动解释</h2>
+        </div>
+        <StatusBadge
+          label={summary ? summary.validationStatus || "已生成" : "暂无改动"}
+          tone={summary?.validationStatus === "valid" ? "success" : summary ? "warning" : "neutral"}
+        />
+      </div>
+
+      {summary ? (
+        <div className="ai-change-body">
+          <p>{summary.summary || "AI 已返回 patch，等待作者复核。"}</p>
+          <div className="ai-change-scenes">
+            {summary.sceneIds.map((sceneId) => (
+              <span key={sceneId}>{sceneId}</span>
+            ))}
+          </div>
+          <div className="ai-change-grid">
+            {summary.changes.map((change) => (
+              <article className="ai-change-card" key={`${change.type}-${change.detail}`}>
+                <StatusBadge label={change.type} tone={change.tone} />
+                <p>{change.detail}</p>
+              </article>
+            ))}
+          </div>
+          <div className="ai-risk-list">
+            <span>Risk warnings</span>
+            {summary.riskWarnings.length > 0 ? (
+              summary.riskWarnings.map((risk) => <p key={risk}>{risk}</p>)
+            ) : (
+              <p>未返回事实、关系或来源证据风险。</p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <EmptyState
+          description="执行局部精修或对白口吻重写后，这里会显示 patch 摘要、风险和改动类型。"
+          icon={<ClipboardCopy size={18} />}
+          size="sm"
+          title="暂无 AI 改动"
+        />
+      )}
+    </section>
+  );
+}
+
+type StyleVariantPanelProps = {
+  canCreate: boolean;
+  creatingStyle: ScriptStyleVariant | "";
+  draftCount: number;
+  onCreateVariant: (style: ScriptStyleVariant) => void;
+};
+
+export function StyleVariantPanel({
+  canCreate,
+  creatingStyle,
+  draftCount,
+  onCreateVariant
+}: StyleVariantPanelProps) {
+  return (
+    <section className="studio-panel style-variant-panel" aria-label="多版本风格草稿">
+      <div className="panel-heading">
+        <div>
+          <p className="panel-kicker">Style Revisions</p>
+          <h2>风格版本</h2>
+        </div>
+        <StatusBadge label={draftCount > 0 ? `${draftCount} 个草稿` : "未保存"} tone={draftCount > 0 ? "info" : "neutral"} />
+      </div>
+
+      <div className="style-variant-body">
+        <p>基于当前结构化底稿另存为新草稿，原稿不会被覆盖。</p>
+        <div className="style-variant-grid">
+          {scriptStyleVariantOptions.map((option) => {
+            const loading = creatingStyle === option.value;
+            return (
+              <article className="style-variant-card" key={option.value}>
+                <span className="style-variant-card__icon" aria-hidden="true">
+                  {styleVariantIcon(option.value)}
+                </span>
+                <div>
+                  <strong>{option.label}</strong>
+                  <p>{option.detail}</p>
+                </div>
+                <ActionButton
+                  disabled={!canCreate || Boolean(creatingStyle)}
+                  icon={loading ? <RefreshCcw aria-hidden="true" className="spin" size={15} /> : <Sparkles aria-hidden="true" size={15} />}
+                  onClick={() => onCreateVariant(option.value)}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {loading ? "生成中" : "生成"}
+                </ActionButton>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function styleVariantIcon(value: ScriptStyleVariant) {
+  if (value === "screenplay") {
+    return <Film size={17} />;
+  }
+  if (value === "broadcast") {
+    return <Radio size={17} />;
+  }
+  if (value === "stage") {
+    return <BookOpen size={17} />;
+  }
+  return <Sparkles size={17} />;
+}
+
+type RhythmAnalysisPanelProps = {
+  activeDraftId: string;
+  analysis: ScriptRhythmAnalysisData | null;
+  loading: boolean;
+  onAnalyze: () => void;
+  onViewHeatmap?: () => void;
+  yamlReady: boolean;
+};
+
+export function RhythmAnalysisPanel({
+  activeDraftId,
+  analysis,
+  loading,
+  onAnalyze,
+  onViewHeatmap,
+  yamlReady
+}: RhythmAnalysisPanelProps) {
+  const canAnalyze = Boolean(activeDraftId) && !loading;
+  return (
+    <section className="studio-panel rhythm-panel" aria-label="剧本节奏分析">
+      <div className="panel-heading">
+        <div>
+          <p className="panel-kicker">Rhythm Metrics</p>
+          <h2>节奏分析</h2>
+        </div>
+        <div className="panel-actions">
+          <StatusBadge label={analysisModeLabel(analysis?.assessmentMode)} tone={analysis?.assessmentMode === "ai_assisted" ? "success" : "info"} />
+          {analysis && onViewHeatmap ? (
+            <ActionButton
+              icon={<Activity aria-hidden="true" size={15} />}
+              onClick={onViewHeatmap}
+              size="sm"
+              variant="quiet"
+            >
+              热力图
+            </ActionButton>
+          ) : null}
+          <ActionButton
+            disabled={!canAnalyze}
+            icon={loading ? <RefreshCcw aria-hidden="true" className="spin" size={15} /> : <Activity aria-hidden="true" size={15} />}
+            onClick={onAnalyze}
+            size="sm"
+            variant="secondary"
+          >
+            {loading ? "分析中" : "分析"}
+          </ActionButton>
+        </div>
+      </div>
+
+      {analysis ? (
+        <div className="rhythm-body">
+          <div className="rhythm-overview">
+            <MetricTile label="场景" value={String(analysis.overall.sceneCount)} />
+            <MetricTile label="对白" value={String(analysis.overall.dialogueCount)} />
+            <MetricTile label="冲突" value={`${analysis.overall.averageConflictScore}/5`} />
+            <MetricTile label="转折" value={`${analysis.overall.averageTurningScore}/5`} />
+            <MetricTile label="目的覆盖" value={`${analysis.overall.purposeCoverage}%`} />
+            <MetricTile label="失衡场景" value={String(analysis.overall.imbalanceSceneCount)} />
+          </div>
+
+          <div className="rhythm-ratio" aria-label="整体动作对白比例">
+            <RhythmMeter label="动作" value={analysis.overall.actionRatio} tone="action" />
+            <RhythmMeter label="对白" value={analysis.overall.dialogueRatio} tone="dialogue" />
+          </div>
+
+          <div className="rhythm-scene-list">
+            {analysis.scenes.map((scene) => (
+              <RhythmSceneRow key={scene.sceneId} scene={scene} />
+            ))}
+          </div>
+
+          <div className="rhythm-suggestions">
+            <span>建议</span>
+            {analysis.suggestions.map((suggestion) => (
+              <p key={suggestion}>{suggestion}</p>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <EmptyState
+          description={yamlReady ? "请先保存为草稿，再调用后端指标接口生成动作/对白比例和冲突转折评分。" : "生成或加载 YAML 后可执行节奏分析。"}
+          icon={<Activity size={18} />}
+          size="sm"
+          title={activeDraftId ? "尚未分析" : "等待已保存草稿"}
+        />
+      )}
+    </section>
+  );
+}
+
+function MetricTile({label, value}: {label: string; value: string}) {
+  return (
+    <div className="rhythm-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function RhythmMeter({label, tone, value}: {label: string; tone: "action" | "dialogue"; value: number}) {
+  return (
+    <div className="rhythm-meter" data-tone={tone}>
+      <div className="rhythm-meter__label">
+        <span>{label}</span>
+        <strong>{value}%</strong>
+      </div>
+      <div className="rhythm-meter__track" aria-hidden="true">
+        <span style={{width: `${Math.min(100, Math.max(0, value))}%`}} />
+      </div>
+    </div>
+  );
+}
+
+function RhythmSceneRow({scene}: {scene: ScriptSceneRhythmMetric}) {
+  return (
+    <article className="rhythm-scene-row">
+      <div className="rhythm-scene-row__head">
+        <div>
+          <strong>{scene.title || scene.sceneId}</strong>
+          <span>{scene.sceneId} / {scene.paceLevel}</span>
+        </div>
+        <StatusBadge label={`冲突 ${scene.conflictScore}/5`} tone={scene.conflictScore >= 4 ? "success" : scene.conflictScore <= 2 ? "warning" : "info"} />
+      </div>
+      <p>{scene.summary}</p>
+      <div className="rhythm-mini-bars">
+        <RhythmMeter label="动作" value={scene.actionRatio} tone="action" />
+        <RhythmMeter label="对白" value={scene.dialogueRatio} tone="dialogue" />
+      </div>
+      {scene.warnings.length > 0 ? (
+        <div className="rhythm-warning-list">
+          {scene.warnings.map((warning) => (
+            <span key={warning}>{warning}</span>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function analysisModeLabel(mode?: string) {
+  if (mode === "ai_assisted") {
+    return "AI 评估";
+  }
+  if (mode === "rule_based_fallback") {
+    return "规则评估";
+  }
+  return "未分析";
+}
+
 type ScriptPreviewPanelProps = {
   activeDraftId: string;
   canExport: boolean;
@@ -1651,6 +2151,253 @@ export function SchemaValidationPanel({ checks, error, status, yamlReady }: Sche
           </div>
         ))}
       </div>
+    </section>
+  );
+}
+
+type ScriptReadableViewProps = {
+  scenes: ScriptTraceScene[];
+  yamlReady: boolean;
+};
+
+export function ScriptReadableView({ scenes, yamlReady }: ScriptReadableViewProps) {
+  return (
+    <section className="studio-panel readable-script-panel" aria-label="可读剧本预览">
+      <div className="panel-heading">
+        <div>
+          <p className="panel-kicker">Readable Screenplay</p>
+          <h2>可读剧本预览</h2>
+        </div>
+        <StatusBadge label={scenes.length > 0 ? `${scenes.length} 场` : yamlReady ? "无场景" : "待生成"} tone={scenes.length > 0 ? "success" : "neutral"} />
+      </div>
+      <div className="readable-script-body">
+        {scenes.length > 0 ? (
+          scenes.map((scene) => (
+            <article className="readable-scene" key={scene.id}>
+              <header className="readable-scene__header">
+                <span className="readable-scene__number">{scene.id.replace(/^scene_?/, "")}</span>
+                <div>
+                  <h3>{scene.title}</h3>
+                  <p>{scene.location || "待补充"} · {scene.time || "待补充"}</p>
+                </div>
+                {scene.aiExpansion ? <StatusBadge label="AI 扩写" tone="warning" /> : null}
+              </header>
+              {scene.scenePurpose ? (
+                <p className="readable-scene__purpose"><em>目的：{scene.scenePurpose}</em></p>
+              ) : null}
+              {scene.action ? (
+                <p className="readable-scene__action">{scene.action}</p>
+              ) : null}
+              {scene.dialogues.length > 0 ? (
+                <div className="readable-scene__dialogues">
+                  {scene.dialogues.map((dialogue, index) => (
+                    <div className="readable-dialogue" key={`${dialogue.speaker}-${index}`}>
+                      <strong>{dialogue.speaker || "未知"}</strong>
+                      {dialogue.emotion ? <small>（{dialogue.emotion}）</small> : null}
+                      <p>{dialogue.line || "..."}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <footer className="readable-scene__footer">
+                {scene.characters.length > 0 ? (
+                  <span>出场：{scene.characters.join("、")}</span>
+                ) : null}
+                {scene.sourceChapterId ? (
+                  <small>来源：{scene.sourceChapterId} / 第 {scene.chapterIndex || "-"} 章</small>
+                ) : null}
+              </footer>
+            </article>
+          ))
+        ) : (
+          <EmptyState
+            description={yamlReady ? "当前 YAML 未解析到 scenes，检查缩进或字段名。" : "生成或加载 YAML 后，这里会渲染完整的可读剧本格式。"}
+            icon={<ScrollText size={22} />}
+            size="md"
+            title="暂无剧本"
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+type ConflictHeatmapPanelProps = {
+  analysis: ScriptRhythmAnalysisData | null;
+  onSelectScene?: (sceneId: string) => void;
+  yamlReady: boolean;
+};
+
+export function ConflictHeatmapPanel({ analysis, onSelectScene, yamlReady }: ConflictHeatmapPanelProps) {
+  const maxConflict = analysis ? Math.max(1, ...analysis.scenes.map((scene) => scene.conflictScore)) : 5;
+  const maxDensity = analysis
+    ? Math.max(1, ...analysis.characterDensity.map((char) => char.sceneCount))
+    : 1;
+
+  return (
+    <div className="heatmap-workbench" aria-label="冲突热力图与角色出场密度">
+      <section className="studio-panel heatmap-panel" aria-label="场景冲突热力图">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Conflict Heatmap</p>
+            <h2>冲突热力图</h2>
+          </div>
+          <StatusBadge label={analysis ? `${analysis.scenes.length} 场` : yamlReady ? "可分析" : "待生成"} tone={analysis ? "info" : "neutral"} />
+        </div>
+        <div className="heatmap-body">
+          {analysis && analysis.scenes.length > 0 ? (
+            <>
+              <div className="heatmap-legend">
+                <span>低冲突</span>
+                <div className="heatmap-legend__gradient">
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <span key={level} className="heatmap-legend__tick" data-level={level} />
+                  ))}
+                </div>
+                <span>高冲突</span>
+              </div>
+              <div className="heatmap-grid">
+                {analysis.scenes.map((scene) => (
+                  <button
+                    className="heatmap-cell"
+                    data-level={scene.conflictScore}
+                    key={scene.sceneId}
+                    onClick={() => onSelectScene?.(scene.sceneId)}
+                    title={`${scene.title || scene.sceneId} — 冲突 ${scene.conflictScore}/5 — 转折 ${scene.turningScore}/5 — ${scene.paceLevel}`}
+                    type="button"
+                  >
+                    <span className="heatmap-cell__index">{scene.sceneId.replace(/^scene_?/, "")}</span>
+                    <span className="heatmap-cell__bar" style={{ height: `${(scene.conflictScore / maxConflict) * 100}%` }} />
+                    <span className="heatmap-cell__label">{scene.conflictScore}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <EmptyState
+              description={yamlReady ? "保存草稿后执行节奏分析，即可查看按场景排列的冲突强度热力图。" : "生成或加载 YAML 草稿后可查看冲突热力图。"}
+              icon={<Activity size={18} />}
+              size="sm"
+              title="暂无冲突数据"
+            />
+          )}
+        </div>
+      </section>
+
+      <section className="studio-panel density-panel" aria-label="角色出场密度">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">Character Density</p>
+            <h2>角色出场密度</h2>
+          </div>
+          <StatusBadge label={analysis ? `${analysis.characterDensity.length} 人` : "待分析"} tone={analysis ? "info" : "neutral"} />
+        </div>
+        <div className="density-body">
+          {analysis && analysis.characterDensity.length > 0 ? (
+            <div className="density-list">
+              {analysis.characterDensity.map((char) => (
+                <article className="density-row" key={char.characterId || char.characterName}>
+                  <div className="density-row__head">
+                    <strong>{char.characterName}</strong>
+                    <span>{char.sceneCount} 场 / {char.dialogueCount} 句对白</span>
+                  </div>
+                  <div className="density-row__bar" aria-label={`出场密度 ${char.sceneCount}/${analysis.scenes.length}`}>
+                    <span style={{ width: `${Math.min(100, (char.sceneCount / Math.max(1, analysis.scenes.length)) * 100)}%` }} />
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              description={yamlReady ? "YAML 中暂无角色卡或对白说话人数据，无法计算出场密度。" : "生成包含角色的 YAML 草稿后可查看角色出场密度。"}
+              icon={<ListChecks size={18} />}
+              size="sm"
+              title="暂无角色数据"
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+type StoryboardPanelProps = {
+  activeDraftId: string;
+  generating: boolean;
+  onGenerate: (sceneId: string) => void;
+  selectedScene: ScriptTraceScene | null;
+  storyboard: ScriptStoryboardData | null;
+};
+
+export function StoryboardPanel({
+  activeDraftId,
+  generating,
+  onGenerate,
+  selectedScene,
+  storyboard
+}: StoryboardPanelProps) {
+  const canGenerate = Boolean(activeDraftId && selectedScene && !generating);
+  const shots = storyboard?.shots || [];
+  const suggestions = storyboard?.suggestions || [];
+
+  return (
+    <section className="storyboard-section" aria-label="分镜与画面建议">
+      <div className="storyboard-heading">
+        <div>
+          <span>分镜建议</span>
+          <strong>{selectedScene ? selectedScene.title || selectedScene.id : "未选择场景"}</strong>
+        </div>
+        <ActionButton
+          disabled={!canGenerate}
+          icon={generating ? <RefreshCcw aria-hidden="true" className="spin" size={15} /> : <Film aria-hidden="true" size={15} />}
+          onClick={() => selectedScene && onGenerate(selectedScene.id)}
+          size="sm"
+          variant="secondary"
+        >
+          {generating ? "生成中" : "生成分镜"}
+        </ActionButton>
+      </div>
+
+      {storyboard ? (
+        <div className="storyboard-body">
+          <StatusBadge label={storyboard.assessmentMode === "ai_assisted" ? "AI 分镜" : "规则分镜"} tone={storyboard.assessmentMode === "ai_assisted" ? "success" : "info"} />
+          {shots.length > 0 ? (
+            <div className="shot-list">
+              {shots.map((shot) => (
+                <article className="shot-card" key={shot.shotId}>
+                  <header>
+                    <span className="shot-card__id">{shot.shotId}</span>
+                    <strong>{shot.shotType}</strong>
+                    <StatusBadge label={shot.emotion || "中性"} tone="info" />
+                  </header>
+                  <dl>
+                    <div><dt>主体</dt><dd>{shot.subject || "—"}</dd></div>
+                    <div><dt>动作</dt><dd>{shot.action || "—"}</dd></div>
+                    <div><dt>道具</dt><dd>{shot.keyProp || "—"}</dd></div>
+                    <div><dt>声音</dt><dd>{shot.sound || "—"}</dd></div>
+                    <div><dt>色调</dt><dd>{shot.tone || "—"}</dd></div>
+                  </dl>
+                  <p>{shot.description}</p>
+                </article>
+              ))}
+            </div>
+          ) : null}
+          {suggestions.length > 0 ? (
+            <div className="storyboard-suggestions">
+              {suggestions.map((suggestion) => (
+                <p key={suggestion}>{suggestion}</p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <EmptyState
+          description={canGenerate ? "点击生成分镜，AI 将为当前场景生成镜头类型、主体、动作、声音和色调建议。" : "需要先保存草稿并选择一个场景。"}
+          icon={<Film size={18} />}
+          size="sm"
+          title="点击生成按钮获取分镜建议"
+        />
+      )}
     </section>
   );
 }

@@ -7,21 +7,18 @@ import com.hjan.actone.script.ai.model.SourceTrace;
 import com.hjan.actone.script.model.NovelChapter;
 import com.hjan.actone.script.service.ScriptYamlValidationResult;
 import com.hjan.actone.script.service.ScriptYamlValidator;
+import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 import org.yaml.snakeyaml.error.YAMLException;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class ScriptYamlFactConstraintChecker {
 
     public static final String ERROR_PREFIX = "事实约束失败：";
@@ -30,8 +27,13 @@ public class ScriptYamlFactConstraintChecker {
                                                String cleanedYaml,
                                                List<NovelChapter> chapters) {
         Objects.requireNonNull(context, "PipelineContext 不能为空");
+        long startedNanos = System.nanoTime();
+        log.info("开始事实约束检查 taskId={}", context.taskId());
         String yaml = cleanedYaml == null ? "" : cleanedYaml.strip();
         if (!hasText(yaml)) {
+            log.info("完成事实约束检查 taskId={} result=empty_yaml durationMs={}",
+                    context.taskId(),
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos));
             return invalid(yaml, "YAML 内容不能为空");
         }
 
@@ -39,9 +41,15 @@ public class ScriptYamlFactConstraintChecker {
         try {
             parsed = newYamlParser().load(yaml);
         } catch (YAMLException ex) {
+            log.info("完成事实约束检查 taskId={} result=parse_error durationMs={}",
+                    context.taskId(),
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos));
             return invalid(yaml, "YAML 无法解析，需先通过 Schema 校验");
         }
         if (!(parsed instanceof Map<?, ?> document)) {
+            log.info("完成事实约束检查 taskId={} result=not_map durationMs={}",
+                    context.taskId(),
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos));
             return invalid(yaml, "YAML 顶层结构必须是对象");
         }
 
@@ -51,8 +59,15 @@ public class ScriptYamlFactConstraintChecker {
         validateScenes(asList(document.get("scenes")), index, errors);
 
         if (errors.isEmpty()) {
+            log.info("完成事实约束检查 taskId={} result=valid durationMs={}",
+                    context.taskId(),
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos));
             return new ScriptYamlValidationResult(yaml, ScriptYamlValidator.VALIDATION_STATUS_VALID, null);
         }
+        log.info("完成事实约束检查 taskId={} result=invalid errorCount={} durationMs={}",
+                context.taskId(),
+                errors.size(),
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos));
         return invalid(yaml, ERROR_PREFIX + String.join("；", errors));
     }
 

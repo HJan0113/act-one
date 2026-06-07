@@ -1,14 +1,22 @@
 import {readResponseError, requestApi, withAuthHeader} from "./apiClient";
 import type {
+    ApiResult,
     ChapterPreviewData,
+    ScriptDemoNovelData,
+    ScriptDialogueVoiceRewriteData,
+    ScriptDialogueVoiceRewriteRequest,
     ScriptConversionTaskData,
     ScriptDraftDetail,
     ScriptDraftListItem,
     ScriptDraftSaveData,
     ScriptDraftSaveRequest,
+    ScriptRhythmAnalysisData,
     ScriptProjectCreateRequest,
     ScriptProjectData,
     ScriptProjectListItem,
+    ScriptSceneRefineData,
+    ScriptSceneRefineRequest,
+    ScriptStoryboardData,
     ScriptYamlData,
     ScriptYamlGenerateRequest,
     ScriptYamlStreamEventName,
@@ -179,6 +187,14 @@ export function listMyProjects(token?: string) {
   );
 }
 
+export function deleteProject(projectId: string, token?: string) {
+  return deleteResource(
+    `/api/script/projects/${encodeURIComponent(projectId)}`,
+    token,
+    "项目删除失败"
+  );
+}
+
 export function listDrafts(projectId: string, token?: string) {
   return requestApi<ScriptDraftListItem[]>(
     `/api/script/drafts?projectId=${encodeURIComponent(projectId)}`,
@@ -186,6 +202,14 @@ export function listDrafts(projectId: string, token?: string) {
       token
     },
     "草稿列表加载失败"
+  );
+}
+
+export function deleteDraft(draftId: string, token?: string) {
+  return deleteResource(
+    `/api/script/drafts/${encodeURIComponent(draftId)}`,
+    token,
+    "保存记录删除失败"
   );
 }
 
@@ -212,6 +236,61 @@ export function getDraftDetail(draftId: string, token?: string) {
   );
 }
 
+export function analyzeDraftRhythm(draftId: string, token?: string) {
+  return requestApi<ScriptRhythmAnalysisData>(
+    `/api/script/drafts/${encodeURIComponent(draftId)}/rhythm-analysis`,
+    {
+      token
+    },
+    "剧本节奏分析失败"
+  );
+}
+
+export function refineScene(request: ScriptSceneRefineRequest, token?: string) {
+  return requestApi<ScriptSceneRefineData>(
+    `/api/script/drafts/${encodeURIComponent(request.draftId)}/scenes/${encodeURIComponent(request.sceneId)}/refine`,
+    {
+      body: JSON.stringify(request),
+      headers: {"Content-Type": "application/json"},
+      method: "POST",
+      token
+    },
+    "局部精修失败"
+  );
+}
+
+export function rewriteDialogueVoice(request: ScriptDialogueVoiceRewriteRequest, token?: string) {
+  return requestApi<ScriptDialogueVoiceRewriteData>(
+    `/api/script/drafts/${encodeURIComponent(request.draftId)}/dialogues/voice-rewrite`,
+    {
+      body: JSON.stringify(request),
+      headers: {"Content-Type": "application/json"},
+      method: "POST",
+      token
+    },
+    "对白口吻重写失败"
+  );
+}
+
+export function generateSceneStoryboard(draftId: string, sceneId: string, token?: string) {
+  return requestApi<ScriptStoryboardData>(
+    `/api/script/drafts/${encodeURIComponent(draftId)}/scenes/${encodeURIComponent(sceneId)}/storyboard`,
+    {
+      method: "POST",
+      token
+    },
+    "分镜建议生成失败"
+  );
+}
+
+export function fetchDemoNovel(token?: string) {
+  return requestApi<ScriptDemoNovelData>(
+    "/api/script/demo/novel",
+    { token },
+    "演示样例加载失败"
+  );
+}
+
 export async function exportDraftYaml(draftId: string, fallbackFilename: string, token?: string) {
   const response = await fetch(`/api/script/drafts/${encodeURIComponent(draftId)}/export.yaml`, {
     headers: withAuthHeader(undefined, token)
@@ -223,6 +302,20 @@ export async function exportDraftYaml(draftId: string, fallbackFilename: string,
     blob: await response.blob(),
     filename: readDownloadFilename(response, fallbackFilename)
   };
+}
+
+async function deleteResource(url: string, token: string | undefined, fallbackMessage: string) {
+  const response = await fetch(url, {
+    headers: withAuthHeader(undefined, token),
+    method: "DELETE"
+  });
+  if (!response.ok) {
+    throw new Error(await readResponseError(response, fallbackMessage));
+  }
+  const result = (await response.json()) as ApiResult<unknown>;
+  if (result.code !== "0") {
+    throw new Error(result.message || `${fallbackMessage}。`);
+  }
 }
 
 function readDownloadFilename(response: Response, fallback: string) {

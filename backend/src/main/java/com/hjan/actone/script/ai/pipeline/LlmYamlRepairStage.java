@@ -12,13 +12,16 @@ import com.hjan.actone.common.errorcode.BaseErrorCode;
 import com.hjan.actone.common.exception.RemoteException;
 import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.service.ScriptYamlValidationResult;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+@Slf4j
 public class LlmYamlRepairStage implements YamlRepairStage {
 
     private static final double REPAIR_TEMPERATURE = 0.0D;
@@ -68,6 +71,8 @@ public class LlmYamlRepairStage implements YamlRepairStage {
             throw new IllegalArgumentException("validationErrors 不能为空");
         }
 
+        long startedNanos = System.nanoTime();
+        log.info("开始YAML修复 taskId={} yamlLength={}", context.taskId(), validationResult.cleanedYaml().length());
         RenderedPrompt prompt = promptTemplateService.render(
                 PromptTemplateId.YAML_REPAIR,
                 Map.of(
@@ -86,7 +91,12 @@ public class LlmYamlRepairStage implements YamlRepairStage {
                 timeout,
                 ChatResponseFormat.TEXT
         ));
-        return cleanYaml(response);
+        String yaml = cleanYaml(response);
+        log.info("完成YAML修复 taskId={} durationMs={} repairedLength={}",
+                context.taskId(),
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos),
+                yaml.length());
+        return yaml;
     }
 
     private String cleanYaml(ChatResponse response) {

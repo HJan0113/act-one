@@ -16,16 +16,13 @@ import com.hjan.actone.script.ai.model.DialogueDraft;
 import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.ai.model.ScenePlan;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
+@Slf4j
 public class LlmDialogueGenerationStage implements DialogueGenerationStage {
 
     private static final String NARRATOR = "旁白";
@@ -68,6 +65,8 @@ public class LlmDialogueGenerationStage implements DialogueGenerationStage {
             throw new IllegalArgumentException("cinematicTreatment 不能为空");
         }
 
+        long startedNanos = System.nanoTime();
+        log.info("开始对白生成 taskId={} sceneCount={}", context.taskId(), context.scenePlan().scenes().size());
         RenderedPrompt prompt = promptTemplateService.render(
                 PromptTemplateId.DIALOGUE_GENERATION,
                 Map.of(
@@ -87,6 +86,10 @@ public class LlmDialogueGenerationStage implements DialogueGenerationStage {
         ));
         DialogueDraft draft = parseDraft(response);
         validateDraft(context, draft);
+        log.info("完成对白生成 taskId={} durationMs={} dialogueCount={}",
+                context.taskId(),
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos),
+                draft.scenes().stream().mapToInt(s -> s.dialogues().size()).sum());
         return draft;
     }
 

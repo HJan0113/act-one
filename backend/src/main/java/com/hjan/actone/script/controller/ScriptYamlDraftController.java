@@ -7,9 +7,18 @@ import com.hjan.actone.script.model.ScriptDraftListItemResponse;
 import com.hjan.actone.script.model.ScriptDraftSaveRequest;
 import com.hjan.actone.script.model.ScriptDraftSaveResponse;
 import com.hjan.actone.script.model.ScriptConversionTaskResponse;
+import com.hjan.actone.script.model.ScriptDialogueVoiceRewriteRequest;
+import com.hjan.actone.script.model.ScriptDialogueVoiceRewriteResponse;
+import com.hjan.actone.script.model.ScriptRhythmAnalysisResponse;
+import com.hjan.actone.script.model.ScriptSceneRefineRequest;
+import com.hjan.actone.script.model.ScriptSceneRefineResponse;
+import com.hjan.actone.script.model.ScriptStoryboardResponse;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
 import com.hjan.actone.script.service.ScriptDraftService;
+import com.hjan.actone.script.service.ScriptRhythmAnalysisService;
+import com.hjan.actone.script.service.ScriptSceneRefinementService;
+import com.hjan.actone.script.service.ScriptStoryboardService;
 import com.hjan.actone.script.service.ScriptYamlGenerationService;
 import com.hjan.actone.script.service.ScriptYamlStreamService;
 import jakarta.validation.Valid;
@@ -17,6 +26,7 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,13 +46,22 @@ public class ScriptYamlDraftController {
     private final ScriptYamlGenerationService scriptYamlGenerationService;
     private final ScriptYamlStreamService scriptYamlStreamService;
     private final ScriptDraftService scriptDraftService;
+    private final ScriptSceneRefinementService scriptSceneRefinementService;
+    private final ScriptRhythmAnalysisService scriptRhythmAnalysisService;
+    private final ScriptStoryboardService scriptStoryboardService;
 
     public ScriptYamlDraftController(ScriptYamlGenerationService scriptYamlGenerationService,
                                      ScriptYamlStreamService scriptYamlStreamService,
-                                     ScriptDraftService scriptDraftService) {
+                                     ScriptDraftService scriptDraftService,
+                                     ScriptSceneRefinementService scriptSceneRefinementService,
+                                     ScriptRhythmAnalysisService scriptRhythmAnalysisService,
+                                     ScriptStoryboardService scriptStoryboardService) {
         this.scriptYamlGenerationService = scriptYamlGenerationService;
         this.scriptYamlStreamService = scriptYamlStreamService;
         this.scriptDraftService = scriptDraftService;
+        this.scriptSceneRefinementService = scriptSceneRefinementService;
+        this.scriptRhythmAnalysisService = scriptRhythmAnalysisService;
+        this.scriptStoryboardService = scriptStoryboardService;
     }
 
     @PostMapping("/yaml/from-text")
@@ -74,6 +93,47 @@ public class ScriptYamlDraftController {
     @GetMapping("/{draftId}")
     public Result<ScriptDraftDetailResponse> detail(@PathVariable String draftId) {
         return Results.success(scriptDraftService.detail(draftId));
+    }
+
+    @DeleteMapping("/{draftId}")
+    public Result<Void> delete(@PathVariable String draftId) {
+        scriptDraftService.delete(draftId);
+        return Results.success();
+    }
+
+    @GetMapping("/{draftId}/rhythm-analysis")
+    public Result<ScriptRhythmAnalysisResponse> analyzeRhythm(@PathVariable String draftId) {
+        return Results.success(scriptRhythmAnalysisService.analyze(draftId));
+    }
+
+    @PostMapping("/{draftId}/scenes/{sceneId}/refine")
+    public Result<ScriptSceneRefineResponse> refineScene(@PathVariable String draftId,
+                                                         @PathVariable String sceneId,
+                                                         @Valid @RequestBody ScriptSceneRefineRequest request) {
+        return Results.success(scriptSceneRefinementService.refine(new ScriptSceneRefineRequest(
+                draftId,
+                sceneId,
+                request.instruction()
+        )));
+    }
+
+    @PostMapping("/{draftId}/dialogues/voice-rewrite")
+    public Result<ScriptDialogueVoiceRewriteResponse> rewriteDialogueVoice(
+            @PathVariable String draftId,
+            @Valid @RequestBody ScriptDialogueVoiceRewriteRequest request) {
+        return Results.success(scriptSceneRefinementService.rewriteDialogueVoice(new ScriptDialogueVoiceRewriteRequest(
+                draftId,
+                request.speaker(),
+                request.instruction(),
+                request.sceneIds()
+        )));
+    }
+
+    @PostMapping("/{draftId}/scenes/{sceneId}/storyboard")
+    public Result<ScriptStoryboardResponse> generateStoryboard(@PathVariable String draftId,
+                                                                @PathVariable String sceneId) {
+        int shotCount = 4;
+        return Results.success(scriptStoryboardService.generate(draftId, sceneId, shotCount));
     }
 
     @GetMapping(value = "/{draftId}/export.yaml", produces = "application/x-yaml")

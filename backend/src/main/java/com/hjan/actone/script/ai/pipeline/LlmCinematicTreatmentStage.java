@@ -16,15 +16,13 @@ import com.hjan.actone.script.ai.model.CinematicTreatment;
 import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.ai.model.ScenePlan;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
-import java.util.LinkedHashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
+@Slf4j
 public class LlmCinematicTreatmentStage implements CinematicTreatmentStage {
 
     private static final double TREATMENT_TEMPERATURE = 0.2D;
@@ -66,6 +64,8 @@ public class LlmCinematicTreatmentStage implements CinematicTreatmentStage {
             throw new IllegalArgumentException("scenePlan 不能为空");
         }
 
+        long startedNanos = System.nanoTime();
+        log.info("开始心理影视化 taskId={} sceneCount={}", context.taskId(), context.scenePlan().scenes().size());
         RenderedPrompt prompt = promptTemplateService.render(
                 PromptTemplateId.CINEMATIC_TREATMENT,
                 Map.of(
@@ -85,6 +85,10 @@ public class LlmCinematicTreatmentStage implements CinematicTreatmentStage {
         ));
         CinematicTreatment treatment = parseTreatment(response);
         validateTreatment(context, treatment);
+        log.info("完成心理影视化 taskId={} durationMs={} transformationCount={}",
+                context.taskId(),
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos),
+                treatment.scenes().stream().mapToInt(s -> s.transformations().size()).sum());
         return treatment;
     }
 

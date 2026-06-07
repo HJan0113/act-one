@@ -10,6 +10,7 @@ import {
     Play,
     RefreshCcw,
     Save,
+    Trash2,
     UserCircle,
     Wand2
 } from "lucide-react";
@@ -17,18 +18,27 @@ import {
 import {ActionButton} from "./components/ActionButton";
 import {StatusBadge, type StatusTone} from "./components/StatusBadge";
 import {
+    AiChangeSummaryPanel,
     AppShell,
     ChapterList,
     type ChapterOutline,
+    ConflictHeatmapPanel,
     ConsistencyWorkbench,
     ConversionProgress,
     InputPanel,
     type ProgressStep,
+    RhythmAnalysisPanel,
     ScriptPreviewPanel,
+    ScriptReadableView,
     CharacterWorkbench,
     Sidebar,
     SourceTraceWorkbench,
+    StoryboardPanel,
+    type ScriptStyleVariant,
+    scriptStyleVariantOptions,
+    StyleVariantPanel,
     TaskConsole,
+    type AiChangeSummary,
     type TaskStatus,
     type TaskSummary,
     TopBar,
@@ -39,17 +49,25 @@ import {isAuthExpiredError} from "./services/apiClient";
 import {fetchCurrentUser, login as loginWithPassword, logout as logoutSession} from "./services/authService";
 import {readStoredAuth, removeStoredAuth, writeStoredAuth} from "./services/authStorage";
 import {
+    analyzeDraftRhythm,
     cancelGenerationTask as cancelScriptGenerationTask,
     createProjectFromText,
+    deleteDraft as deleteScriptDraft,
+    deleteProject as deleteScriptProject,
     exportDraftYaml as exportDraftYamlFile,
+    fetchDemoNovel,
+    generateSceneStoryboard,
     getDraftDetail,
     listDrafts as listProjectDrafts,
     listMyProjects,
     previewChapters as previewNovelChapters,
+    refineScene as refineScriptScene,
+    rewriteDialogueVoice as rewriteScriptDialogueVoice,
     saveDraft as saveScriptDraft,
     streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
-import type {AuthSession, ScriptDraftListItem, ScriptProjectListItem, ScriptYamlStreamPayload} from "./types/api";
+import type {AuthSession, ScriptDraftListItem, ScriptDemoNovelData, ScriptProjectListItem, ScriptStoryboardData, ScriptYamlStreamPayload} from "./types/api";
+import type {ScriptDialogueVoiceRewriteData, ScriptRhythmAnalysisData, ScriptSceneRefineData} from "./types/api";
 import {parseScriptYamlCharacters, parseScriptYamlRelationships, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
 
 const placeholderYaml = `schema_version: "1.0"
@@ -79,6 +97,11 @@ const chapterHeadingPattern = /^第\s*([0-9一二三四五六七八九十百千�
 
 type ConversionTaskState = Omit<TaskSummary, "canCancel" | "canRetry">;
 
+type DeleteTarget = {
+  id: string;
+  kind: "draft" | "project";
+};
+
 function App() {
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => readStoredAuth());
   const [authChecking, setAuthChecking] = useState(false);
@@ -106,6 +129,18 @@ function App() {
   const [exportLoading, setExportLoading] = useState(false);
   const [projectLoading, setProjectLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
+  const [sceneRefinementLoading, setSceneRefinementLoading] = useState(false);
+  const [dialogueVoiceLoading, setDialogueVoiceLoading] = useState(false);
+  const [styleVariantLoading, setStyleVariantLoading] = useState<ScriptStyleVariant | "">("");
+  const [rhythmLoading, setRhythmLoading] = useState(false);
+  const [rhythmAnalysis, setRhythmAnalysis] = useState<ScriptRhythmAnalysisData | null>(null);
+  const [storyboardLoading, setStoryboardLoading] = useState(false);
+  const [storyboard, setStoryboard] = useState<ScriptStoryboardData | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [deletingProjectId, setDeletingProjectId] = useState("");
+  const [deletingDraftId, setDeletingDraftId] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<DeleteTarget | null>(null);
+  const [aiChangeSummary, setAiChangeSummary] = useState<AiChangeSummary | null>(null);
   const [yamlDraft, setYamlDraft] = useState("");
   const [activeChapterIndex, setActiveChapterIndex] = useState(1);
   const [activeTraceSceneId, setActiveTraceSceneId] = useState("");
@@ -310,6 +345,7 @@ function App() {
     setProjectId("");
     setDraftId("");
     setDrafts([]);
+    setRhythmAnalysis(null);
     setActiveChapterIndex(1);
     if (value.trim()) {
       setIsValid(false);
@@ -333,6 +369,8 @@ function App() {
   function handleYamlDraftChange(value: string) {
     setYamlDraft(value);
     setDraftId("");
+    setAiChangeSummary(null);
+    setRhythmAnalysis(null);
     setValidationStatus(value.trim() ? "edited" : "pending");
     setValidationError("");
     setGenerationMode(extractGenerationMode(value));
@@ -506,6 +544,8 @@ function App() {
       const nextGenerationMode = data.generationMode || extractGenerationMode(data.yaml);
         const nextYamlMessage = createGenerationMessage(nextGenerationMode, Boolean(data.fallback), data.fallbackReason || "");
       setYamlDraft(data.yaml);
+      setAiChangeSummary(null);
+      setRhythmAnalysis(null);
       setSchemaVersion(data.schemaVersion);
       setGeneratedTitle(data.title);
       setDraftId("");
@@ -652,6 +692,7 @@ function App() {
     setGeneratedTitle(project?.title || "");
     setDraftId("");
     setYamlDraft("");
+    setRhythmAnalysis(null);
     setValidationStatus("pending");
     setValidationError("");
     setGenerationMode("");
@@ -700,6 +741,7 @@ function App() {
         )
       );
       setDraftId(data.draftId);
+      setRhythmAnalysis(null);
       setProjectId(data.projectId);
       setGeneratedTitle(data.title);
       setSchemaVersion(data.schemaVersion);
@@ -740,12 +782,85 @@ function App() {
     }
   }
 
+  async function createStyleVariantDraft(style: ScriptStyleVariant) {
+    if (!yamlDraft.trim()) {
+      setYamlMessage("请先生成或加载 YAML，再创建风格版本。");
+      return;
+    }
+    if (!projectId && !novelText.trim()) {
+      setYamlMessage("当前没有项目上下文，请先保存或加载一个项目草稿。");
+      return;
+    }
+
+    const option = styleVariantOption(style);
+    const variantYaml = createStyleVariantYaml(yamlDraft, style);
+    const variantTitle = createStyleVariantTitle(generatedTitle || title || "未命名剧本", style);
+    setStyleVariantLoading(style);
+    setYamlMessage(`正在创建${option.label}版本草稿...`);
+    try {
+      const activeProjectId = await ensureProject();
+      const data = await requestWithAuth((token) =>
+        saveScriptDraft(
+          {
+            projectId: activeProjectId,
+            schemaVersion: schemaVersion || "1.0",
+            title: variantTitle,
+            yaml: variantYaml
+          },
+          token
+        )
+      );
+      setYamlDraft(variantYaml);
+      setAiChangeSummary(null);
+      setRhythmAnalysis(null);
+      setDraftId(data.draftId);
+      setProjectId(data.projectId);
+      setGeneratedTitle(data.title);
+      setSchemaVersion(data.schemaVersion);
+      setValidationStatus(data.validationStatus);
+      setValidationError(data.validationError || "");
+      setGenerationMode(extractGenerationMode(variantYaml));
+      setFallbackReason("");
+      setYamlMessage(
+        data.validationStatus === "valid"
+          ? `已创建${option.label}版本草稿，原稿未覆盖。`
+          : `已创建${option.label}版本但校验未通过：${data.validationError || "请查看 Schema 校验面板。"}`
+      );
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: data.validationStatus === "valid" ? "风格版本已归档" : "风格版本需修正",
+        errorMessage: data.validationError || "",
+        message: `基于当前 YAML 另存为${option.label}版本，草稿列表已刷新。`,
+        progress: data.validationStatus === "valid" ? 100 : Math.max(current.progress, 88),
+        status: data.validationStatus === "valid" ? "success" : "failed",
+        taskId: data.draftId
+      }));
+      await loadDrafts(data.projectId);
+      setActiveView("result");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "风格版本创建失败。";
+      setYamlMessage(errorMessage);
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: "风格版本创建失败",
+        errorMessage,
+        message: "当前 YAML 未被覆盖，可稍后重试。",
+        progress: Math.max(current.progress, 82),
+        status: "failed"
+      }));
+    } finally {
+      setStyleVariantLoading("");
+    }
+  }
+
   async function loadDraftDetail(nextDraftId: string) {
     if (!nextDraftId) return;
     setDraftLoading(true);
     try {
       const data = await requestWithAuth((token) => getDraftDetail(nextDraftId, token));
       setYamlDraft(data.yaml);
+      setAiChangeSummary(null);
+      setRhythmAnalysis(null);
       setDraftId(data.draftId);
       setProjectId(data.projectId);
       setGeneratedTitle(data.title);
@@ -775,6 +890,243 @@ function App() {
     }
   }
 
+  function isPendingDelete(kind: DeleteTarget["kind"], id: string) {
+    return pendingDelete?.kind === kind && pendingDelete.id === id;
+  }
+
+  async function deleteProjectRecord(project: ScriptProjectListItem) {
+    if (deletingProjectId) return;
+    if (!isPendingDelete("project", project.projectId)) {
+      setPendingDelete({kind: "project", id: project.projectId});
+      setYamlMessage(`再次点击该项目右侧删除按钮，将删除项目「${project.title}」及其草稿保存记录。`);
+      return;
+    }
+
+    setDeletingProjectId(project.projectId);
+    setPendingDelete(null);
+    try {
+      await requestWithAuth((token) => deleteScriptProject(project.projectId, token));
+      const remainingProjects = projects.filter((item) => item.projectId !== project.projectId);
+      setProjects(remainingProjects);
+      if (project.projectId === projectId) {
+        const nextProject = remainingProjects[0];
+        setDraftId("");
+        setDrafts([]);
+        setYamlDraft("");
+        setAiChangeSummary(null);
+        setRhythmAnalysis(null);
+        setStoryboard(null);
+        setActiveTraceSceneId("");
+        setValidationStatus("pending");
+        setValidationError("");
+        setGenerationMode("");
+        setFallbackReason("");
+        if (nextProject) {
+          setProjectId(nextProject.projectId);
+          setGeneratedTitle(nextProject.title);
+          await loadDrafts(nextProject.projectId);
+          setYamlMessage(`已删除项目「${project.title}」，并切换到「${nextProject.title}」。`);
+        } else {
+          setProjectId("");
+          setGeneratedTitle("");
+          setConversionTask(createInitialTask());
+          setYamlMessage(`已删除项目「${project.title}」，当前没有保存的项目。`);
+        }
+      } else {
+        setYamlMessage(`已删除项目「${project.title}」。`);
+      }
+    } catch (error) {
+      setYamlMessage(error instanceof Error ? error.message : "项目删除失败。");
+    } finally {
+      setDeletingProjectId("");
+    }
+  }
+
+  async function deleteDraftRecord(draft: ScriptDraftListItem) {
+    if (deletingDraftId) return;
+    if (!isPendingDelete("draft", draft.draftId)) {
+      setPendingDelete({kind: "draft", id: draft.draftId});
+      setYamlMessage(`再次点击该记录右侧删除按钮，将删除保存记录「${draft.title}」。`);
+      return;
+    }
+
+    setDeletingDraftId(draft.draftId);
+    setPendingDelete(null);
+    try {
+      await requestWithAuth((token) => deleteScriptDraft(draft.draftId, token));
+      setDrafts((current) => current.filter((item) => item.draftId !== draft.draftId));
+      if (draft.draftId === draftId) {
+        setDraftId("");
+        setAiChangeSummary(null);
+        setRhythmAnalysis(null);
+        setStoryboard(null);
+        setConversionTask((current) => ({
+          ...current,
+          currentStage: "保存记录已删除",
+          errorMessage: "",
+          message: "当前编辑器内容已保留为未保存草稿，可继续编辑后重新保存。",
+          status: "ready",
+          taskId: projectId || current.taskId
+        }));
+        setYamlMessage(`已删除保存记录「${draft.title}」，当前 YAML 内容仍保留在编辑器中。`);
+      } else {
+        setYamlMessage(`已删除保存记录「${draft.title}」。`);
+      }
+    } catch (error) {
+      setYamlMessage(error instanceof Error ? error.message : "保存记录删除失败。");
+    } finally {
+      setDeletingDraftId("");
+    }
+  }
+
+  async function analyzeRhythm() {
+    if (!draftId) {
+      setYamlMessage("请先保存或加载一个草稿，再执行节奏分析。");
+      return;
+    }
+    setRhythmLoading(true);
+    setYamlMessage("正在分析剧本节奏...");
+    try {
+      const data = await requestWithAuth((token) => analyzeDraftRhythm(draftId, token));
+      setRhythmAnalysis(data);
+      setYamlMessage(
+        `节奏分析完成：${data.overall.sceneCount} 个场景，动作/对白 ${data.overall.actionRatio}%/${data.overall.dialogueRatio}%。`
+      );
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: "节奏分析完成",
+        errorMessage: "",
+        message: data.suggestions[0] || "节奏指标已生成，可查看场景比例和冲突转折评分。",
+        progress: Math.max(current.progress, 100),
+        status: "success",
+        taskId: data.draftId
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "剧本节奏分析失败。";
+      setYamlMessage(errorMessage);
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: "节奏分析失败",
+        errorMessage,
+        message: "请确认当前草稿已保存且 YAML 可解析。",
+        progress: Math.max(current.progress, 80),
+        status: "failed"
+      }));
+    } finally {
+      setRhythmLoading(false);
+    }
+  }
+
+  async function refineScenePatch(sceneId: string, instruction: string) {
+    if (!draftId) {
+      setYamlMessage("请先保存当前 YAML 草稿，再执行局部精修。");
+      return;
+    }
+    setSceneRefinementLoading(true);
+    setYamlMessage("正在生成局部 scene patch...");
+    try {
+      const data = await requestWithAuth((token) =>
+        refineScriptScene(
+          {
+            draftId,
+            instruction,
+            sceneId
+          },
+          token
+        )
+      );
+      setYamlDraft(data.patchedYaml);
+      setAiChangeSummary(createScenePatchChangeSummary(data));
+      setRhythmAnalysis(null);
+      setDraftId("");
+      setValidationStatus(data.validationStatus || "edited");
+      setValidationError(data.validationError || "");
+      setGenerationMode(extractGenerationMode(data.patchedYaml));
+      setFallbackReason("");
+      setYamlMessage(
+        data.validationStatus === "valid"
+          ? `局部精修已生成：${data.scenePatch.summary || "scene patch 已应用到当前编辑器，请保存为新草稿。"}`
+          : `局部精修已返回但校验未通过：${data.validationError || "请查看 Schema 校验。"}`
+      );
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: data.validationStatus === "valid" ? "局部精修完成" : "局部精修需修正",
+        errorMessage: data.validationError || "",
+        message: data.scenePatch.summary || "scene patch 已应用到 YAML 编辑器。",
+        progress: Math.max(current.progress, data.validationStatus === "valid" ? 96 : 88),
+        status: data.validationStatus === "valid" ? "success" : "failed"
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "局部精修失败。";
+      setYamlMessage(errorMessage);
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: "局部精修失败",
+        errorMessage,
+        message: "YAML 未被覆盖，可调整指令后重试。",
+        progress: Math.max(current.progress, 70),
+        status: "failed"
+      }));
+    } finally {
+      setSceneRefinementLoading(false);
+    }
+  }
+
+  async function rewriteDialogueVoicePatch(speaker: string, instruction: string) {
+    if (!draftId) {
+      setYamlMessage("请先保存当前 YAML 草稿，再执行对白口吻重写。");
+      return;
+    }
+    setDialogueVoiceLoading(true);
+    setYamlMessage("正在生成对白口吻 patch...");
+    try {
+      const data = await requestWithAuth((token) =>
+        rewriteScriptDialogueVoice(
+          {
+            draftId,
+            instruction,
+            speaker
+          },
+          token
+        )
+      );
+      setYamlDraft(data.patchedYaml);
+      setAiChangeSummary(createVoicePatchChangeSummary(data));
+      setRhythmAnalysis(null);
+      setDraftId("");
+      setValidationStatus(data.validationStatus || "edited");
+      setValidationError(data.validationError || "");
+      setGenerationMode(extractGenerationMode(data.patchedYaml));
+      setFallbackReason("");
+      setYamlMessage(
+        data.validationStatus === "valid"
+          ? `对白口吻已重写：${data.voicePatch.summary || data.voicePatch.voiceSample || "voice patch 已应用到当前编辑器，请保存为新草稿。"}`
+          : `对白口吻重写返回但校验未通过：${data.validationError || "请查看 Schema 校验。"}`
+      );
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: data.validationStatus === "valid" ? "对白口吻重写完成" : "对白口吻重写需修正",
+        errorMessage: data.validationError || "",
+        message: data.voicePatch.summary || data.voicePatch.voiceSample || "voice patch 已应用到 YAML 编辑器。",
+        progress: Math.max(current.progress, data.validationStatus === "valid" ? 96 : 88),
+        status: data.validationStatus === "valid" ? "success" : "failed"
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "对白口吻重写失败。";
+      setYamlMessage(errorMessage);
+      setConversionTask((current) => ({
+        ...current,
+        currentStage: "对白口吻重写失败",
+        errorMessage,
+        message: "YAML 未被覆盖，可调整人物或指令后重试。",
+        progress: Math.max(current.progress, 70),
+        status: "failed"
+      }));
+    } finally {
+      setDialogueVoiceLoading(false);
+    }
+  }
+
   async function exportDraftYaml() {
     if (!canExport) return;
     setExportLoading(true);
@@ -796,6 +1148,37 @@ function App() {
       setYamlMessage(error instanceof Error ? error.message : "YAML 导出失败。");
     } finally {
       setExportLoading(false);
+    }
+  }
+
+  async function loadDemoNovel() {
+    setDemoLoading(true);
+    try {
+      const data = await requestWithAuth((token) => fetchDemoNovel(token));
+      setTitle(data.title);
+      setAuthor(data.author);
+      setLogline(data.logline);
+      handleNovelTextChange(data.text);
+      setMessage("已加载演示小说《星轨回音》，共 10 章赛博朋克风格正文。请点击「解析章节」开始。");
+      setActiveView("source");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "演示样例加载失败。");
+    } finally {
+      setDemoLoading(false);
+    }
+  }
+
+  async function generateStoryboard(sceneId: string) {
+    if (!draftId || !sceneId || storyboardLoading) return;
+    setStoryboardLoading(true);
+    setStoryboard(null);
+    try {
+      const data = await requestWithAuth((token) => generateSceneStoryboard(draftId, sceneId, token));
+      setStoryboard(data);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "分镜建议生成失败。");
+    } finally {
+      setStoryboardLoading(false);
     }
   }
 
@@ -868,6 +1251,14 @@ function App() {
         <TopBar
           actions={
             <>
+              <ActionButton
+                disabled={demoLoading}
+                icon={demoLoading ? <Loader2 aria-hidden="true" className="spin" size={16} /> : <Wand2 aria-hidden="true" size={16} />}
+                onClick={loadDemoNovel}
+                variant="quiet"
+              >
+                一键演示
+              </ActionButton>
               <ActionButton
                 disabled={!canPreview}
                 icon={previewLoading ? <Loader2 aria-hidden="true" className="spin" size={16} /> : <Play aria-hidden="true" size={16} />}
@@ -973,22 +1364,75 @@ function App() {
                 </div>
             ) : null}
 
-            {activeView === "result" ? scriptPanel : null}
+            {activeView === "result" ? (
+                <div className="result-workbench">
+                    {scriptPanel}
+                    <div className="result-side-stack">
+                        <StyleVariantPanel
+                            canCreate={Boolean(yamlDraft.trim()) && !styleVariantLoading}
+                            creatingStyle={styleVariantLoading}
+                            draftCount={drafts.length}
+                            onCreateVariant={createStyleVariantDraft}
+                        />
+                        <RhythmAnalysisPanel
+                            activeDraftId={draftId}
+                            analysis={rhythmAnalysis}
+                            loading={rhythmLoading}
+                            onAnalyze={analyzeRhythm}
+                            onViewHeatmap={() => { setActiveView("heatmap"); }}
+                            yamlReady={Boolean(yamlDraft.trim())}
+                        />
+                        <AiChangeSummaryPanel summary={aiChangeSummary}/>
+                    </div>
+                </div>
+            ) : null}
 
             {activeView === "trace" ? (
-                <SourceTraceWorkbench
-                    activeSceneId={activeTraceSceneId}
-                    chapters={chapterOutline}
-                    onSelectScene={setActiveTraceSceneId}
+                <div className="trace-full-workbench">
+                    <SourceTraceWorkbench
+                        activeDraftId={draftId}
+                        activeSceneId={activeTraceSceneId}
+                        chapters={chapterOutline}
+                        onRefineScene={refineScenePatch}
+                        onSelectScene={(sceneId) => { setActiveTraceSceneId(sceneId); setStoryboard(null); }}
+                        refining={sceneRefinementLoading}
+                        scenes={traceScenes}
+                        yamlReady={Boolean(yamlDraft.trim())}
+                    />
+                    <div className="trace-side-panel">
+                        <StoryboardPanel
+                            activeDraftId={draftId}
+                            generating={storyboardLoading}
+                            onGenerate={generateStoryboard}
+                            selectedScene={traceScenes.find((s) => s.id === activeTraceSceneId) || traceScenes[0] || null}
+                            storyboard={storyboard}
+                        />
+                    </div>
+                </div>
+            ) : null}
+
+            {activeView === "preview" ? (
+                <ScriptReadableView
                     scenes={traceScenes}
+                    yamlReady={Boolean(yamlDraft.trim())}
+                />
+            ) : null}
+
+            {activeView === "heatmap" ? (
+                <ConflictHeatmapPanel
+                    analysis={rhythmAnalysis}
+                    onSelectScene={(sceneId) => { setActiveTraceSceneId(sceneId); setActiveView("trace"); }}
                     yamlReady={Boolean(yamlDraft.trim())}
                 />
             ) : null}
 
             {activeView === "characters" ? (
                 <CharacterWorkbench
+                    activeDraftId={draftId}
                     characters={characterCards}
+                    onRewriteVoice={rewriteDialogueVoicePatch}
                     relationships={relationships}
+                    rewritingVoice={dialogueVoiceLoading}
                     scenes={traceScenes}
                     yamlReady={Boolean(yamlDraft.trim())}
                 />
@@ -1024,21 +1468,41 @@ function App() {
                         </div>
                         <div className="archive-list">
                             {projects.length > 0 ? (
-                                projects.map((project) => (
-                                    <button
-                                        className="archive-item"
-                                        data-active={project.projectId === projectId}
-                                        key={project.projectId}
-                                        onClick={() => selectProject(project.projectId)}
-                                        type="button"
-                                    >
-                                        <FolderOpen aria-hidden="true" size={18}/>
-                                        <span>
-                      <strong>{project.title}</strong>
-                      <small>{project.status || "draft"}</small>
-                    </span>
-                                    </button>
-                                ))
+                                projects.map((project) => {
+                                    const isDeleting = deletingProjectId === project.projectId;
+                                    const isConfirming = isPendingDelete("project", project.projectId);
+                                    return (
+                                        <div
+                                            className="archive-item"
+                                            data-active={project.projectId === projectId}
+                                            key={project.projectId}
+                                        >
+                                            <button
+                                                className="archive-item__main"
+                                                onClick={() => selectProject(project.projectId)}
+                                                type="button"
+                                            >
+                                                <FolderOpen aria-hidden="true" size={18}/>
+                                                <span>
+                          <strong>{project.title}</strong>
+                          <small>{project.status || "draft"}</small>
+                        </span>
+                                            </button>
+                                            <button
+                                                aria-label={`删除项目 ${project.title}`}
+                                                className="archive-delete-button"
+                                                data-confirming={isConfirming}
+                                                disabled={Boolean(deletingProjectId || draftLoading || projectLoading)}
+                                                onClick={() => deleteProjectRecord(project)}
+                                                title={isConfirming ? "再次点击确认删除项目" : "删除项目和草稿记录"}
+                                                type="button"
+                                            >
+                                                {isDeleting ? <Loader2 aria-hidden="true" className="spin" size={15}/> :
+                                                    isConfirming ? "确认" : <Trash2 aria-hidden="true" size={15}/>}
+                                            </button>
+                                        </div>
+                                    );
+                                })
                             ) : (
                                 <EmptyArchiveState icon={<FolderOpen aria-hidden="true" size={22}/>} title="暂无项目"
                                                    text="保存草稿后会形成项目入口。"/>
@@ -1063,23 +1527,43 @@ function App() {
                         </div>
                         <div className="archive-list">
                             {drafts.length > 0 ? (
-                                drafts.map((draft) => (
-                                    <button
-                                        className="archive-item"
-                                        data-active={draft.draftId === draftId}
-                                        key={draft.draftId}
-                                        onClick={() => loadDraftDetail(draft.draftId)}
-                                        type="button"
-                                    >
-                                        <History aria-hidden="true" size={18}/>
-                                        <span>
-                      <strong>{draft.title}</strong>
-                      <small>
-                        {draft.schemaVersion} / {draft.validationStatus}
-                      </small>
-                    </span>
-                                    </button>
-                                ))
+                                drafts.map((draft) => {
+                                    const isDeleting = deletingDraftId === draft.draftId;
+                                    const isConfirming = isPendingDelete("draft", draft.draftId);
+                                    return (
+                                        <div
+                                            className="archive-item"
+                                            data-active={draft.draftId === draftId}
+                                            key={draft.draftId}
+                                        >
+                                            <button
+                                                className="archive-item__main"
+                                                onClick={() => loadDraftDetail(draft.draftId)}
+                                                type="button"
+                                            >
+                                                <History aria-hidden="true" size={18}/>
+                                                <span>
+                          <strong>{draft.title}</strong>
+                          <small>
+                            {draft.schemaVersion} / {draft.validationStatus}
+                          </small>
+                        </span>
+                                            </button>
+                                            <button
+                                                aria-label={`删除保存记录 ${draft.title}`}
+                                                className="archive-delete-button"
+                                                data-confirming={isConfirming}
+                                                disabled={Boolean(deletingDraftId || draftLoading)}
+                                                onClick={() => deleteDraftRecord(draft)}
+                                                title={isConfirming ? "再次点击确认删除保存记录" : "删除保存记录"}
+                                                type="button"
+                                            >
+                                                {isDeleting ? <Loader2 aria-hidden="true" className="spin" size={15}/> :
+                                                    isConfirming ? "确认" : <Trash2 aria-hidden="true" size={15}/>}
+                                            </button>
+                                        </div>
+                                    );
+                                })
                             ) : (
                                 <EmptyArchiveState icon={<History aria-hidden="true" size={22}/>} title="暂无保存记录"
                                                    text="保存后可在此重新加载草稿版本。"/>
@@ -1258,6 +1742,49 @@ function createGenerationMessage(generationMode: string, fallback: boolean, fall
   return `${label} 生成成功，可继续复制或编辑。`;
 }
 
+function createStyleVariantYaml(yaml: string, style: ScriptStyleVariant) {
+  const option = styleVariantOption(style);
+  const note = `风格版本：${option.label}；${option.prompt}`;
+  return appendYamlNote(yaml, note);
+}
+
+function appendYamlNote(yaml: string, note: string) {
+  const source = yaml.trimEnd();
+  const noteLine = `  - "${escapeYamlDoubleQuoted(note)}"`;
+  if (source.includes(noteLine)) {
+    return source;
+  }
+
+  const inlineEmptyNotes = /^notes:\s*\[\s*]\s*$/m;
+  if (inlineEmptyNotes.test(source)) {
+    return source.replace(inlineEmptyNotes, `notes:\n${noteLine}`);
+  }
+
+  const notesMatch = source.match(/^notes:\s*$/m);
+  if (!notesMatch || notesMatch.index === undefined) {
+    return `${source}\nnotes:\n${noteLine}`;
+  }
+
+  const insertAt = source.indexOf("\n", notesMatch.index);
+  if (insertAt === -1) {
+    return `${source}\n${noteLine}`;
+  }
+  return `${source.slice(0, insertAt)}\n${noteLine}${source.slice(insertAt)}`;
+}
+
+function escapeYamlDoubleQuoted(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function createStyleVariantTitle(baseTitle: string, style: ScriptStyleVariant) {
+  const cleanBase = baseTitle.replace(/\s*[·-]\s*(影视剧|短剧|舞台剧|广播剧)版$/u, "").trim() || "未命名剧本";
+  return `${cleanBase} · ${styleVariantOption(style).label}版`;
+}
+
+function styleVariantOption(style: ScriptStyleVariant) {
+  return scriptStyleVariantOptions.find((option) => option.value === style) || scriptStyleVariantOptions[0];
+}
+
 function generationModeLabel(generationMode: string) {
   if (generationMode === "ai_pipeline") {
     return "AI Pipeline";
@@ -1269,6 +1796,78 @@ function generationModeLabel(generationMode: string) {
     return "规则脚手架";
   }
   return "生成模式";
+}
+
+function createScenePatchChangeSummary(data: ScriptSceneRefineData): AiChangeSummary {
+  const patch = data.scenePatch;
+  const riskWarnings = patch.riskWarnings || [];
+  return {
+    changes: [
+      {
+        detail: riskWarnings.length > 0 ? "AI 返回了事实或来源风险，应用前需要复核。" : "未返回事实改写风险，source 字段由后端保护未被修改。",
+        tone: riskWarnings.length > 0 ? "warning" : "success",
+        type: "事实"
+      },
+      {
+        detail: patch.dialogues?.length
+          ? `对白已替换为 ${patch.dialogues.length} 句，action ${patch.action ? "同步更新" : "未改"}。`
+          : patch.action
+            ? "action 已按指令更新，表达层发生变化。"
+            : "未检测到 action/dialogues 字段变化。",
+        tone: patch.action || patch.dialogues?.length ? "info" : "neutral",
+        type: "表达"
+      },
+      {
+        detail: patch.scenePurpose || patch.time ? "场景目的或时间被调整，可能影响节奏判断。" : "场景目的和时间未被 patch 修改。",
+        tone: patch.scenePurpose || patch.time ? "warning" : "success",
+        type: "节奏"
+      },
+      {
+        detail: `完整 YAML 已重新校验，状态为 ${data.validationStatus}；ai_expansion=${String(patch.aiExpansion)}。`,
+        tone: data.validationStatus === "valid" ? "success" : "danger",
+        type: "格式"
+      }
+    ],
+    riskWarnings,
+    sceneIds: [data.sceneId],
+    summary: patch.summary || "局部 scene patch 已应用到当前 YAML。",
+    validationStatus: data.validationStatus
+  };
+}
+
+function createVoicePatchChangeSummary(data: ScriptDialogueVoiceRewriteData): AiChangeSummary {
+  const patch = data.voicePatch;
+  const riskWarnings = patch.riskWarnings || [];
+  const sceneIds = patch.scenePatches.map((scenePatch) => scenePatch.sceneId);
+  const dialogueCount = patch.scenePatches.reduce((total, scenePatch) => total + scenePatch.dialogues.length, 0);
+  return {
+    changes: [
+      {
+        detail: riskWarnings.length > 0 ? "口吻重写返回了事实或关系风险，保存前需要复核。" : "仅允许改写指定 speaker 的对白，事实字段未被修改。",
+        tone: riskWarnings.length > 0 ? "warning" : "success",
+        type: "事实"
+      },
+      {
+        detail: `${patch.speaker} 的 ${dialogueCount} 句对白已按统一口吻重写。`,
+        tone: "info",
+        type: "表达"
+      },
+      {
+        detail: sceneIds.length > 1 ? `跨 ${sceneIds.length} 个场景统一口吻，可能改变对白节奏。` : "单场景对白口吻调整。",
+        tone: sceneIds.length > 1 ? "warning" : "info",
+        type: "节奏"
+      },
+      {
+        detail: `完整 YAML 已重新校验，状态为 ${data.validationStatus}；dialogues 数组保持结构化输出。`,
+        tone: data.validationStatus === "valid" ? "success" : "danger",
+        type: "格式"
+      }
+    ],
+    riskWarnings,
+    sceneIds,
+    summary: patch.summary || patch.voiceSample || "对白口吻 patch 已应用到当前 YAML。",
+    validationStatus: data.validationStatus
+  };
 }
 
 function createInitialTask(): ConversionTaskState {

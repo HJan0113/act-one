@@ -16,16 +16,13 @@ import com.hjan.actone.script.ai.model.ChapterSummary;
 import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.ai.model.ScenePlan;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
+@Slf4j
 public class LlmScenePlanningStage implements ScenePlanningStage {
 
     private static final double PLANNING_TEMPERATURE = 0.2D;
@@ -66,6 +63,8 @@ public class LlmScenePlanningStage implements ScenePlanningStage {
             throw new IllegalArgumentException("globalStoryState 不能为空");
         }
 
+        long startedNanos = System.nanoTime();
+        log.info("开始场景规划 taskId={} chapterCount={}", context.taskId(), context.chapterSummaries().size());
         RenderedPrompt prompt = promptTemplateService.render(
                 PromptTemplateId.SCENE_PLANNING,
                 Map.of(
@@ -84,6 +83,10 @@ public class LlmScenePlanningStage implements ScenePlanningStage {
         ));
         ScenePlan plan = parsePlan(response);
         validatePlan(context, plan);
+        log.info("完成场景规划 taskId={} durationMs={} sceneCount={}",
+                context.taskId(),
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos),
+                plan.scenes().size());
         return plan;
     }
 

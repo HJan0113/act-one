@@ -1,29 +1,21 @@
 package com.hjan.actone.script.ai.pipeline;
 
-import com.hjan.actone.script.ai.model.CinematicTreatment;
-import com.hjan.actone.script.ai.model.DialogueDraft;
-import com.hjan.actone.script.ai.model.GlobalStoryState;
-import com.hjan.actone.script.ai.model.PipelineConsistencyReport;
-import com.hjan.actone.script.ai.model.PipelineContext;
-import com.hjan.actone.script.ai.model.ScenePlan;
-import com.hjan.actone.script.ai.model.SourceEvidence;
-import com.hjan.actone.script.ai.model.SourceTrace;
+import com.hjan.actone.script.ai.model.*;
 import com.hjan.actone.script.model.NovelChapter;
+import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class PipelineConsistencyChecker {
 
     public PipelineConsistencyReport check(PipelineContext context, List<NovelChapter> chapters) {
         Objects.requireNonNull(context, "PipelineContext 不能为空");
+        long startedNanos = System.nanoTime();
+        log.info("开始一致性检查 taskId={}", context.taskId());
         List<PipelineConsistencyReport.Issue> errors = new ArrayList<>();
         Map<String, NovelChapter> chapterById = chaptersById(chapters, errors);
         Map<Integer, NovelChapter> chapterByIndex = chaptersByIndex(chapterById.values(), errors);
@@ -38,14 +30,23 @@ public class PipelineConsistencyChecker {
         checkCinematicTreatment(context.cinematicTreatment(), sceneById, characterIds, errors);
         checkDialogueDraft(context.dialogueDraft(), sceneById, characterIds, errors);
         checkSourceTrace(context.sourceTrace(), sceneById, chapterById, errors);
-        return new PipelineConsistencyReport(errors, List.of());
+        PipelineConsistencyReport report = new PipelineConsistencyReport(errors, List.of());
+        log.info("完成一致性检查 taskId={} durationMs={} valid={} errorCount={}",
+                context.taskId(),
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos),
+                report.valid(),
+                report.errors().size());
+        return report;
     }
 
     public void validate(PipelineContext context, List<NovelChapter> chapters) {
+        log.info("开始一致性校验 taskId={}", context.taskId());
         PipelineConsistencyReport report = check(context, chapters);
         if (!report.valid()) {
+            log.warn("一致性校验失败 taskId={} summary={}", context.taskId(), report.summary());
             throw new IllegalStateException("AI Pipeline 一致性校验失败：" + report.summary());
         }
+        log.info("一致性校验通过 taskId={}", context.taskId());
     }
 
     private Map<String, NovelChapter> chaptersById(List<NovelChapter> chapters,

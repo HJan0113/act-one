@@ -4,9 +4,13 @@ import com.hjan.actone.common.context.LoginUser;
 import com.hjan.actone.common.context.UserContext;
 import com.hjan.actone.common.exception.ClientException;
 import com.hjan.actone.script.dao.entity.ScriptChapterDO;
+import com.hjan.actone.script.dao.entity.ScriptConversionTaskDO;
 import com.hjan.actone.script.dao.entity.ScriptProjectDO;
 import com.hjan.actone.script.dao.mapper.ScriptChapterMapper;
+import com.hjan.actone.script.dao.mapper.ScriptConversionTaskMapper;
+import com.hjan.actone.script.dao.mapper.ScriptDraftMapper;
 import com.hjan.actone.script.dao.mapper.ScriptProjectMapper;
+import com.hjan.actone.script.dao.mapper.ScriptStageResultMapper;
 import com.hjan.actone.script.model.ScriptProjectCreateRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,11 +32,22 @@ class ScriptProjectServiceTest {
     private final NovelChapterParser chapterParser = new NovelChapterParser();
     private final ScriptProjectMapper projectMapper = mock(ScriptProjectMapper.class);
     private final ScriptChapterMapper chapterMapper = mock(ScriptChapterMapper.class);
-    private final ScriptProjectService service = new ScriptProjectService(chapterParser, projectMapper, chapterMapper);
+    private final ScriptDraftMapper draftMapper = mock(ScriptDraftMapper.class);
+    private final ScriptConversionTaskMapper taskMapper = mock(ScriptConversionTaskMapper.class);
+    private final ScriptStageResultMapper stageResultMapper = mock(ScriptStageResultMapper.class);
+    private final ScriptProjectService service = new ScriptProjectService(
+            chapterParser,
+            projectMapper,
+            chapterMapper,
+            draftMapper,
+            taskMapper,
+            stageResultMapper
+    );
 
     @BeforeEach
     void setUp() {
         UserContext.set(new LoginUser("user_1", "admin", "admin", ""));
+        when(projectMapper.selectOne(any())).thenReturn(project("project_1", "user_1"));
     }
 
     @AfterEach
@@ -62,11 +77,8 @@ class ScriptProjectServiceTest {
 
     @Test
     void listMineReturnsOnlyCurrentUserProjects() {
-        ScriptProjectDO project = new ScriptProjectDO();
-        project.setId("project_1");
-        project.setTitle("测试项目");
+        ScriptProjectDO project = project("project_1", "user_1");
         project.setDescription("描述");
-        project.setStatus("draft");
         when(projectMapper.selectList(any())).thenReturn(List.of(project));
 
         var response = service.listMine();
@@ -102,6 +114,40 @@ class ScriptProjectServiceTest {
 
         verify(projectMapper).insert(captor.capture());
         assertThat(captor.getValue().getTitle()).isEqualTo("第 1 章 开端");
+    }
+
+    @Test
+    void deleteOwnedProjectCascadesRelatedScriptRecords() {
+        ScriptConversionTaskDO task = new ScriptConversionTaskDO();
+        task.setId("task_1");
+        task.setProjectId("project_1");
+        when(taskMapper.selectList(any())).thenReturn(List.of(task));
+
+        service.delete("project_1");
+
+        verify(stageResultMapper).delete(any());
+        verify(taskMapper).delete(any());
+        verify(draftMapper).delete(any());
+        verify(chapterMapper).delete(any());
+        verify(projectMapper).deleteById("project_1");
+    }
+
+    @Test
+    void deleteRejectsProjectOwnedByOthers() {
+        when(projectMapper.selectOne(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.delete("project_2"))
+                .isInstanceOf(ClientException.class)
+                .hasMessageContaining("无权访问");
+    }
+
+    private ScriptProjectDO project(String projectId, String userId) {
+        ScriptProjectDO project = new ScriptProjectDO();
+        project.setId(projectId);
+        project.setTitle("测试项目");
+        project.setStatus("draft");
+        project.setCreatedBy(userId);
+        return project;
     }
 
     private String validNovelText() {

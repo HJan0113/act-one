@@ -168,3 +168,141 @@ export type ScriptDraftDetail = ScriptDraftListItem & {
   validationError?: string | null;
   yaml: string;
 };
+
+export type ScriptRhythmOverallMetrics = {
+  actionCharCount: number;
+  actionRatio: number;
+  averageConflictScore: number;
+  averageTurningScore: number;
+  dialogueCharCount: number;
+  dialogueCount: number;
+  dialogueRatio: number;
+  imbalanceSceneCount: number;
+  purposeCoverage: number;
+  sceneCount: number;
+};
+
+export type ScriptSceneRhythmMetric = {
+  actionCharCount: number;
+  actionRatio: number;
+  conflictScore: number;
+  dialogueCharCount: number;
+  dialogueCount: number;
+  dialogueRatio: number;
+  paceLevel: string;
+  purposeScore: number;
+  sceneId: string;
+  summary: string;
+  title: string;
+  turningScore: number;
+  warnings: string[];
+};
+
+export type ScriptRhythmAnalysisData = {
+  assessmentMode: string;
+  characterDensity: ScriptCharacterDensityMetric[];
+  draftId: string;
+  overall: ScriptRhythmOverallMetrics;
+  scenes: ScriptSceneRhythmMetric[];
+  suggestions: string[];
+};
+
+export type ScriptDialoguePatchData = {
+  emotion?: string | null;
+  line: string;
+  speaker: string;
+};
+
+export type ScriptScenePatchData = {
+  action?: string | null;
+  aiExpansion?: boolean | null;
+  dialogues?: ScriptDialoguePatchData[] | null;
+  location?: string | null;
+  riskWarnings?: string[] | null;
+  sceneId: string;
+  scenePurpose?: string | null;
+  summary?: string | null;
+  time?: string | null;
+  title?: string | null;
+};
+
+export type ScriptSceneRefineRequest = {
+  draftId: string;
+  instruction: string;
+  sceneId: string;
+};
+
+export type ScriptSceneRefineData = {
+  draftId: string;
+  patchedYaml: string;
+  sceneId: string;
+  scenePatch: ScriptScenePatchData;
+  validationError?: string | null;
+  validationStatus: string;
+};
+
+export type ScriptDialogueScenePatchData = {
+  dialogues: ScriptDialoguePatchData[];
+  riskWarnings?: string[] | null;
+  sceneId: string;
+  summary?: string | null;
+};
+
+export type ScriptDialogueVoicePatchData = {
+  riskWarnings?: string[] | null;
+  scenePatches: ScriptDialogueScenePatchData[];
+  speaker: string;
+  summary?: string | null;
+  voiceSample?: string | null;
+};
+
+export type ScriptDialogueVoiceRewriteRequest = {
+  draftId: string;
+  instruction: string;
+  sceneIds?: string[];
+  speaker: string;
+};
+
+export type ScriptDialogueVoiceRewriteData = {
+  draftId: string;
+  patchedYaml: string;
+  speaker: string;
+  validationError?: string | null;
+  validationStatus: string;
+  voicePatch: ScriptDialogueVoicePatchData;
+};
+
+export type ScriptCharacterDensityMetric = {
+  characterId: string;
+  characterName: string;
+  dialogueCount: number;
+  sceneCount: number;
+  sceneIds: string[];
+};
+
+export type ShotSuggestion = {
+  action: string;
+  description: string;
+  emotion: string;
+  keyProp: string;
+  shotId: string;
+  shotType: string;
+  sound: string;
+  subject: string;
+  tone: string;
+};
+
+export type ScriptStoryboardData = {
+  assessmentMode: string;
+  draftId: string;
+  sceneId: string;
+  shots: ShotSuggestion[];
+  suggestions: string[];
+};
+
+export type ScriptDemoNovelData = {
+  author: string;
+  logline: string;
+  text: string;
+  title: string;
+};
