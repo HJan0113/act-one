@@ -712,6 +712,16 @@ h1 {
     align-items: start;
 }
 
+.page-grid--pipeline .conversion-progress ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-4);
+    row-gap: var(--space-3);
+}
+
+.page-grid--pipeline .conversion-progress li {
+    min-height: 36px;
+}
+
 .page-grid--pipeline .task-details {
     grid-column: 1 / -1;
 }
@@ -813,6 +823,39 @@ h1 {
     color: var(--muted-strong);
     font-size: var(--text-md);
     line-height: 1.65;
+}
+
+.task-details__primary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid rgba(39, 106, 95, 0.26);
+    border-radius: var(--radius-sm);
+    background: var(--accent-soft);
+}
+
+.task-details__primary-copy {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.task-details__primary-copy strong {
+    color: var(--accent-strong);
+    font-size: var(--text-lg);
+    line-height: 1.25;
+}
+
+.task-details__primary-copy span {
+    color: var(--muted-strong);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+}
+
+.task-details__primary .action-button {
+    white-space: nowrap;
 }
 
 .task-detail-list {
@@ -2891,6 +2934,10 @@ h1 {
     .result-workbench,
     .trace-workbench,
     .archive-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .task-details__primary {
         grid-template-columns: 1fr;
     }
 

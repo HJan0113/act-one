@@ -4,6 +4,7 @@ import com.hjan.actone.ai.model.ChatMessage;
 import com.hjan.actone.ai.model.ChatRequest;
 import com.hjan.actone.ai.model.ChatResponse;
 import com.hjan.actone.ai.service.LLMService;
+import com.hjan.actone.common.log.AiExceptionDiagnostics;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
@@ -42,15 +43,20 @@ public final class ScriptAiMeteredLlmService implements LLMService {
             ScriptAiUsageTracker.record(request, null);
             ScriptAiLlmCallTrace.Trace trace = ScriptAiLlmCallTrace.current();
             log.warn(
-                    "event=actone_ai_pipeline_llm_failure taskId={} stage={} retry={} model={} responseFormat={} durationMs={} errorType={} errorMessage={}",
+                    "event=actone_ai_pipeline_llm_failure taskId={} stage={} retry={} model={} responseFormat={} durationMs={} errorType={} errorCode={} errorMessage={} modelErrorType={} modelStatus={} rootCauseType={} rootCauseMessage={}",
                     traceTaskId(trace),
                     traceStage(trace),
                     traceRetry(trace),
                     safeText(request.model(), DEFAULT_MODEL),
                     request.responseFormat(),
                     elapsedMillis(startedNanos),
-                    ex.getClass().getSimpleName(),
-                    ex.getMessage()
+                    AiExceptionDiagnostics.errorType(ex),
+                    AiExceptionDiagnostics.errorCode(ex),
+                    AiExceptionDiagnostics.safeMessage(ex),
+                    AiExceptionDiagnostics.modelErrorType(ex),
+                    AiExceptionDiagnostics.modelStatusCode(ex),
+                    AiExceptionDiagnostics.rootCauseType(ex),
+                    AiExceptionDiagnostics.rootCauseSafeMessage(ex)
             );
             throw ex;
         }

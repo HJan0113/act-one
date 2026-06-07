@@ -1,6 +1,7 @@
 package com.hjan.actone.script.ai.pipeline;
 
 import com.hjan.actone.common.exception.ClientException;
+import com.hjan.actone.common.log.AiExceptionDiagnostics;
 import com.hjan.actone.script.ai.model.ChapterSummary;
 import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineContext;
@@ -669,7 +670,7 @@ public class ScriptAiPipelineService {
                 long durationMs = elapsedMillis(startedNanos);
                 if (attempt < maxRetries) {
                     log.warn(
-                            "event=actone_ai_stage_retry taskId={} stage={} model={} retry={} nextRetry={} maxRetries={} durationMs={} errorType={}",
+                            "event=actone_ai_stage_retry taskId={} stage={} model={} retry={} nextRetry={} maxRetries={} durationMs={} errorType={} errorCode={} errorMessage={} modelErrorType={} modelStatus={} rootCauseType={} rootCauseMessage={}",
                             context.taskId(),
                             stage,
                             UNKNOWN_MODEL,
@@ -677,19 +678,31 @@ public class ScriptAiPipelineService {
                             currentRetry + 1,
                             maxRetries,
                             durationMs,
-                            ex.getClass().getSimpleName()
+                            AiExceptionDiagnostics.errorType(ex),
+                            AiExceptionDiagnostics.errorCode(ex),
+                            AiExceptionDiagnostics.safeMessage(ex),
+                            AiExceptionDiagnostics.modelErrorType(ex),
+                            AiExceptionDiagnostics.modelStatusCode(ex),
+                            AiExceptionDiagnostics.rootCauseType(ex),
+                            AiExceptionDiagnostics.rootCauseSafeMessage(ex)
                     );
                     continue;
                 }
                 observer.onStageFailure(context, stage, ex);
                 log.warn(
-                        "event=actone_ai_stage_failure taskId={} stage={} model={} retry={} durationMs={} errorType={}",
+                        "event=actone_ai_stage_failure taskId={} stage={} model={} retry={} durationMs={} errorType={} errorCode={} errorMessage={} modelErrorType={} modelStatus={} rootCauseType={} rootCauseMessage={}",
                         context.taskId(),
                         stage,
                         UNKNOWN_MODEL,
                         currentRetry,
                         durationMs,
-                        ex.getClass().getSimpleName()
+                        AiExceptionDiagnostics.errorType(ex),
+                        AiExceptionDiagnostics.errorCode(ex),
+                        AiExceptionDiagnostics.safeMessage(ex),
+                        AiExceptionDiagnostics.modelErrorType(ex),
+                        AiExceptionDiagnostics.modelStatusCode(ex),
+                        AiExceptionDiagnostics.rootCauseType(ex),
+                        AiExceptionDiagnostics.rootCauseSafeMessage(ex)
                 );
                 throw new ScriptAiPipelineStageException(stage, ex);
             }

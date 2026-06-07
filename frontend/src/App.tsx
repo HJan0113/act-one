@@ -153,8 +153,9 @@ function App() {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const generationAbortRef = useRef<AbortController | null>(null);
 
-  const canPreview = useMemo(() => novelText.trim().length > 0 && !previewLoading, [novelText, previewLoading]);
-  const canGenerate = useMemo(() => novelText.trim().length > 0 && !yamlLoading, [novelText, yamlLoading]);
+  const hasNovelText = useMemo(() => novelText.trim().length > 0, [novelText]);
+  const canPreview = useMemo(() => hasNovelText && !previewLoading, [hasNovelText, previewLoading]);
+  const canGenerate = useMemo(() => hasNovelText && isValid && !yamlLoading, [hasNovelText, isValid, yamlLoading]);
   const canSave = useMemo(() => yamlDraft.trim().length > 0 && !saveLoading, [yamlDraft, saveLoading]);
   const canExport = useMemo(() => draftId.length > 0 && !exportLoading, [draftId, exportLoading]);
   const canRefreshDrafts = useMemo(() => projectId.length > 0 && !draftLoading, [projectId, draftLoading]);
@@ -1228,6 +1229,22 @@ function App() {
             yamlPlaceholder={placeholderYaml}
         />
     );
+    const runtimeStepTitle = yamlLoading
+        ? "生成进行中"
+        : isValid
+            ? taskSummary.canRetry
+                ? "下一步：继续生成"
+                : "下一步：开始 AI 转换"
+            : "下一步：解析章节";
+    const runtimeStepDescription = yamlLoading
+        ? "正在生成剧本 YAML，可在这里停止当前任务。"
+        : isValid
+            ? taskSummary.canRetry
+                ? "上次任务失败，可从后端返回的安全阶段继续生成。"
+                : "章节解析已通过，点击按钮会创建 AI 生成任务，完成后自动进入结果页。"
+            : hasNovelText
+                ? "先解析章节；解析通过后，这里会切换为开始 AI 转换。"
+                : "先导入演示小说、上传文件或粘贴正文，再解析章节。";
 
     return (
         <AppShell
@@ -1343,21 +1360,55 @@ function App() {
                     <div className="studio-panel page-side-panel">
                         <ConversionProgress steps={workflowSteps}/>
                     </div>
-                    <section className="studio-panel task-details" aria-label="后续任务能力">
+                    <section className="studio-panel task-details" aria-label="AI 转换下一步操作">
                         <div className="panel-heading">
                             <div>
-                                <p className="panel-kicker">Task Runtime</p>
-                                <h2>任务化生成准备区</h2>
+                                <p className="panel-kicker">Pipeline Action</p>
+                                <h2>下一步操作</h2>
                             </div>
                             <StatusBadge label={taskSummary.currentStage}
                                          tone={taskSummary.status === "failed" ? "danger" : "info"}/>
                         </div>
                         <div className="task-details__body">
-                            <p>{taskSummary.errorMessage || taskSummary.message}</p>
+                            <p>这里是 AI 转换任务运行区：显示当前任务状态，并提供解析、开始生成、停止或继续生成的入口。</p>
+                            <div className="task-details__primary">
+                                <div className="task-details__primary-copy">
+                                    <strong>{runtimeStepTitle}</strong>
+                                    <span>{taskSummary.errorMessage || runtimeStepDescription}</span>
+                                </div>
+                                {yamlLoading ? (
+                                    <ActionButton
+                                        disabled={!taskSummary.canCancel}
+                                        icon={<CircleStop aria-hidden="true" size={16}/>}
+                                        onClick={stopGeneration}
+                                        variant="ghost"
+                                    >
+                                        停止生成
+                                    </ActionButton>
+                                ) : isValid ? (
+                                    <ActionButton
+                                        disabled={!canGenerate}
+                                        icon={taskSummary.canRetry ? <RefreshCcw aria-hidden="true" size={16}/> : <Wand2 aria-hidden="true" size={16}/>}
+                                        onClick={generateYaml}
+                                        variant="primary"
+                                    >
+                                        {taskSummary.canRetry ? "继续生成" : "开始 AI 转换"}
+                                    </ActionButton>
+                                ) : (
+                                    <ActionButton
+                                        disabled={!canPreview}
+                                        icon={previewLoading ? <Loader2 aria-hidden="true" className="spin" size={16}/> : <Play aria-hidden="true" size={16}/>}
+                                        onClick={previewChapters}
+                                        variant="secondary"
+                                    >
+                                        {hasNovelText ? "解析章节" : "等待小说输入"}
+                                    </ActionButton>
+                                )}
+                            </div>
                             <div className="task-detail-list">
-                                <span>此页实时显示后端 `meta / progress / validation / finish / error` 事件。</span>
-                                <span>停止生成会调用后端取消接口，并中止当前流式连接。</span>
-                                <span>失败后保留小说输入与任务 ID，可从控制台或顶部按钮继续生成。</span>
+                                <span>流程：导入小说 → 解析章节 → 开始 AI 转换 → 查看并保存 YAML。</span>
+                                <span>生成时会同步显示后端进度、校验结果、完成状态或失败原因。</span>
+                                <span>失败后保留小说输入与任务 ID，可在这里、控制台或顶部按钮继续生成。</span>
                             </div>
                         </div>
                     </section>
