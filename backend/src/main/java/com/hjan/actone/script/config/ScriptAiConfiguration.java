@@ -39,10 +39,11 @@ public class ScriptAiConfiguration {
     @ConditionalOnMissingBean(name = CHAPTER_SUMMARY_EXECUTOR)
     public ThreadPoolTaskExecutor scriptAiChapterSummaryExecutor(ScriptAiProperties scriptAiProperties) {
         ScriptAiProperties.Concurrency concurrency = scriptAiProperties.getConcurrency();
+        int corePoolSize = resolvePoolSize(concurrency.getChapterSummaryCorePoolSize());
         return buildExecutor(
                 "script-ai-summary-",
-                positive(concurrency.getChapterSummaryCorePoolSize(), 4),
-                positive(concurrency.getChapterSummaryMaxPoolSize(), 4),
+                corePoolSize,
+                resolveMaxPoolSize(concurrency.getChapterSummaryMaxPoolSize(), corePoolSize),
                 concurrency.getChapterSummaryQueueCapacity()
         );
     }
@@ -51,10 +52,11 @@ public class ScriptAiConfiguration {
     @ConditionalOnMissingBean(name = SCENE_PLANNING_EXECUTOR)
     public ThreadPoolTaskExecutor scriptAiScenePlanningExecutor(ScriptAiProperties scriptAiProperties) {
         ScriptAiProperties.Concurrency concurrency = scriptAiProperties.getConcurrency();
+        int corePoolSize = resolvePoolSize(concurrency.getScenePlanningCorePoolSize());
         return buildExecutor(
                 "script-ai-plan-",
-                positive(concurrency.getScenePlanningCorePoolSize(), 3),
-                positive(concurrency.getScenePlanningMaxPoolSize(), 3),
+                corePoolSize,
+                resolveMaxPoolSize(concurrency.getScenePlanningMaxPoolSize(), corePoolSize),
                 concurrency.getScenePlanningQueueCapacity()
         );
     }
@@ -63,10 +65,11 @@ public class ScriptAiConfiguration {
     @ConditionalOnMissingBean(name = YAML_GENERATION_EXECUTOR)
     public ThreadPoolTaskExecutor scriptAiYamlGenerationExecutor(ScriptAiProperties scriptAiProperties) {
         ScriptAiProperties.Concurrency concurrency = scriptAiProperties.getConcurrency();
+        int corePoolSize = resolvePoolSize(concurrency.getYamlGenerationCorePoolSize());
         return buildExecutor(
                 "script-ai-yaml-",
-                positive(concurrency.getYamlGenerationCorePoolSize(), 3),
-                positive(concurrency.getYamlGenerationMaxPoolSize(), 3),
+                corePoolSize,
+                resolveMaxPoolSize(concurrency.getYamlGenerationMaxPoolSize(), corePoolSize),
                 concurrency.getYamlGenerationQueueCapacity()
         );
     }
@@ -168,7 +171,14 @@ public class ScriptAiConfiguration {
         );
     }
 
-    private int positive(int value, int fallback) {
-        return value > 0 ? value : fallback;
+    private int resolvePoolSize(int configuredPoolSize) {
+        if (configuredPoolSize > 0) {
+            return configuredPoolSize;
+        }
+        return Math.max(1, Runtime.getRuntime().availableProcessors());
+    }
+
+    private int resolveMaxPoolSize(int configuredMaxPoolSize, int corePoolSize) {
+        return configuredMaxPoolSize > 0 ? configuredMaxPoolSize : corePoolSize;
     }
 }

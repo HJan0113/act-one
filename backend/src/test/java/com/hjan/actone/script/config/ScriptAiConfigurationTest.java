@@ -134,6 +134,23 @@ class ScriptAiConfigurationTest {
     }
 
     @Test
+    void registersAutoSizedExecutorsWhenPoolSizesAreNotConfigured() {
+        contextRunner.run(context -> {
+            int availableProcessors = Math.max(1, Runtime.getRuntime().availableProcessors());
+
+            assertThat(context.getBean("scriptAiChapterSummaryExecutor", ThreadPoolTaskExecutor.class))
+                    .extracting(ThreadPoolTaskExecutor::getCorePoolSize, ThreadPoolTaskExecutor::getMaxPoolSize)
+                    .containsExactly(availableProcessors, availableProcessors);
+            assertThat(context.getBean("scriptAiScenePlanningExecutor", ThreadPoolTaskExecutor.class))
+                    .extracting(ThreadPoolTaskExecutor::getCorePoolSize, ThreadPoolTaskExecutor::getMaxPoolSize)
+                    .containsExactly(availableProcessors, availableProcessors);
+            assertThat(context.getBean("scriptAiYamlGenerationExecutor", ThreadPoolTaskExecutor.class))
+                    .extracting(ThreadPoolTaskExecutor::getCorePoolSize, ThreadPoolTaskExecutor::getMaxPoolSize)
+                    .containsExactly(availableProcessors, availableProcessors);
+        });
+    }
+
+    @Test
     void doesNotRegisterLlmStagesWithoutLlmService() {
         contextRunner.run(context -> {
             assertThat(context).doesNotHaveBean(ChapterSummaryStage.class);
