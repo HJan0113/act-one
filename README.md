@@ -1,8 +1,15 @@
+
 # Act One
 
 Act One 是一个 AI 小说转剧本 YAML 工作台。它面向小说作者和编剧协作场景，把 3 章以上小说文本解析为可编辑、可追溯、可校验的结构化剧本初稿，并提供流式生成、草稿保存、局部精修、节奏分析、分镜建议和对白口吻重写等能力。
 
 当前项目不是单纯的 LLM 文本生成 Demo。后端把 AI 生成拆成可观测的 Pipeline，并用 YAML Schema、阶段结果暂存、模型路由和规则降级保护生成结果；前端则围绕“导入小说、生成 YAML、编辑草稿、审查来源、导出结果”的作者工作流组织界面。
+
+## 演示
+
+- **演示视频（B站）**：[【七牛云-AI小说转剧本】](https://www.bilibili.com/video/BV1CVEh6zEnt/?share_source=copy_web&vd_source=352dbb347a529896debb8b2f5f734a5d)
+- **备用视频链接**：[act-one.mp4](http://hjan.xin:9001/helloqiniu/act-one.mp4)
+- **在线演示**：[hjan.xin/act-one](http://hjan.xin:3000 )
 
 ## 目录
 
