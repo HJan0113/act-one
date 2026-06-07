@@ -17,6 +17,7 @@ Act One 是一个 AI 小说转剧本 YAML 工作台。它面向小说作者和�
 - [核心链路](#核心链路)
 - [功能清单](#功能清单)
 - [技术栈](#技术栈)
+- [原创实现与第三方依赖](#原创实现与第三方依赖)
 - [系统结构](#系统结构)
 - [快速启动](#快速启动)
 - [数据库结构](#数据库结构)
@@ -113,17 +114,46 @@ script.ai Pipeline
 | 层级 | 技术 | 当前版本 |
 | --- | --- | --- |
 | 后端语言 | Java | 17 |
-| 后端框架 | Spring Boot | 3.5.7 |
-| ORM | MyBatis-Plus | 3.5.14 |
+| 后端框架 | Spring Boot (Web, JDBC, Validation) | 3.5.7 |
+| ORM | MyBatis-Plus + JSqlParser | 3.5.14 |
 | 认证 | Sa-Token | 1.43.0 |
-| AI 集成 | Spring AI OpenAI-compatible | 1.1.6 |
+| AI 集成 | Spring AI Chat Client + OpenAI 适配 | 1.1.6 |
 | YAML 处理 | SnakeYAML | Spring Boot 管理版本 |
-| 数据库 | PostgreSQL + HikariCP | 本地或外部 PostgreSQL |
+| 代码简化 | Lombok | Spring Boot 管理版本 |
+| 数据库 | PostgreSQL + HikariCP | — |
 | 构建工具 | Maven | 3.9+ 推荐 |
-| 前端框架 | React | 18.3.1 |
+| 前端框架 | React + ReactDOM | 18.3.1 |
 | 前端语言 | TypeScript | 5.7.2 |
-| 前端构建 | Vite | 5.4.11 |
+| 前端构建 | Vite + @vitejs/plugin-react | 5.4.11 |
 | 图标 | lucide-react | 0.468.0 |
+| 前端类型 | @types/react, @types/react-dom | 18.x |
+
+## 原创实现与第三方依赖
+
+Act One 的核心价值来自以下**自研设计**，而非第三方框架自带能力：
+
+| 原创实现 | 说明 |
+| --- | --- |
+| **AI Pipeline 编排** | 章节摘要 → 场景规划 → YAML 生成的分阶段流水线，每阶段保存中间结果，失败时可从安全阶段恢复 |
+| **模型路由与健康状态跟踪** | 多模型候选优先级路由，单个失败自动尝试下一个，配合 Spring AI 但不依赖其路由能力 |
+| **三级降级策略** | `ai_pipeline` → `rule_based_fallback` → `rule_based_scaffold`，确保任何故障下都有可用结果，并向前端明确传递降级原因 |
+| **YAML Schema 校验** | 自定义 Schema 验证生成的剧本 YAML，不合规则触发降级，防止非法数据进入草稿系统 |
+| **章节解析与分块** | 自研的 `NovelChapterParser`，支持中文小说章节识别、清洗、长章节按段落句子边界智能拆分 |
+| **SSE 流式生成** | 基于 Spring MVC 的 SSE 流式推送 Pipeline 各阶段进度，前端实时渲染生成状态 |
+| **溯源追溯** | 每个剧本场景保留来源章节和原文摘录，方便作者核对 AI 改编依据 |
+| **对白精修与分镜建议** | 生成后支持按场景局部精修、对白口吻重写和分镜建议，非一次生成结束 |
+
+以下能力由第三方框架提供，项目在其上构建业务逻辑：
+
+| 能力 | 依赖框架 |
+| --- | --- |
+| Web 服务、REST 接口 | Spring Boot (Web Starter, 内嵌 Tomcat) |
+| 数据库访问与连接池 | MyBatis-Plus + HikariCP |
+| 登录认证与会话管理 | Sa-Token |
+| LLM 调用与 OpenAI 协议适配 | Spring AI (Chat Client + OpenAI Starter) |
+| 参数校验 | Spring Boot Validation (Hibernate Validator) |
+| YAML 序列化/反序列化 | SnakeYAML |
+| 前端 UI 框架与构建 | React + Vite |
 
 ## 系统结构
 
