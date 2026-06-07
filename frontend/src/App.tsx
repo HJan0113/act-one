@@ -25,18 +25,17 @@ import {
     ConflictHeatmapPanel,
     ConsistencyWorkbench,
     ConversionProgress,
+    DraftHistoryPanel,
     InputPanel,
     type ProgressStep,
     RhythmAnalysisPanel,
+    SchemaValidationPanel,
     ScriptPreviewPanel,
     ScriptReadableView,
     CharacterWorkbench,
     Sidebar,
     SourceReviewWorkbench,
     StoryboardPanel,
-    type ScriptStyleVariant,
-    scriptStyleVariantOptions,
-    StyleVariantPanel,
     TaskConsole,
     type AiChangeSummary,
     type TaskStatus,
@@ -158,7 +157,6 @@ function App() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [sceneRefinementLoading, setSceneRefinementLoading] = useState(false);
   const [dialogueVoiceLoading, setDialogueVoiceLoading] = useState(false);
-  const [styleVariantLoading, setStyleVariantLoading] = useState<ScriptStyleVariant | "">("");
   const [rhythmLoading, setRhythmLoading] = useState(false);
   const [rhythmAnalysis, setRhythmAnalysis] = useState<ScriptRhythmAnalysisData | null>(null);
   const [storyboardLoading, setStoryboardLoading] = useState(false);
@@ -936,77 +934,6 @@ function App() {
     }
   }
 
-  async function createStyleVariantDraft(style: ScriptStyleVariant) {
-    if (!yamlDraft.trim()) {
-      setYamlMessage("请先生成或加载 YAML，再创建风格版本。");
-      return;
-    }
-    if (!projectId && !novelText.trim()) {
-      setYamlMessage("当前没有项目上下文，请先保存或加载一个项目草稿。");
-      return;
-    }
-
-    const option = styleVariantOption(style);
-    const variantYaml = createStyleVariantYaml(yamlDraft, style);
-    const variantTitle = createStyleVariantTitle(generatedTitle || title || "未命名剧本", style);
-    setStyleVariantLoading(style);
-    setYamlMessage(`正在创建${option.label}版本草稿...`);
-    try {
-      const activeProjectId = await ensureProject();
-      const data = await requestWithAuth((token) =>
-        saveScriptDraft(
-          {
-            projectId: activeProjectId,
-            schemaVersion: schemaVersion || "1.0",
-            title: variantTitle,
-            yaml: variantYaml
-          },
-          token
-        )
-      );
-      setYamlDraft(variantYaml);
-      setAiChangeSummary(null);
-      setRhythmAnalysis(null);
-      setDraftId(data.draftId);
-      setProjectId(data.projectId);
-      setGeneratedTitle(data.title);
-      setSchemaVersion(data.schemaVersion);
-      setValidationStatus(data.validationStatus);
-      setValidationError(data.validationError || "");
-      setGenerationMode(extractGenerationMode(variantYaml));
-      setFallbackReason("");
-      setYamlMessage(
-        data.validationStatus === "valid"
-          ? `已创建${option.label}版本草稿，原稿未覆盖。`
-          : `已创建${option.label}版本但校验未通过：${data.validationError || "请查看 Schema 校验面板。"}`
-      );
-      setConversionTask((current) => ({
-        ...current,
-        currentStage: data.validationStatus === "valid" ? "风格版本已归档" : "风格版本需修正",
-        errorMessage: data.validationError || "",
-        message: `基于当前 YAML 另存为${option.label}版本，草稿列表已刷新。`,
-        progress: data.validationStatus === "valid" ? 100 : Math.max(current.progress, 88),
-        status: data.validationStatus === "valid" ? "success" : "failed",
-        taskId: data.draftId
-      }));
-      await loadDrafts(data.projectId);
-      setActiveView("result");
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "风格版本创建失败。";
-      setYamlMessage(errorMessage);
-      setConversionTask((current) => ({
-        ...current,
-        currentStage: "风格版本创建失败",
-        errorMessage,
-        message: "当前 YAML 未被覆盖，可稍后重试。",
-        progress: Math.max(current.progress, 82),
-        status: "failed"
-      }));
-    } finally {
-      setStyleVariantLoading("");
-    }
-  }
-
   async function loadDraftDetail(nextDraftId: string) {
     if (!nextDraftId) return;
     setDraftLoading(true);
@@ -1353,30 +1280,20 @@ function App() {
 
     const scriptPanel = (
         <ScriptPreviewPanel
-            activeDraftId={draftId}
             canExport={canExport}
-            canRefreshDrafts={canRefreshDrafts}
             canSave={canSave}
             taskSummary={taskSummary}
             draftId={draftId}
-            draftLoading={draftLoading}
-            drafts={drafts}
             generatedTitle={generatedTitle}
             fallbackReason={fallbackReason}
             generationMode={generationMode}
             onExportYaml={exportDraftYaml}
             onCopyYaml={copyYaml}
-            onLoadDraft={loadDraftDetail}
-            onRefreshDrafts={() => loadDrafts()}
             onSaveDraft={saveDraft}
             onYamlChange={handleYamlDraftChange}
-            projectId={projectId}
             saveLoading={saveLoading}
-            schemaChecks={schemaChecks}
             schemaVersion={schemaVersion}
             exportLoading={exportLoading}
-            validationError={validationError}
-            validationStatus={validationStatus}
             yaml={yamlDraft}
             yamlMessage={yamlMessage}
             yamlPlaceholder={placeholderYaml}
@@ -1610,11 +1527,20 @@ function App() {
                 <div className="result-workbench">
                     {scriptPanel}
                     <div className="result-side-stack">
-                        <StyleVariantPanel
-                            canCreate={Boolean(yamlDraft.trim()) && !styleVariantLoading}
-                            creatingStyle={styleVariantLoading}
-                            draftCount={drafts.length}
-                            onCreateVariant={createStyleVariantDraft}
+                        <SchemaValidationPanel
+                            checks={schemaChecks}
+                            error={validationError}
+                            status={validationStatus}
+                            yamlReady={Boolean(yamlDraft.trim())}
+                        />
+                        <DraftHistoryPanel
+                            activeDraftId={draftId}
+                            canRefreshDrafts={canRefreshDrafts}
+                            draftLoading={draftLoading}
+                            drafts={drafts}
+                            onLoadDraft={loadDraftDetail}
+                            onRefreshDrafts={() => loadDrafts()}
+                            projectId={projectId}
                         />
                         <RhythmAnalysisPanel
                             activeDraftId={draftId}
@@ -1981,49 +1907,6 @@ function createGenerationMessage(generationMode: string, fallback: boolean, fall
       : `${label} 已生成：AI Pipeline 不可用，已显式降级。`;
   }
   return `${label} 生成成功，可继续复制或编辑。`;
-}
-
-function createStyleVariantYaml(yaml: string, style: ScriptStyleVariant) {
-  const option = styleVariantOption(style);
-  const note = `风格版本：${option.label}；${option.prompt}`;
-  return appendYamlNote(yaml, note);
-}
-
-function appendYamlNote(yaml: string, note: string) {
-  const source = yaml.trimEnd();
-  const noteLine = `  - "${escapeYamlDoubleQuoted(note)}"`;
-  if (source.includes(noteLine)) {
-    return source;
-  }
-
-  const inlineEmptyNotes = /^notes:\s*\[\s*]\s*$/m;
-  if (inlineEmptyNotes.test(source)) {
-    return source.replace(inlineEmptyNotes, `notes:\n${noteLine}`);
-  }
-
-  const notesMatch = source.match(/^notes:\s*$/m);
-  if (!notesMatch || notesMatch.index === undefined) {
-    return `${source}\nnotes:\n${noteLine}`;
-  }
-
-  const insertAt = source.indexOf("\n", notesMatch.index);
-  if (insertAt === -1) {
-    return `${source}\n${noteLine}`;
-  }
-  return `${source.slice(0, insertAt)}\n${noteLine}${source.slice(insertAt)}`;
-}
-
-function escapeYamlDoubleQuoted(value: string) {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-function createStyleVariantTitle(baseTitle: string, style: ScriptStyleVariant) {
-  const cleanBase = baseTitle.replace(/\s*[·-]\s*(影视剧|短剧|舞台剧|广播剧)版$/u, "").trim() || "未命名剧本";
-  return `${cleanBase} · ${styleVariantOption(style).label}版`;
-}
-
-function styleVariantOption(style: ScriptStyleVariant) {
-  return scriptStyleVariantOptions.find((option) => option.value === style) || scriptStyleVariantOptions[0];
 }
 
 function generationModeLabel(generationMode: string) {

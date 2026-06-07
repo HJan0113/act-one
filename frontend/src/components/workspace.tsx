@@ -16,7 +16,6 @@ import {
     ListChecks,
     PanelLeftClose,
     PanelLeftOpen,
-    Radio,
     RefreshCcw,
     Save,
     ScrollText,
@@ -93,40 +92,6 @@ export type AiChangeSummary = {
   summary: string;
   validationStatus: string;
 };
-
-export type ScriptStyleVariant = "broadcast" | "screenplay" | "short_drama" | "stage";
-
-export const scriptStyleVariantOptions: Array<{
-  detail: string;
-  label: string;
-  prompt: string;
-  value: ScriptStyleVariant;
-}> = [
-  {
-    detail: "保留场景动作、对白、调度，适合常规影视剧本。",
-    label: "影视剧",
-    prompt: "强化镜头可拍性、场面调度、动作节奏和对白表演，保持原剧情事实不变。",
-    value: "screenplay"
-  },
-  {
-    detail: "更短节奏、更强钩子，适合连续反转和高密度冲突。",
-    label: "短剧",
-    prompt: "压缩铺垫，突出开场钩子、场景冲突、反转节点和强情绪对白，保持原剧情事实不变。",
-    value: "short_drama"
-  },
-  {
-    detail: "突出舞台空间、出入场、灯光和可演台词。",
-    label: "舞台剧",
-    prompt: "强化舞台调度、出入场、灯光/道具提示和可朗读台词，保持原剧情事实不变。",
-    value: "stage"
-  },
-  {
-    detail: "以声音叙事，强化旁白、环境音和对白辨识度。",
-    label: "广播剧",
-    prompt: "强化声音线索、环境音、旁白过渡和角色口吻辨识度，保持原剧情事实不变。",
-    value: "broadcast"
-  }
-];
 
 export type WorkspaceView = "archive" | "characters" | "consistency" | "heatmap" | "pipeline" | "preview" | "result" | "source" | "trace";
 
@@ -1494,74 +1459,6 @@ export function AiChangeSummaryPanel({summary}: AiChangeSummaryPanelProps) {
   );
 }
 
-type StyleVariantPanelProps = {
-  canCreate: boolean;
-  creatingStyle: ScriptStyleVariant | "";
-  draftCount: number;
-  onCreateVariant: (style: ScriptStyleVariant) => void;
-};
-
-export function StyleVariantPanel({
-  canCreate,
-  creatingStyle,
-  draftCount,
-  onCreateVariant
-}: StyleVariantPanelProps) {
-  return (
-    <section className="studio-panel style-variant-panel" aria-label="多版本风格草稿">
-      <div className="panel-heading">
-        <div>
-          <p className="panel-kicker">Style Revisions</p>
-          <h2>风格版本</h2>
-        </div>
-        <StatusBadge label={draftCount > 0 ? `${draftCount} 个草稿` : "未保存"} tone={draftCount > 0 ? "info" : "neutral"} />
-      </div>
-
-      <div className="style-variant-body">
-        <p>基于当前结构化底稿另存为新草稿，原稿不会被覆盖。</p>
-        <div className="style-variant-grid">
-          {scriptStyleVariantOptions.map((option) => {
-            const loading = creatingStyle === option.value;
-            return (
-              <article className="style-variant-card" key={option.value}>
-                <span className="style-variant-card__icon" aria-hidden="true">
-                  {styleVariantIcon(option.value)}
-                </span>
-                <div>
-                  <strong>{option.label}</strong>
-                  <p>{option.detail}</p>
-                </div>
-                <ActionButton
-                  disabled={!canCreate || Boolean(creatingStyle)}
-                  icon={loading ? <RefreshCcw aria-hidden="true" className="spin" size={15} /> : <Sparkles aria-hidden="true" size={15} />}
-                  onClick={() => onCreateVariant(option.value)}
-                  size="sm"
-                  variant="secondary"
-                >
-                  {loading ? "生成中" : "生成"}
-                </ActionButton>
-              </article>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function styleVariantIcon(value: ScriptStyleVariant) {
-  if (value === "screenplay") {
-    return <Film size={17} />;
-  }
-  if (value === "broadcast") {
-    return <Radio size={17} />;
-  }
-  if (value === "stage") {
-    return <BookOpen size={17} />;
-  }
-  return <Sparkles size={17} />;
-}
-
 type RhythmAnalysisPanelProps = {
   activeDraftId: string;
   analysis: ScriptRhythmAnalysisData | null;
@@ -1712,13 +1609,9 @@ function analysisModeLabel(mode?: string) {
 }
 
 type ScriptPreviewPanelProps = {
-  activeDraftId: string;
   canExport: boolean;
-  canRefreshDrafts: boolean;
   canSave: boolean;
     taskSummary: TaskSummary;
-  draftLoading: boolean;
-  drafts: DraftListItem[];
   draftId: string;
   exportLoading: boolean;
   fallbackReason: string;
@@ -1726,29 +1619,19 @@ type ScriptPreviewPanelProps = {
   generatedTitle: string;
   onCopyYaml: () => void;
   onExportYaml: () => void;
-  onLoadDraft: (draftId: string) => void;
-  onRefreshDrafts: () => void;
   onSaveDraft: () => void;
   onYamlChange: (value: string) => void;
-  projectId: string;
   saveLoading: boolean;
-  schemaChecks: ValidationCheck[];
   schemaVersion: string;
-  validationError: string;
-  validationStatus: string;
   yaml: string;
   yamlMessage: string;
   yamlPlaceholder: string;
 };
 
 export function ScriptPreviewPanel({
-  activeDraftId,
   canExport,
-  canRefreshDrafts,
   canSave,
                                        taskSummary,
-  draftLoading,
-  drafts,
   draftId,
   exportLoading,
   fallbackReason,
@@ -1756,16 +1639,10 @@ export function ScriptPreviewPanel({
   generatedTitle,
   onCopyYaml,
   onExportYaml,
-  onLoadDraft,
-  onRefreshDrafts,
   onSaveDraft,
   onYamlChange,
-  projectId,
   saveLoading,
-  schemaChecks,
   schemaVersion,
-  validationError,
-  validationStatus,
   yaml,
   yamlMessage,
   yamlPlaceholder
@@ -1794,15 +1671,6 @@ export function ScriptPreviewPanel({
             icon={<FileDown aria-hidden="true" className={exportLoading ? "spin" : ""} size={15} />}
             iconOnly
             onClick={onExportYaml}
-            size="sm"
-            variant="ghost"
-          />
-          <ActionButton
-            aria-label="刷新草稿列表"
-            disabled={!canRefreshDrafts}
-            icon={<RefreshCcw aria-hidden="true" className={draftLoading ? "spin" : ""} size={15} />}
-            iconOnly
-            onClick={onRefreshDrafts}
             size="sm"
             variant="ghost"
           />
@@ -1859,42 +1727,6 @@ export function ScriptPreviewPanel({
         <span>{yamlMessage}</span>
       </div>
 
-      <SchemaValidationPanel checks={schemaChecks} error={validationError} status={validationStatus} yamlReady={Boolean(yaml.trim())} />
-
-      <section className="draft-history" aria-label="已保存草稿">
-        <div className="draft-history__heading">
-          <span>
-            <History size={15} aria-hidden="true" />
-            保存记录
-          </span>
-          {projectId ? <strong>{drafts.length} 条</strong> : null}
-        </div>
-        <div className="draft-list">
-          {drafts.length > 0 ? (
-            drafts.map((draft) => (
-              <button
-                className="draft-item"
-                data-active={draft.draftId === activeDraftId}
-                key={draft.draftId}
-                onClick={() => onLoadDraft(draft.draftId)}
-                type="button"
-              >
-                <span>{draft.title}</span>
-                <small>
-                  {draft.schemaVersion} / {draft.validationStatus}
-                </small>
-              </button>
-            ))
-          ) : (
-            <EmptyState
-              description="保存后可在此重新加载草稿版本。"
-              icon={<History size={18} />}
-              size="sm"
-              title="暂无保存记录"
-            />
-          )}
-        </div>
-      </section>
     </aside>
   );
 }
@@ -1979,7 +1811,7 @@ type SchemaValidationPanelProps = {
 
 export function SchemaValidationPanel({ checks, error, status, yamlReady }: SchemaValidationPanelProps) {
   return (
-    <section className="schema-panel" aria-label="Schema 校验结果">
+    <section className="studio-panel schema-panel" aria-label="Schema 校验结果">
       <div className="schema-panel__heading">
         <span>
           <ListChecks size={15} aria-hidden="true" />
@@ -1998,6 +1830,74 @@ export function SchemaValidationPanel({ checks, error, status, yamlReady }: Sche
             </div>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+type DraftHistoryPanelProps = {
+  activeDraftId: string;
+  canRefreshDrafts: boolean;
+  draftLoading: boolean;
+  drafts: DraftListItem[];
+  onLoadDraft: (draftId: string) => void;
+  onRefreshDrafts: () => void;
+  projectId: string;
+};
+
+export function DraftHistoryPanel({
+  activeDraftId,
+  canRefreshDrafts,
+  draftLoading,
+  drafts,
+  onLoadDraft,
+  onRefreshDrafts,
+  projectId
+}: DraftHistoryPanelProps) {
+  return (
+    <section className="studio-panel draft-history" aria-label="已保存草稿">
+      <div className="draft-history__heading">
+        <span>
+          <History size={15} aria-hidden="true" />
+          保存记录
+        </span>
+        <div className="draft-history__actions">
+          {projectId ? <strong>{drafts.length} 条</strong> : null}
+          <ActionButton
+            aria-label="刷新草稿列表"
+            disabled={!canRefreshDrafts}
+            icon={<RefreshCcw aria-hidden="true" className={draftLoading ? "spin" : ""} size={15} />}
+            iconOnly
+            onClick={onRefreshDrafts}
+            size="sm"
+            variant="ghost"
+          />
+        </div>
+      </div>
+      <div className="draft-list">
+        {drafts.length > 0 ? (
+          drafts.map((draft) => (
+            <button
+              className="draft-item"
+              data-active={draft.draftId === activeDraftId}
+              key={draft.draftId}
+              onClick={() => onLoadDraft(draft.draftId)}
+              type="button"
+            >
+              <span>{draft.title}</span>
+              <small>
+                {draft.schemaVersion} / {draft.validationStatus}
+              </small>
+            </button>
+          ))
+        ) : (
+          <EmptyState
+            description="保存后可在此重新加载草稿版本。"
+            icon={<History size={18} />}
+            size="sm"
+            title="暂无保存记录"
+          />
+        )}
       </div>
     </section>
   );
