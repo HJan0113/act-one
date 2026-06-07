@@ -3196,24 +3196,20 @@ h1 {
 
 /* ── Storyboard / Shot Cards ── */
 .trace-full-workbench {
-  --trace-yaml-width: 240px;
-  --trace-source-width: 400px;
-  --trace-main-width: calc(var(--trace-yaml-width) + var(--space-4) + var(--trace-source-width));
-  --trace-side-width: 300px;
+  --trace-yaml-width: 220px;
+  --trace-side-width: 280px;
   display: grid;
   gap: var(--space-4);
-  grid-template-columns: var(--trace-main-width) var(--trace-side-width);
-  align-items: start;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: var(--space-2);
-  scrollbar-gutter: stable;
+  grid-template-columns: var(--trace-yaml-width) minmax(0, 1fr) var(--trace-side-width);
+  align-items: stretch;
+  overflow: hidden;
 }
 
 .trace-full-workbench .trace-workbench {
-  grid-template-columns: var(--trace-yaml-width) var(--trace-source-width);
-  width: var(--trace-main-width);
-  min-width: var(--trace-main-width);
+  grid-column: 1 / 3;
+  grid-template-columns: var(--trace-yaml-width) minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
   height: min(760px, calc(100vh - 142px));
   min-height: 620px;
   align-items: stretch;
@@ -3235,9 +3231,10 @@ h1 {
 
 .trace-side-panel {
   display: grid;
+  grid-column: 3;
   gap: var(--space-4);
-  width: var(--trace-side-width);
-  min-width: var(--trace-side-width);
+  width: 100%;
+  min-width: 0;
   height: min(760px, calc(100vh - 142px));
   min-height: 620px;
   overflow: hidden;
@@ -3276,6 +3273,26 @@ h1 {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+}
+
+@media (max-width: 860px) {
+  .trace-full-workbench {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .trace-full-workbench .trace-workbench {
+    grid-column: auto;
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: auto;
+  }
+
+  .trace-side-panel {
+    grid-column: auto;
+    height: 360px;
+    min-height: 360px;
+  }
 }
 
 .shot-list {
