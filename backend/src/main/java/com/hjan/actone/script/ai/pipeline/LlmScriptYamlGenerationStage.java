@@ -107,18 +107,23 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
         long startedNanos = System.nanoTime();
         log.info("开始YAML生成 taskId={} 场景数={}", context.taskId(), context.scenePlan().scenes().size());
         String yaml = context.scenePlan().scenes().size() <= SCENE_BATCH_SIZE
-                ? generateBatch(
-                context,
-                context.chapterSummaries(),
-                context.scenePlan(),
-                "完整剧本"
-        )
+                ? generateSingleBatch(context)
                 : generateBatches(context);
         log.info("完成YAML生成 taskId={} 耗时={}ms YAML长度={}",
                 context.taskId(),
                 TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos),
                 yaml.length());
         return yaml;
+    }
+
+    private String generateSingleBatch(PipelineContext context) {
+        String yaml = generateBatch(
+                context,
+                context.chapterSummaries(),
+                context.scenePlan(),
+                "完整剧本"
+        );
+        return dumpYaml(normalizeDocument(context, parseYamlDocument(yaml), context.scenePlan()));
     }
 
     private String generateBatches(PipelineContext context) {
@@ -301,7 +306,38 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
         merged.put("characters", mergeCharacters(context, documents));
         merged.put("acts", List.of(defaultAct(context)));
         merged.put("scenes", mergeScenes(documents));
-        return merged;
+        return normalizeDocument(context, merged, context.scenePlan());
+    }
+
+    private Map<String, Object> normalizeDocument(PipelineContext context,
+                                                  Map<String, Object> document,
+                                                  ScenePlan scenePlan) {
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        normalized.put("schema_version", "1.0");
+        normalized.put("kind", "screenplay_draft");
+        normalized.put("metadata", normalizeMetadata(context, document.get("metadata")));
+        normalized.put("source", defaultSource(context));
+        normalized.put("characters", mergeCharacters(context, List.of(document)));
+        normalized.put("acts", List.of(defaultAct(context)));
+        normalized.put("scenes", normalizeScenes(document.get("scenes"), scenePlan, context.chapterCount()));
+        return normalized;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> normalizeMetadata(PipelineContext context, Object value) {
+        Map<String, Object> metadata = value instanceof Map<?, ?> map
+                ? new LinkedHashMap<>((Map<String, Object>) map)
+                : defaultMetadata(context);
+        if (!hasText(text(metadata.get("title")))) {
+            metadata.put("title", context.projectTitle());
+        }
+        if (!hasText(text(metadata.get("author"))) && hasText(context.author())) {
+            metadata.put("author", context.author());
+        }
+        if (!hasText(text(metadata.get("logline"))) && hasText(context.logline())) {
+            metadata.put("logline", context.logline());
+        }
+        return metadata;
     }
 
     private Map<String, Object> defaultMetadata(PipelineContext context) {
@@ -391,6 +427,138 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
             }
         }
         return scenes;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> normalizeScenes(Object value, ScenePlan scenePlan, int chapterCount) {
+        List<?> rawScenes = value instanceof List<?> list ? list : List.of();
+        int size = Math.max(rawScenes.size(), scenePlan.scenes().size());
+        List<Map<String, Object>> scenes = new ArrayList<>(size);
+        for (int index = 0; index < size; index++) {
+            Map<String, Object> raw = index < rawScenes.size() && rawScenes.get(index) instanceof Map<?, ?> scene
+                    ? new LinkedHashMap<>((Map<String, Object>) scene)
+                    : new LinkedHashMap<>();
+            ScenePlan.Scene fallback = findScene(scenePlan, text(raw.get("id")), index);
+            scenes.add(normalizeScene(raw, fallback, scenes.size() + 1, chapterCount));
+        }
+        return scenes;
+    }
+
+    private Map<String, Object> normalizeScene(Map<String, Object> raw,
+                                               ScenePlan.Scene fallback,
+                                               int sceneIndex,
+                                               int chapterCount) {
+        Map<String, Object> scene = new LinkedHashMap<>();
+        int chapterIndex = positiveInt(raw.get("chapter_index"));
+        if (chapterIndex <= 0) {
+            chapterIndex = positiveInt(raw.get("chapterIndex"));
+        }
+        if (chapterIndex <= 0 && fallback != null) {
+            chapterIndex = fallback.chapterIndex();
+        }
+        chapterIndex = Math.max(1, Math.min(Math.max(1, chapterCount), chapterIndex <= 0 ? 1 : chapterIndex));
+
+        scene.put("id", "scene_%03d".formatted(sceneIndex));
+        scene.put("act_id", "act_1");
+        scene.put("chapter_index", chapterIndex);
+        scene.put("source_chapter_id", firstText(
+                raw.get("source_chapter_id"),
+                raw.get("sourceChapterId"),
+                fallback == null ? null : fallback.sourceChapterId(),
+                "chapter_" + chapterIndex
+        ));
+        scene.put("title", firstText(raw.get("title"), fallback == null ? null : fallback.title(), "第 " + sceneIndex + " 场"));
+        scene.put("location", firstText(raw.get("location"), fallback == null ? null : fallback.location(), "待定地点"));
+        scene.put("time", firstText(raw.get("time"), fallback == null ? null : fallback.time(), "待定时间"));
+        scene.put("scene_purpose", firstText(
+                raw.get("scene_purpose"),
+                raw.get("scenePurpose"),
+                fallback == null ? null : fallback.scenePurpose(),
+                "推进剧情。"
+        ));
+        scene.put("action", firstText(raw.get("action"), fallbackAction(fallback), "人物在场景中完成关键行动。"));
+        scene.put("dialogues", normalizeDialogues(raw.get("dialogues")));
+        scene.put("source_excerpt", firstText(
+                raw.get("source_excerpt"),
+                raw.get("sourceExcerpt"),
+                fallback == null ? null : fallback.sourceExcerpt(),
+                fallbackAction(fallback),
+                "来源摘录待补充。"
+        ));
+        scene.put("ai_expansion", raw.get("ai_expansion") instanceof Boolean value ? value : Boolean.TRUE);
+        Object characters = raw.get("characters");
+        if (characters instanceof List<?> list) {
+            scene.put("characters", list);
+        } else if (fallback != null && !fallback.characters().isEmpty()) {
+            scene.put("characters", fallback.characters());
+        }
+        return scene;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> normalizeDialogues(Object value) {
+        if (!(value instanceof List<?> rawDialogues)) {
+            return List.of();
+        }
+        List<Map<String, Object>> dialogues = new ArrayList<>();
+        for (Object item : rawDialogues) {
+            if (!(item instanceof Map<?, ?> dialogue)) {
+                continue;
+            }
+            Map<String, Object> copy = new LinkedHashMap<>((Map<String, Object>) dialogue);
+            String speaker = firstText(copy.get("speaker"), "旁白");
+            String line = text(copy.get("line"));
+            if (!hasText(line)) {
+                continue;
+            }
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            normalized.put("speaker", speaker);
+            normalized.put("line", line);
+            if (hasText(text(copy.get("emotion")))) {
+                normalized.put("emotion", text(copy.get("emotion")));
+            }
+            dialogues.add(normalized);
+        }
+        return dialogues;
+    }
+
+    private ScenePlan.Scene findScene(ScenePlan scenePlan, String sceneId, int index) {
+        if (hasText(sceneId)) {
+            for (ScenePlan.Scene scene : scenePlan.scenes()) {
+                if (sceneId.equals(scene.id())) {
+                    return scene;
+                }
+            }
+        }
+        return index >= 0 && index < scenePlan.scenes().size() ? scenePlan.scenes().get(index) : null;
+    }
+
+    private String fallbackAction(ScenePlan.Scene scene) {
+        if (scene == null || scene.beats().isEmpty()) {
+            return "";
+        }
+        return scene.beats().stream()
+                .map(ScenePlan.Beat::description)
+                .filter(this::hasText)
+                .findFirst()
+                .orElse("");
+    }
+
+    private String firstText(Object... values) {
+        for (Object value : values) {
+            String text = text(value);
+            if (hasText(text)) {
+                return text;
+            }
+        }
+        return "";
+    }
+
+    private int positiveInt(Object value) {
+        if (value instanceof Number number && number.intValue() > 0) {
+            return number.intValue();
+        }
+        return 0;
     }
 
     private String dumpYaml(Map<String, Object> document) {

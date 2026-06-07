@@ -48,20 +48,6 @@ export function previewChapters(text: string, token?: string) {
   );
 }
 
-export function generateYaml(request: ScriptYamlGenerateRequest, token?: string, signal?: AbortSignal) {
-  return requestApi<ScriptYamlData>(
-    "/api/script/drafts/yaml/from-text",
-    {
-      body: JSON.stringify(request),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-        signal,
-      token
-    },
-    "YAML 生成失败"
-  );
-}
-
 export async function streamGenerateYaml(
   request: ScriptYamlGenerateRequest,
   handlers: ScriptYamlStreamHandlers = {},

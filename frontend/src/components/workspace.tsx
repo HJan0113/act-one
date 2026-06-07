@@ -28,8 +28,8 @@ import {
 import {ActionButton} from "./ActionButton";
 import {EmptyState} from "./EmptyState";
 import {StatusBadge, type StatusTone} from "./StatusBadge";
-import type {ScriptCharacterDensityMetric, ScriptRhythmAnalysisData, ScriptSceneRhythmMetric, ScriptStoryboardData, ShotSuggestion} from "../types/api";
-import type {ScriptCharacterCard, ScriptRelationship, ScriptTraceScene} from "../utils/scriptYamlTrace";
+import type {ScriptRhythmAnalysisData, ScriptSceneRhythmMetric, ScriptStoryboardData} from "../types/api";
+import type {ScriptCharacterCard, ScriptTraceScene} from "../utils/scriptYamlTrace";
 
 export type ChapterOutline = {
   content: string;
@@ -45,13 +45,6 @@ export type DraftListItem = {
   schemaVersion: string;
   title: string;
   validationStatus: string;
-};
-
-export type ProjectListItem = {
-  description?: string | null;
-  projectId: string;
-  status: string;
-  title: string;
 };
 
 export type ProgressStep = {
@@ -318,18 +311,6 @@ export function Sidebar({ author, chapterCount, children, isValid, projectId, ti
       </div>
 
       {children}
-
-      <div className="sidebar__section sidebar__future">
-        <div className="sidebar__section-title">
-          <Sparkles size={16} aria-hidden="true" />
-          <span>AI 扩展槽</span>
-        </div>
-        <div className="future-list">
-          <span>人物表抽取</span>
-          <span>对白精修</span>
-          <span>多版本对比</span>
-        </div>
-      </div>
     </aside>
   );
 }
@@ -456,46 +437,6 @@ export function ChapterList({ activeChapterIndex, chapterCount, chapters, onSele
           size="sm"
           title="暂无章节"
         />
-      )}
-    </section>
-  );
-}
-
-type ProjectListProps = {
-  activeProjectId: string;
-  loading: boolean;
-  onRefresh: () => void;
-  onSelectProject: (projectId: string) => void;
-  projects: ProjectListItem[];
-};
-
-export function ProjectList({ activeProjectId, loading, onRefresh, onSelectProject, projects }: ProjectListProps) {
-  return (
-    <section className="sidebar__section project-list" aria-label="我的项目">
-      <div className="sidebar__section-title">
-        <FolderOpen size={16} aria-hidden="true" />
-        <span>我的项目</span>
-        <button aria-label="刷新我的项目" className="sidebar-icon-button" disabled={loading} onClick={onRefresh} type="button">
-          <RefreshCcw aria-hidden="true" className={loading ? "spin" : ""} size={14} />
-        </button>
-      </div>
-      {projects.length > 0 ? (
-        <div className="project-list__items">
-          {projects.map((project) => (
-            <button
-              className="project-list__item"
-              data-active={project.projectId === activeProjectId}
-              key={project.projectId}
-              onClick={() => onSelectProject(project.projectId)}
-              type="button"
-            >
-              <span>{project.title}</span>
-              <small>{project.status || "draft"}</small>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <EmptyState description="保存草稿后会在这里形成项目入口。" icon={<FolderOpen size={18} />} size="sm" title="暂无项目" />
       )}
     </section>
   );
@@ -980,7 +921,6 @@ function compactCandidateText(value: string) {
 type CharacterWorkbenchProps = {
   activeDraftId: string;
   characters: ScriptCharacterCard[];
-  relationships: ScriptRelationship[];
   rewritingVoice: boolean;
   scenes: ScriptTraceScene[];
   onRewriteVoice: (speaker: string, instruction: string) => Promise<void> | void;
@@ -992,20 +932,10 @@ type CharacterStat = {
   sceneCount: number;
 };
 
-type RelationshipView = {
-  description: string;
-  id: string;
-  sourceChapterIds: string[];
-  sourceName: string;
-  targetName: string;
-  type: string;
-};
-
 export function CharacterWorkbench({
   activeDraftId,
   characters,
   onRewriteVoice,
-  relationships,
   rewritingVoice,
   scenes,
   yamlReady
@@ -1015,10 +945,6 @@ export function CharacterWorkbench({
   const candidateCharacters = characters.length > 0 ? characters : deriveCharacterCandidates(scenes);
   const usingCandidates = characters.length === 0 && candidateCharacters.length > 0;
   const characterStats = createCharacterStats(candidateCharacters, scenes);
-  const relationshipViews =
-    relationships.length > 0
-      ? relationships.map((relationship) => createRelationshipView(relationship, candidateCharacters))
-      : inferRelationshipViews(candidateCharacters, scenes);
   const selectedVoiceSpeaker = voiceSpeaker || candidateCharacters[0]?.name || "";
   const canRewriteVoice = Boolean(activeDraftId && selectedVoiceSpeaker && voiceInstruction.trim() && !rewritingVoice);
 
@@ -1031,7 +957,7 @@ export function CharacterWorkbench({
   }
 
   return (
-    <div className="character-workbench" aria-label="人物卡片与关系数据">
+    <div className="character-workbench" aria-label="人物卡片与对白口吻">
       <section className="studio-panel character-panel" aria-label="人物卡片">
         <div className="panel-heading">
           <div>
@@ -1096,19 +1022,19 @@ export function CharacterWorkbench({
         </div>
       </section>
 
-      <section className="studio-panel relationship-panel" aria-label="人物关系数据">
+      <section className="studio-panel voice-panel" aria-label="对白口吻一致性与重写">
         <div className="panel-heading">
           <div>
-            <p className="panel-kicker">Relationship Data</p>
-            <h2>关系线索</h2>
+            <p className="panel-kicker">Voice Rewrite</p>
+            <h2>对白口吻</h2>
           </div>
           <StatusBadge
-            label={relationships.length > 0 ? `${relationships.length} 条结构化关系` : relationshipViews.length > 0 ? `${relationshipViews.length} 条共现线索` : "待补充"}
-            tone={relationshipViews.length > 0 ? "info" : "neutral"}
+            label={activeDraftId ? "多场景 patch" : "需先保存"}
+            tone={activeDraftId ? "info" : "neutral"}
           />
         </div>
 
-        <div className="relationship-list">
+        <div className="voice-panel__body">
           <section className="voice-rewrite-box" aria-label="对白口吻一致性与重写">
             <div className="voice-rewrite-box__heading">
               <span>口吻重写</span>
@@ -1149,32 +1075,6 @@ export function CharacterWorkbench({
               重写对白
             </ActionButton>
           </section>
-
-          {relationshipViews.length > 0 ? (
-            relationshipViews.map((relationship) => (
-              <article className="relationship-item" key={relationship.id}>
-                <header>
-                  <span>{relationship.type}</span>
-                  <strong>{relationship.sourceName} → {relationship.targetName}</strong>
-                </header>
-                <p>{relationship.description || "关系描述待补充。"}</p>
-                {relationship.sourceChapterIds.length > 0 ? (
-                  <div className="relationship-sources">
-                    {relationship.sourceChapterIds.slice(0, 5).map((chapterId) => (
-                      <span key={chapterId}>{chapterIdLabel(chapterId) || chapterId}</span>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            ))
-          ) : (
-            <EmptyState
-              description="后续可由 AI 输出 relationships；当前页面已预留结构化关系和场景共现两种展示。"
-              icon={<ShieldCheck size={18} />}
-              size="sm"
-              title="暂无关系数据"
-            />
-          )}
         </div>
       </section>
     </div>
@@ -1224,52 +1124,6 @@ function createCharacterStats(characters: ScriptCharacterCard[], scenes: ScriptT
   });
 
   return stats;
-}
-
-function inferRelationshipViews(characters: ScriptCharacterCard[], scenes: ScriptTraceScene[]): RelationshipView[] {
-  const relationships = new Map<string, RelationshipView & {sceneIds: Set<string>}>();
-
-  scenes.forEach((scene) => {
-    const participants = characters.filter((character) => sceneMentionsCharacter(scene, character));
-    for (let sourceIndex = 0; sourceIndex < participants.length; sourceIndex += 1) {
-      for (let targetIndex = sourceIndex + 1; targetIndex < participants.length; targetIndex += 1) {
-        const source = participants[sourceIndex];
-        const target = participants[targetIndex];
-        const key = [characterIdentity(source), characterIdentity(target)].sort().join("|");
-        const current = relationships.get(key);
-        const next = current || {
-          description: "",
-          id: key,
-          sceneIds: new Set<string>(),
-          sourceChapterIds: [],
-          sourceName: source.name,
-          targetName: target.name,
-          type: "场景共现"
-        };
-        next.sceneIds.add(scene.id);
-        next.sourceChapterIds = Array.from(new Set([...next.sourceChapterIds, scene.sourceChapterId].filter(Boolean)));
-        next.description = `共同出现在 ${next.sceneIds.size} 个场景中，可作为关系图谱的候选边。`;
-        relationships.set(key, next);
-      }
-    }
-  });
-
-  return Array.from(relationships.values()).map(({sceneIds: _sceneIds, ...relationship}) => relationship);
-}
-
-function createRelationshipView(relationship: ScriptRelationship, characters: ScriptCharacterCard[]): RelationshipView {
-  return {
-    description: relationship.description,
-    id: relationship.id,
-    sourceChapterIds: relationship.sourceChapterIds,
-    sourceName: characterNameById(relationship.sourceCharacterId, characters),
-    targetName: characterNameById(relationship.targetCharacterId, characters),
-    type: relationship.type
-  };
-}
-
-function characterNameById(characterId: string, characters: ScriptCharacterCard[]) {
-  return characters.find((character) => character.id === characterId)?.name || characterId || "未知人物";
 }
 
 function sceneMentionsCharacter(scene: ScriptTraceScene, character: ScriptCharacterCard) {
@@ -2224,9 +2078,6 @@ type ConflictHeatmapPanelProps = {
 
 export function ConflictHeatmapPanel({ analysis, onSelectScene, yamlReady }: ConflictHeatmapPanelProps) {
   const maxConflict = analysis ? Math.max(1, ...analysis.scenes.map((scene) => scene.conflictScore)) : 5;
-  const maxDensity = analysis
-    ? Math.max(1, ...analysis.characterDensity.map((char) => char.sceneCount))
-    : 1;
 
   return (
     <div className="heatmap-workbench" aria-label="冲突热力图与角色出场密度">

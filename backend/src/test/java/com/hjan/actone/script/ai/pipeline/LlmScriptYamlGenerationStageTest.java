@@ -45,8 +45,8 @@ class LlmScriptYamlGenerationStageTest {
         String yaml = stage.generate(context());
 
         assertThat(yaml)
-                .startsWith("schema_version: \"1.0\"")
-                .contains("generation_mode: \"ai_pipeline\"")
+                .startsWith("schema_version:")
+                .contains("generation_mode: ai_pipeline")
                 .doesNotContain("```");
         ScriptYamlValidationResult validationResult = validator.validate(yaml);
         assertThat(validationResult.valid()).isTrue();
@@ -116,7 +116,7 @@ class LlmScriptYamlGenerationStageTest {
     }
 
     @Test
-    void generateKeepsSchemaInvalidYamlForPipelineValidatorAndFallback() {
+    void generateNormalizesSchemaIncompleteYamlBeforeValidation() {
         String invalidYaml = """
                 schema_version: "1.0"
                 kind: "screenplay_draft"
@@ -134,10 +134,14 @@ class LlmScriptYamlGenerationStageTest {
 
         String yaml = stage.generate(context());
 
-        assertThat(yaml).contains("generation_mode: \"ai_pipeline\"");
+        assertThat(yaml).contains("generation_mode: ai_pipeline");
         ScriptYamlValidationResult validationResult = validator.validate(yaml);
-        assertThat(validationResult.valid()).isFalse();
-        assertThat(validationResult.errorMessage()).contains("acts 至少需要 1 个幕");
+        assertThat(validationResult.valid()).isTrue();
+        assertThat(yaml)
+                .contains("acts:")
+                .contains("scenes:")
+                .contains("source_excerpt")
+                .contains("scene_001");
     }
 
     @Test

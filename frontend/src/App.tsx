@@ -69,14 +69,13 @@ import {
 import type {
     AuthSession,
     ScriptDraftListItem,
-    ScriptDemoNovelData,
     ScriptProjectListItem,
     ScriptStoryboardData,
     ScriptYamlStreamEventName,
     ScriptYamlStreamPayload
 } from "./types/api";
 import type {ScriptDialogueVoiceRewriteData, ScriptRhythmAnalysisData, ScriptSceneRefineData} from "./types/api";
-import {parseScriptYamlCharacters, parseScriptYamlRelationships, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
+import {parseScriptYamlCharacters, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
 
 const placeholderYaml = `schema_version: "1.0"
 kind: "screenplay_draft"
@@ -191,7 +190,6 @@ function App() {
   const canRefreshDrafts = useMemo(() => projectId.length > 0 && !draftLoading, [projectId, draftLoading]);
   const chapterOutline = useMemo(() => parseChapterOutline(novelText), [novelText]);
   const characterCards = useMemo(() => parseScriptYamlCharacters(yamlDraft), [yamlDraft]);
-  const relationships = useMemo(() => parseScriptYamlRelationships(yamlDraft), [yamlDraft]);
   const traceScenes = useMemo(() => parseScriptYamlScenes(yamlDraft), [yamlDraft]);
   const selectedChapter = useMemo(
     () => chapterOutline.find((chapter) => chapter.index === activeChapterIndex) || chapterOutline[0],
@@ -252,10 +250,9 @@ function App() {
             isValid,
             previewLoading,
             validationStatus,
-            yamlDraft,
-            yamlLoading
+            yamlDraft
         }),
-        [conversionTask, isValid, previewLoading, validationStatus, yamlDraft, yamlLoading]
+        [conversionTask, isValid, previewLoading, validationStatus, yamlDraft]
     );
     const topBarStatus = useMemo(
         () => getTopBarStatus({
@@ -1665,7 +1662,6 @@ function App() {
                     activeDraftId={draftId}
                     characters={characterCards}
                     onRewriteVoice={rewriteDialogueVoicePatch}
-                    relationships={relationships}
                     rewritingVoice={dialogueVoiceLoading}
                     scenes={traceScenes}
                     yamlReady={Boolean(yamlDraft.trim())}
@@ -2279,15 +2275,13 @@ function createPipelineStageFlow({
     isValid,
     previewLoading,
     validationStatus,
-    yamlDraft,
-    yamlLoading
+    yamlDraft
 }: {
     conversionTask: ConversionTaskState;
     isValid: boolean;
     previewLoading: boolean;
     validationStatus: string;
     yamlDraft: string;
-    yamlLoading: boolean;
 }): PipelineStageFlowItem[] {
     const currentStage = conversionTask.stage || stageKeyFromLabel(conversionTask.currentStage);
     const hasYaml = yamlDraft.trim().length > 0;

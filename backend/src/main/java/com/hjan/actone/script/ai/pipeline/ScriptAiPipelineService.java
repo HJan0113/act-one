@@ -377,9 +377,10 @@ public class ScriptAiPipelineService {
                 () -> yamlValidator.validate(yaml)
         );
         observer.onValidation(context, validationResult);
-        log.info("YAML校验结果 taskId={} stage={} model={} retry={} 校验状态={} 是否有效={} 是否有错误={}",
+        log.info("YAML校验结果 taskId={} stage={} model={} retry={} 校验状态={} 是否有效={} 是否有错误={} 错误={}",
                 context.taskId(), PipelineStage.YAML_VALIDATION, UNKNOWN_MODEL, retry,
-                validationResult.status(), validationResult.valid(), hasText(validationResult.errorMessage()));
+                validationResult.status(), validationResult.valid(), hasText(validationResult.errorMessage()),
+                validationResult.errorMessage());
         return validationResult;
     }
 
