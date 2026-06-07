@@ -49,8 +49,13 @@ export type ScriptYamlGenerateRequest = {
 
 export type ScriptYamlData = {
   chapterCount: number;
+  fallback?: boolean;
+  fallbackReason?: string | null;
+  generationMode?: string | null;
   schemaVersion: string;
   title: string;
+  validationError?: string | null;
+  validationStatus?: string | null;
   yaml: string;
 };
 

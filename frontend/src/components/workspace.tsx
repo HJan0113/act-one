@@ -1,28 +1,31 @@
-import type { ChangeEvent, ReactNode } from "react";
+import type {ChangeEvent, ReactNode} from "react";
 import {
-  BookOpen,
-  CheckCircle2,
-  ChevronRight,
-  ClipboardCopy,
-  Code2,
-  FileDown,
-  FileInput,
-  FileText,
-  FolderOpen,
-  History,
-  Layers3,
-  ListChecks,
-  RefreshCcw,
-  Save,
-  ScrollText,
-  ShieldCheck,
-  Sparkles,
-  UploadCloud
+    Activity,
+    BookOpen,
+    CheckCircle2,
+    ChevronRight,
+    CircleStop,
+    ClipboardCopy,
+    Code2,
+    FileDown,
+    FileInput,
+    FileText,
+    FolderOpen,
+    History,
+    ListChecks,
+    PanelLeftClose,
+    PanelLeftOpen,
+    RefreshCcw,
+    Save,
+    ScrollText,
+    ShieldCheck,
+    Sparkles,
+    UploadCloud
 } from "lucide-react";
 
-import { ActionButton } from "./ActionButton";
-import { EmptyState } from "./EmptyState";
-import { StatusBadge, type StatusTone } from "./StatusBadge";
+import {ActionButton} from "./ActionButton";
+import {EmptyState} from "./EmptyState";
+import {StatusBadge, type StatusTone} from "./StatusBadge";
 
 export type ChapterOutline = {
   excerpt: string;
@@ -52,35 +55,122 @@ export type ProgressStep = {
   status: "active" | "complete" | "error" | "idle" | "warning";
 };
 
+export type TaskStatus = "canceled" | "failed" | "idle" | "ready" | "running" | "success";
+
+export type TaskSummary = {
+    canCancel: boolean;
+    currentStage: string;
+    errorMessage: string;
+    message: string;
+    progress: number;
+    status: TaskStatus;
+    taskId: string;
+};
+
 export type ValidationCheck = {
   detail: string;
   label: string;
   state: "fail" | "pass" | "pending" | "warn";
 };
 
+export type WorkspaceView = "archive" | "pipeline" | "result" | "source";
+
 type AppShellProps = {
+    activeView: WorkspaceView;
   children: ReactNode;
-  scriptPanel: ReactNode;
   sidebar: ReactNode;
+    sidebarCollapsed: boolean;
   topBar: ReactNode;
+    onNavigate: (view: WorkspaceView) => void;
+    onToggleSidebar: () => void;
 };
 
-export function AppShell({ children, scriptPanel, sidebar, topBar }: AppShellProps) {
+export function AppShell({
+                             activeView,
+                             children,
+                             onNavigate,
+                             onToggleSidebar,
+                             sidebar,
+                             sidebarCollapsed,
+                             topBar
+                         }: AppShellProps) {
   return (
-    <main className="app-shell">
+      <main className="app-shell" data-sidebar-collapsed={sidebarCollapsed}>
       <div className="studio-frame">
         {topBar}
-        <div className="workbench-grid">
-          {sidebar}
-          <section className="center-workbench" aria-label="小说输入与章节预览">
-            {children}
+          <div className="workspace-layout">
+              <nav className="workspace-rail" aria-label="工作台页面">
+                  <button
+                      aria-label={sidebarCollapsed ? "展开项目栏" : "压缩项目栏"}
+                      className="rail-toggle"
+                      onClick={onToggleSidebar}
+                      type="button"
+                  >
+                      {sidebarCollapsed ? <PanelLeftOpen size={18} aria-hidden="true"/> :
+                          <PanelLeftClose size={18} aria-hidden="true"/>}
+                  </button>
+                  <div className="workspace-nav">
+                      {workspaceNavItems.map((item) => (
+                          <button
+                              aria-current={activeView === item.id ? "page" : undefined}
+                              className="workspace-nav__item"
+                              data-active={activeView === item.id}
+                              key={item.id}
+                              onClick={() => onNavigate(item.id)}
+                              type="button"
+                          >
+                              <span className="workspace-nav__icon">{item.icon}</span>
+                              <span className="workspace-nav__text">
+                    <strong>{item.label}</strong>
+                    <small>{item.detail}</small>
+                  </span>
+                          </button>
+                      ))}
+                  </div>
+              </nav>
+              <div className="workspace-sidebar">{sidebar}</div>
+              <section className="workspace-page" data-view={activeView} aria-live="polite">
+                  <div className="workspace-page__inner" key={activeView}>
+                      {children}
+                  </div>
           </section>
-          {scriptPanel}
         </div>
       </div>
     </main>
   );
 }
+
+const workspaceNavItems: Array<{
+    detail: string;
+    icon: ReactNode;
+    id: WorkspaceView;
+    label: string;
+}> = [
+    {
+        detail: "导入与解析",
+        icon: <BookOpen size={18} aria-hidden="true"/>,
+        id: "source",
+        label: "原文"
+    },
+    {
+        detail: "任务与阶段",
+        icon: <Activity size={18} aria-hidden="true"/>,
+        id: "pipeline",
+        label: "转换"
+    },
+    {
+        detail: "YAML 与校验",
+        icon: <Code2 size={18} aria-hidden="true"/>,
+        id: "result",
+        label: "结果"
+    },
+    {
+        detail: "项目与草稿",
+        icon: <History size={18} aria-hidden="true"/>,
+        id: "archive",
+        label: "归档"
+    }
+];
 
 type TopBarProps = {
   actions: ReactNode;
@@ -135,25 +225,6 @@ export function Sidebar({ author, chapterCount, children, isValid, projectId, ti
         </div>
       </div>
 
-      <nav className="sidebar__section sidebar__nav" aria-label="工作流">
-        <div className="sidebar__section-title">
-          <Layers3 size={16} aria-hidden="true" />
-          <span>工作流</span>
-        </div>
-        <a className="sidebar__nav-item" href="#novel-input">
-          <BookOpen size={16} aria-hidden="true" />
-          <span>小说输入</span>
-        </a>
-        <a className="sidebar__nav-item" href="#chapter-preview">
-          <ListChecks size={16} aria-hidden="true" />
-          <span>章节结构</span>
-        </a>
-        <a className="sidebar__nav-item" href="#yaml-output">
-          <Code2 size={16} aria-hidden="true" />
-          <span>YAML 剧本</span>
-        </a>
-      </nav>
-
       {children}
 
       <div className="sidebar__section sidebar__future">
@@ -169,6 +240,43 @@ export function Sidebar({ author, chapterCount, children, isValid, projectId, ti
       </div>
     </aside>
   );
+}
+
+type TaskConsoleProps = {
+    summary: TaskSummary;
+    onCancel: () => void;
+};
+
+export function TaskConsole({onCancel, summary}: TaskConsoleProps) {
+    return (
+        <section className="sidebar__section task-console" data-status={summary.status} aria-label="AI 转换任务控制台">
+            <div className="sidebar__section-title">
+                <Activity size={16} aria-hidden="true"/>
+                <span>任务控制台</span>
+                <StatusBadge label={taskStatusLabel(summary.status)} tone={taskStatusTone(summary.status)}/>
+            </div>
+            <div className="task-console__body">
+                <div className="task-console__metric">
+                    <strong>{summary.progress}%</strong>
+                    <span>{summary.currentStage}</span>
+                </div>
+                <progress aria-label="AI 转换进度" className="task-meter" max={100} value={summary.progress}/>
+                <p>{summary.errorMessage || summary.message}</p>
+                <div className="task-console__meta">
+                    <span>{summary.taskId || "未创建任务"}</span>
+                    <ActionButton
+                        disabled={!summary.canCancel}
+                        icon={<CircleStop aria-hidden="true" size={14}/>}
+                        onClick={onCancel}
+                        size="sm"
+                        variant="ghost"
+                    >
+                        停止
+                    </ActionButton>
+                </div>
+            </div>
+        </section>
+    );
 }
 
 type ChapterListProps = {
@@ -265,6 +373,7 @@ type InputPanelProps = {
   logline: string;
   message: string;
   novelText: string;
+    locked: boolean;
   onAuthorChange: (value: string) => void;
   onFileImport: (file: File) => Promise<void> | void;
   onLoglineChange: (value: string) => void;
@@ -282,6 +391,7 @@ export function InputPanel({
   logline,
   message,
   novelText,
+                               locked,
   onAuthorChange,
   onFileImport,
   onLoglineChange,
@@ -312,6 +422,7 @@ export function InputPanel({
           <input
             accept=".txt,.md,.markdown,text/plain,text/markdown"
             className="visually-hidden"
+            disabled={locked}
             onChange={handleFileChange}
             type="file"
           />
@@ -323,6 +434,7 @@ export function InputPanel({
           <span>剧本标题</span>
           <input
             maxLength={128}
+            disabled={locked}
             onChange={(event) => onTitleChange(event.target.value)}
             placeholder="未填写时使用第一章标题"
             value={title}
@@ -330,11 +442,18 @@ export function InputPanel({
         </label>
         <label className="field-control">
           <span>作者</span>
-          <input maxLength={64} onChange={(event) => onAuthorChange(event.target.value)} placeholder="可选" value={author} />
+            <input
+                disabled={locked}
+                maxLength={64}
+                onChange={(event) => onAuthorChange(event.target.value)}
+                placeholder="可选"
+                value={author}
+            />
         </label>
         <label className="field-control field-control--wide">
           <span>一句话梗概</span>
           <input
+              disabled={locked}
             maxLength={512}
             onChange={(event) => onLoglineChange(event.target.value)}
             placeholder="主角目标、冲突和转变"
@@ -352,6 +471,7 @@ export function InputPanel({
               <input
                 accept=".txt,.md,.markdown,text/plain,text/markdown"
                 className="visually-hidden"
+                disabled={locked}
                 onChange={handleFileChange}
                 type="file"
               />
@@ -366,6 +486,7 @@ export function InputPanel({
       <textarea
         aria-label="小说章节输入"
         className="novel-editor"
+        disabled={locked}
         onChange={(event) => onNovelTextChange(event.target.value)}
         placeholder={"第 1 章\n\n在这里粘贴小说正文...\n\n第 2 章\n\n...\n\n第 3 章\n\n..."}
         spellCheck={false}
@@ -406,10 +527,13 @@ type ScriptPreviewPanelProps = {
   canExport: boolean;
   canRefreshDrafts: boolean;
   canSave: boolean;
+    taskSummary: TaskSummary;
   draftLoading: boolean;
   drafts: DraftListItem[];
   draftId: string;
   exportLoading: boolean;
+  fallbackReason: string;
+  generationMode: string;
   generatedTitle: string;
   onCopyYaml: () => void;
   onExportYaml: () => void;
@@ -433,10 +557,13 @@ export function ScriptPreviewPanel({
   canExport,
   canRefreshDrafts,
   canSave,
+                                       taskSummary,
   draftLoading,
   drafts,
   draftId,
   exportLoading,
+  fallbackReason,
+  generationMode,
   generatedTitle,
   onCopyYaml,
   onExportYaml,
@@ -503,9 +630,34 @@ export function ScriptPreviewPanel({
       </div>
 
       <div className="yaml-meta">
-        <StatusBadge label={schemaVersion ? `Schema ${schemaVersion}` : "Schema 1.0"} tone="info" />
+        <div className="yaml-meta__badges">
+          <StatusBadge label={schemaVersion ? `Schema ${schemaVersion}` : "Schema 1.0"} tone="info" />
+          <StatusBadge label={generationModeLabel(generationMode)} tone={generationModeTone(generationMode, fallbackReason)} />
+        </div>
         <span>{draftId ? `Draft ${draftId}` : generatedTitle || "待生成"}</span>
       </div>
+
+      {fallbackReason ? (
+        <div className="generation-fallback">
+          <ShieldCheck aria-hidden="true" size={15} />
+          <span>{fallbackReason}</span>
+        </div>
+      ) : null}
+
+        <section className="result-summary" data-status={taskSummary.status} aria-label="任务结果摘要">
+            <div>
+                <span>转换任务</span>
+                <strong>{taskSummary.currentStage}</strong>
+            </div>
+            <div>
+                <span>进度</span>
+                <strong>{taskSummary.progress}%</strong>
+            </div>
+            <div>
+                <span>状态</span>
+                <strong>{taskStatusLabel(taskSummary.status)}</strong>
+            </div>
+        </section>
 
       <YamlEditor onChange={onYamlChange} placeholder={yamlPlaceholder} value={yaml} />
 
@@ -552,6 +704,32 @@ export function ScriptPreviewPanel({
       </section>
     </aside>
   );
+}
+
+function generationModeLabel(generationMode: string) {
+  if (generationMode === "ai_pipeline") {
+    return "AI Pipeline";
+  }
+  if (generationMode === "rule_based_fallback") {
+    return "规则兜底";
+  }
+  if (generationMode === "rule_based_scaffold") {
+    return "规则脚手架";
+  }
+  return "待生成";
+}
+
+function generationModeTone(generationMode: string, fallbackReason: string): StatusTone {
+  if (fallbackReason || generationMode === "rule_based_fallback") {
+    return "warning";
+  }
+  if (generationMode === "ai_pipeline") {
+    return "success";
+  }
+  if (generationMode === "rule_based_scaffold") {
+    return "neutral";
+  }
+  return "neutral";
 }
 
 type YamlEditorProps = {
@@ -646,4 +824,39 @@ function validationTone(status: string, yamlReady: boolean): StatusTone {
     return "warning";
   }
   return "info";
+}
+
+function taskStatusLabel(status: TaskStatus) {
+    if (status === "ready") {
+        return "可生成";
+    }
+    if (status === "running") {
+        return "运行中";
+    }
+    if (status === "success") {
+        return "已完成";
+    }
+    if (status === "failed") {
+        return "失败";
+    }
+    if (status === "canceled") {
+        return "已停止";
+    }
+    return "待输入";
+}
+
+function taskStatusTone(status: TaskStatus): StatusTone {
+    if (status === "running") {
+        return "active";
+    }
+    if (status === "success") {
+        return "success";
+    }
+    if (status === "failed") {
+        return "danger";
+    }
+    if (status === "canceled" || status === "ready") {
+        return "warning";
+    }
+    return "neutral";
 }

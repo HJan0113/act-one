@@ -2,7 +2,8 @@
 
 # Existing local folders kept outside the project repository
 /notice/
-/docs/
+/docs/*
+!/docs/script-yaml-schema.md
 /output/
 /.claude/
 /.gstack/

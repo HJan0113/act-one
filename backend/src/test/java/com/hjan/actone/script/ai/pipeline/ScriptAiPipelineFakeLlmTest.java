@@ -90,6 +90,22 @@ class ScriptAiPipelineFakeLlmTest {
     }
 
     @Test
+    void fakeLlmUntraceableSourceFallsBackExplicitly() {
+        FakeScriptAiStages stages = new FakeScriptAiStages()
+                .failingAt(PipelineStage.SOURCE_TRACE, new IllegalStateException("raw source trace failure"));
+
+        ScriptAiPipelineResult result = service(stages).generate(ScriptAiTestFixtures.sampleRequest());
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.fallback()).isTrue();
+        assertThat(result.generationMode()).isEqualTo(ScriptAiGenerationMode.RULE_BASED_FALLBACK);
+        assertThat(result.fallbackReason())
+                .contains("SOURCE_TRACE")
+                .doesNotContain("raw source trace failure");
+        assertThat(result.yaml()).contains("generation_mode: \"rule_based_fallback\"");
+    }
+
+    @Test
     void fakeLlmIllegalYamlResponseCanBeRepairedByFixedFixture() {
         FakeScriptAiStages stages = new FakeScriptAiStages()
                 .generatedYaml(ScriptAiTestFixtures.invalidYaml())
@@ -126,6 +142,9 @@ class ScriptAiPipelineFakeLlmTest {
                 chapterParser,
                 yamlValidator,
                 ruleBasedDraftService,
+                stages,
+                stages,
+                stages,
                 stages,
                 stages,
                 stages,

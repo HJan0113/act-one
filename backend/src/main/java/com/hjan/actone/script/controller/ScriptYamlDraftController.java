@@ -9,7 +9,7 @@ import com.hjan.actone.script.model.ScriptDraftSaveResponse;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
 import com.hjan.actone.script.service.ScriptDraftService;
-import com.hjan.actone.script.service.ScriptYamlDraftService;
+import com.hjan.actone.script.service.ScriptYamlGenerationService;
 import jakarta.validation.Valid;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -30,19 +30,19 @@ import java.util.List;
 @RequestMapping("/api/script/drafts")
 public class ScriptYamlDraftController {
 
-    private final ScriptYamlDraftService scriptYamlDraftService;
+    private final ScriptYamlGenerationService scriptYamlGenerationService;
     private final ScriptDraftService scriptDraftService;
 
-    public ScriptYamlDraftController(ScriptYamlDraftService scriptYamlDraftService,
+    public ScriptYamlDraftController(ScriptYamlGenerationService scriptYamlGenerationService,
                                      ScriptDraftService scriptDraftService) {
-        this.scriptYamlDraftService = scriptYamlDraftService;
+        this.scriptYamlGenerationService = scriptYamlGenerationService;
         this.scriptDraftService = scriptDraftService;
     }
 
     @PostMapping("/yaml/from-text")
     public Result<ScriptYamlGenerateResponse> generateYamlFromText(
             @Valid @RequestBody ScriptYamlGenerateRequest request) {
-        return Results.success(scriptYamlDraftService.generateFromText(request));
+        return Results.success(scriptYamlGenerationService.generateFromText(request));
     }
 
     @PostMapping

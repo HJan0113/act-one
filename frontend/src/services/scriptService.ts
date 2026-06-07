@@ -1,15 +1,15 @@
-import { readResponseError, requestApi, withAuthHeader } from "./apiClient";
+import {readResponseError, requestApi, withAuthHeader} from "./apiClient";
 import type {
-  ChapterPreviewData,
-  ScriptDraftDetail,
-  ScriptDraftListItem,
-  ScriptDraftSaveData,
-  ScriptDraftSaveRequest,
-  ScriptProjectCreateRequest,
-  ScriptProjectData,
-  ScriptProjectListItem,
-  ScriptYamlData,
-  ScriptYamlGenerateRequest
+    ChapterPreviewData,
+    ScriptDraftDetail,
+    ScriptDraftListItem,
+    ScriptDraftSaveData,
+    ScriptDraftSaveRequest,
+    ScriptProjectCreateRequest,
+    ScriptProjectData,
+    ScriptProjectListItem,
+    ScriptYamlData,
+    ScriptYamlGenerateRequest
 } from "../types/api";
 
 export function previewChapters(text: string, token?: string) {
@@ -25,13 +25,14 @@ export function previewChapters(text: string, token?: string) {
   );
 }
 
-export function generateYaml(request: ScriptYamlGenerateRequest, token?: string) {
+export function generateYaml(request: ScriptYamlGenerateRequest, token?: string, signal?: AbortSignal) {
   return requestApi<ScriptYamlData>(
     "/api/script/drafts/yaml/from-text",
     {
       body: JSON.stringify(request),
       headers: { "Content-Type": "application/json" },
       method: "POST",
+        signal,
       token
     },
     "YAML 生成失败"
