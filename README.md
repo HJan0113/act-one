@@ -9,7 +9,7 @@ Act One 是一个 AI 小说转剧本 YAML 工作台。它面向小说作者和�
 
 - **演示视频（B站）**：[【七牛云-AI小说转剧本】](https://www.bilibili.com/video/BV1CVEh6zEnt/?share_source=copy_web&vd_source=352dbb347a529896debb8b2f5f734a5d)
 - **备用视频链接**：[act-one.mp4](http://hjan.xin:9001/helloqiniu/act-one.mp4)
-- **在线演示**：[hjan.xin/act-one](http://hjan.xin:3000 )
+- **在线演示**：[hjan.xin/act-one](http://hjan.xin:3000 )(由于服务器配置很低，后端ai并行调用可能导致崩溃，建议您本地部署运行，该地址仅做平台演示）
 - **剧本Yaml Schema设计文档**：docs/script-yaml-schema.md
 
 ## 目录
