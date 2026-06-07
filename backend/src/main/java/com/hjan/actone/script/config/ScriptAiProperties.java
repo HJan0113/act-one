@@ -16,9 +16,9 @@ public class ScriptAiProperties {
     @Data
     public static class Timeouts {
 
-        private Duration chapterSummary = Duration.ofSeconds(120);
-        private Duration scenePlanning = Duration.ofSeconds(180);
-        private Duration scriptYamlGeneration = Duration.ofSeconds(240);
+        private Duration chapterSummary = Duration.ofSeconds(300);
+        private Duration scenePlanning = Duration.ofSeconds(480);
+        private Duration scriptYamlGeneration = Duration.ofSeconds(480);
     }
 
     @Data

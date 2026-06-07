@@ -65,24 +65,33 @@ ai:
       timeout: 1000s
 
   chat:
-    default-model: deepseek-v4-flash
+    default-model: qwen3.7-max
     candidates:
       - id: qwen3-max
         provider: bailian
         model: qwen3-max
         enabled: true
-        priority: 5
+        priority: 10
       - id: qwen3.7-max-2026-05-17
         provider: bailian
         model: qwen3.7-max-2026-05-17
         enabled: true
-        priority: 3
+        priority: 7
       - id: deepseek-v4-flash
         provider: bailian
         model: deepseek-v4-flash
         enabled: true
         priority: 1
-
+      - id: qwen3.7-max
+        provider: bailian
+        model: deepseek-v4-flash
+        enabled: true
+        priority: 4
+      - id: qwen3.7-max-2026-05-20
+        provider: bailian
+        model: deepseek-v4-flash
+        enabled: true
+        priority: 2
   selection:
     failure-threshold: 2
     open-duration-ms: 30000
@@ -101,6 +110,6 @@ script:
       yaml-generation-max-pool-size: ${ACT_ONE_SCRIPT_AI_YAML_GENERATION_MAX_POOL_SIZE:0}
       yaml-generation-queue-capacity: ${ACT_ONE_SCRIPT_AI_YAML_GENERATION_QUEUE_CAPACITY:32}
     timeouts:
-      chapter-summary: ${ACT_ONE_SCRIPT_AI_CHAPTER_SUMMARY_TIMEOUT:240s}
-      scene-planning: ${ACT_ONE_SCRIPT_AI_SCENE_PLANNING_TIMEOUT:600s}
-      script-yaml-generation: ${ACT_ONE_SCRIPT_AI_YAML_GENERATION_TIMEOUT:360s}
+      chapter-summary: ${ACT_ONE_SCRIPT_AI_CHAPTER_SUMMARY_TIMEOUT:480s}
+      scene-planning: ${ACT_ONE_SCRIPT_AI_SCENE_PLANNING_TIMEOUT:900s}
+      script-yaml-generation: ${ACT_ONE_SCRIPT_AI_YAML_GENERATION_TIMEOUT:600s}
