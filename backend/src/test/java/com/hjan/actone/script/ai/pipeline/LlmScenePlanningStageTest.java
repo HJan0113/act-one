@@ -48,7 +48,7 @@ class LlmScenePlanningStageTest {
         assertThat(request.temperature()).isEqualTo(0.2D);
         assertThat(request.topP()).isEqualTo(0.8D);
         assertThat(request.maxTokens()).isEqualTo(8192);
-        assertThat(request.timeout()).isEqualTo(Duration.ofSeconds(90));
+        assertThat(request.timeout()).isEqualTo(Duration.ofSeconds(180));
         assertThat(request.messages()).singleElement()
                 .satisfies(message -> {
                     assertThat(message.role()).isEqualTo(ChatRole.USER);

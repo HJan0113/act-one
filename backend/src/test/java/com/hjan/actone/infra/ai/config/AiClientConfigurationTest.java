@@ -100,7 +100,7 @@ class AiClientConfigurationTest {
                         "url: https://dashscope.aliyuncs.com",
                         "api-key: ${BAILIAN_API_KEY:}",
                         "chat: /compatible-mode/v1/chat/completions",
-                        "default-model: deepseek-v4-flash",
+                        "default-model: qwen3.7-plus",
                         "id: qwen3-max",
                         "id: deepseek-v4-flash",
                         "provider: bailian",

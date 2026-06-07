@@ -50,7 +50,7 @@ class LlmChapterSummaryStageTest {
         assertThat(request.temperature()).isEqualTo(0.2D);
         assertThat(request.topP()).isEqualTo(0.8D);
         assertThat(request.maxTokens()).isEqualTo(4096);
-        assertThat(request.timeout()).isEqualTo(Duration.ofSeconds(60));
+        assertThat(request.timeout()).isEqualTo(Duration.ofSeconds(120));
         assertThat(request.messages()).singleElement()
                 .satisfies(message -> {
                     assertThat(message.role()).isEqualTo(ChatRole.USER);
