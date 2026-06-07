@@ -16,6 +16,7 @@ public class AiModelProperties {
     private Map<String, ProviderConfig> providers = new HashMap<>();
     private SpringAiConfig springAi = new SpringAiConfig();
     private ModelGroup chat = new ModelGroup();
+    private Selection selection = new Selection();
 
     @Data
     public static class ProviderConfig {
@@ -35,7 +36,7 @@ public class AiModelProperties {
         private Double temperature = 0.3;
         private Double topP = 0.9;
         private Integer maxTokens = 4096;
-        private Duration timeout = Duration.ofSeconds(60);
+        private Duration timeout = Duration.ofSeconds(120);
     }
 
     @Data
@@ -51,5 +52,11 @@ public class AiModelProperties {
         private String model;
         private Boolean enabled = true;
         private Integer priority = 100;
+    }
+
+    @Data
+    public static class Selection {
+        private Integer failureThreshold = 2;
+        private Long openDurationMs = 30000L;
     }
 }

@@ -16,7 +16,6 @@ import {
     ListChecks,
     PanelLeftClose,
     PanelLeftOpen,
-    Radio,
     RefreshCcw,
     Save,
     ScrollText,
@@ -28,8 +27,8 @@ import {
 import {ActionButton} from "./ActionButton";
 import {EmptyState} from "./EmptyState";
 import {StatusBadge, type StatusTone} from "./StatusBadge";
-import type {ScriptCharacterDensityMetric, ScriptRhythmAnalysisData, ScriptSceneRhythmMetric, ScriptStoryboardData, ShotSuggestion} from "../types/api";
-import type {ScriptCharacterCard, ScriptRelationship, ScriptTraceScene} from "../utils/scriptYamlTrace";
+import type {ScriptRhythmAnalysisData, ScriptSceneRhythmMetric, ScriptStoryboardData} from "../types/api";
+import type {ScriptCharacterCard, ScriptTraceScene} from "../utils/scriptYamlTrace";
 
 export type ChapterOutline = {
   content: string;
@@ -45,13 +44,6 @@ export type DraftListItem = {
   schemaVersion: string;
   title: string;
   validationStatus: string;
-};
-
-export type ProjectListItem = {
-  description?: string | null;
-  projectId: string;
-  status: string;
-  title: string;
 };
 
 export type ProgressStep = {
@@ -73,6 +65,7 @@ export type TaskSummary = {
     progress: number;
     resumeStage?: string;
     retryable?: boolean | null;
+    stage?: string | null;
     status: TaskStatus;
     taskId: string;
     usageSummary?: {
@@ -99,40 +92,6 @@ export type AiChangeSummary = {
   summary: string;
   validationStatus: string;
 };
-
-export type ScriptStyleVariant = "broadcast" | "screenplay" | "short_drama" | "stage";
-
-export const scriptStyleVariantOptions: Array<{
-  detail: string;
-  label: string;
-  prompt: string;
-  value: ScriptStyleVariant;
-}> = [
-  {
-    detail: "保留场景动作、对白、调度，适合常规影视剧本。",
-    label: "影视剧",
-    prompt: "强化镜头可拍性、场面调度、动作节奏和对白表演，保持原剧情事实不变。",
-    value: "screenplay"
-  },
-  {
-    detail: "更短节奏、更强钩子，适合连续反转和高密度冲突。",
-    label: "短剧",
-    prompt: "压缩铺垫，突出开场钩子、场景冲突、反转节点和强情绪对白，保持原剧情事实不变。",
-    value: "short_drama"
-  },
-  {
-    detail: "突出舞台空间、出入场、灯光和可演台词。",
-    label: "舞台剧",
-    prompt: "强化舞台调度、出入场、灯光/道具提示和可朗读台词，保持原剧情事实不变。",
-    value: "stage"
-  },
-  {
-    detail: "以声音叙事，强化旁白、环境音和对白辨识度。",
-    label: "广播剧",
-    prompt: "强化声音线索、环境音、旁白过渡和角色口吻辨识度，保持原剧情事实不变。",
-    value: "broadcast"
-  }
-];
 
 export type WorkspaceView = "archive" | "characters" | "consistency" | "heatmap" | "pipeline" | "preview" | "result" | "source" | "trace";
 
@@ -238,12 +197,6 @@ const workspaceNavItems: Array<{
         label: "人物"
     },
     {
-        detail: "一致性报告",
-        icon: <ShieldCheck size={18} aria-hidden="true"/>,
-        id: "consistency",
-        label: "校验"
-    },
-    {
         detail: "可读全剧本",
         icon: <ScrollText size={18} aria-hidden="true"/>,
         id: "preview",
@@ -317,18 +270,6 @@ export function Sidebar({ author, chapterCount, children, isValid, projectId, ti
       </div>
 
       {children}
-
-      <div className="sidebar__section sidebar__future">
-        <div className="sidebar__section-title">
-          <Sparkles size={16} aria-hidden="true" />
-          <span>AI 扩展槽</span>
-        </div>
-        <div className="future-list">
-          <span>人物表抽取</span>
-          <span>对白精修</span>
-          <span>多版本对比</span>
-        </div>
-      </div>
     </aside>
   );
 }
@@ -408,16 +349,9 @@ function usageSummaryLabel(summary: TaskSummary["usageSummary"]) {
 const stageLabels: Record<string, string> = {
     CHAPTER_SUMMARY: "章节摘要",
     COMPLETED: "转换完成",
-    CONSISTENCY_CHECK: "一致性校验",
-    DIALOGUE_GENERATION: "对白生成",
-    FACT_CONSTRAINT_CHECK: "事实约束",
-    GLOBAL_STORY_EXTRACTION: "全局故事抽取",
     INIT: "任务初始化",
-    PSYCHOLOGICAL_VISUALIZATION: "心理影视化",
     SCENE_PLANNING: "场景规划",
     SCRIPT_YAML_GENERATION: "YAML 生成",
-    SOURCE_TRACE: "源文追溯",
-    YAML_REPAIR: "YAML 自动修复",
     YAML_VALIDATION: "Schema 校验"
 };
 
@@ -462,46 +396,6 @@ export function ChapterList({ activeChapterIndex, chapterCount, chapters, onSele
           size="sm"
           title="暂无章节"
         />
-      )}
-    </section>
-  );
-}
-
-type ProjectListProps = {
-  activeProjectId: string;
-  loading: boolean;
-  onRefresh: () => void;
-  onSelectProject: (projectId: string) => void;
-  projects: ProjectListItem[];
-};
-
-export function ProjectList({ activeProjectId, loading, onRefresh, onSelectProject, projects }: ProjectListProps) {
-  return (
-    <section className="sidebar__section project-list" aria-label="我的项目">
-      <div className="sidebar__section-title">
-        <FolderOpen size={16} aria-hidden="true" />
-        <span>我的项目</span>
-        <button aria-label="刷新我的项目" className="sidebar-icon-button" disabled={loading} onClick={onRefresh} type="button">
-          <RefreshCcw aria-hidden="true" className={loading ? "spin" : ""} size={14} />
-        </button>
-      </div>
-      {projects.length > 0 ? (
-        <div className="project-list__items">
-          {projects.map((project) => (
-            <button
-              className="project-list__item"
-              data-active={project.projectId === activeProjectId}
-              key={project.projectId}
-              onClick={() => onSelectProject(project.projectId)}
-              type="button"
-            >
-              <span>{project.title}</span>
-              <small>{project.status || "draft"}</small>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <EmptyState description="保存草稿后会在这里形成项目入口。" icon={<FolderOpen size={18} />} size="sm" title="暂无项目" />
       )}
     </section>
   );
@@ -664,7 +558,7 @@ export function InputPanel({
   );
 }
 
-type SourceTraceWorkbenchProps = {
+type SourceReviewWorkbenchProps = {
   activeDraftId: string;
   activeSceneId: string;
   chapters: ChapterOutline[];
@@ -675,7 +569,7 @@ type SourceTraceWorkbenchProps = {
   yamlReady: boolean;
 };
 
-export function SourceTraceWorkbench({
+export function SourceReviewWorkbench({
   activeDraftId,
   activeSceneId,
   chapters,
@@ -684,7 +578,7 @@ export function SourceTraceWorkbench({
   refining,
   scenes,
   yamlReady
-}: SourceTraceWorkbenchProps) {
+}: SourceReviewWorkbenchProps) {
   const [refineInstruction, setRefineInstruction] = useState("");
   const selectedScene = scenes.find((scene) => scene.id === activeSceneId) || scenes[0];
   const selectedChapter = selectedScene
@@ -705,45 +599,7 @@ export function SourceTraceWorkbench({
   }
 
   return (
-    <div className="trace-workbench" aria-label="源文追溯三栏对照">
-      <section className="studio-panel trace-panel trace-panel--source" aria-label="小说原文">
-        <div className="panel-heading">
-          <div>
-            <p className="panel-kicker">Novel Source</p>
-            <h2>小说原文</h2>
-          </div>
-          <StatusBadge label={hasExactExcerpt ? "摘录命中" : selectedChapter ? "章节定位" : "待定位"} tone={hasExactExcerpt ? "success" : selectedChapter ? "warning" : "neutral"} />
-        </div>
-
-        <div className="trace-column-body">
-          {selectedChapter ? (
-            <>
-              <div className="trace-source-card">
-                <span>{sourceChapterLabel(selectedChapter)}</span>
-                <strong>{selectedChapter.title}</strong>
-                <small>{selectedScene?.sourceChapterId || selectedChapter.id}</small>
-              </div>
-              {sourceExcerpt ? (
-                <blockquote className="trace-source-excerpt">
-                  <span>scene.source_excerpt</span>
-                  <p>{sourceExcerpt}</p>
-                </blockquote>
-              ) : null}
-              <article className="trace-source-text" aria-label="当前来源章节正文">
-                {renderHighlightedSource(selectedChapter.content, sourceExcerpt)}
-              </article>
-            </>
-          ) : (
-            <EmptyState
-              description="先导入小说并解析章节，或加载包含 chapter_index / source_chapter_id 的草稿。"
-              icon={<BookOpen size={18} />}
-              size="sm"
-              title="暂无可定位原文"
-            />
-          )}
-        </div>
-      </section>
-
+    <div className="trace-workbench" aria-label="来源对照工作台">
       <section className="studio-panel trace-panel trace-panel--yaml" aria-label="YAML 场景索引">
         <div className="panel-heading">
           <div>
@@ -787,7 +643,46 @@ export function SourceTraceWorkbench({
         </div>
       </section>
 
-      <section className="studio-panel trace-panel trace-panel--script" aria-label="可读剧本">
+      <div className="trace-detail-stack">
+        <section className="studio-panel trace-panel trace-panel--source" aria-label="小说原文">
+          <div className="panel-heading">
+            <div>
+              <p className="panel-kicker">Novel Source</p>
+              <h2>小说原文</h2>
+            </div>
+            <StatusBadge label={hasExactExcerpt ? "摘录命中" : selectedChapter ? "章节定位" : "待定位"} tone={hasExactExcerpt ? "success" : selectedChapter ? "warning" : "neutral"} />
+          </div>
+
+          <div className="trace-column-body">
+            {selectedChapter ? (
+              <>
+                <div className="trace-source-card">
+                  <span>{sourceChapterLabel(selectedChapter)}</span>
+                  <strong>{selectedChapter.title}</strong>
+                  <small>{selectedScene?.sourceChapterId || selectedChapter.id}</small>
+                </div>
+                {sourceExcerpt ? (
+                  <blockquote className="trace-source-excerpt">
+                    <span>scene.source_excerpt</span>
+                    <p>{sourceExcerpt}</p>
+                  </blockquote>
+                ) : null}
+                <article className="trace-source-text" aria-label="当前来源章节正文">
+                  {renderHighlightedSource(selectedChapter.content, sourceExcerpt)}
+                </article>
+              </>
+            ) : (
+              <EmptyState
+                description="先导入小说并解析章节，或加载包含 chapter_index / source_chapter_id 的草稿。"
+                icon={<BookOpen size={18} />}
+                size="sm"
+                title="暂无可定位原文"
+              />
+            )}
+          </div>
+        </section>
+
+        <section className="studio-panel trace-panel trace-panel--script" aria-label="可读剧本">
         <div className="panel-heading">
           <div>
             <p className="panel-kicker">Readable Script</p>
@@ -865,13 +760,13 @@ export function SourceTraceWorkbench({
                 </ActionButton>
               </section>
 
-              <section className="visualization-candidates" aria-label="心理描写局部影视化候选">
+              <section className="visualization-candidates" aria-label="心理描写可拍动作候选">
                 <div className="visualization-candidates__heading">
-                  <span>心理影视化</span>
-                  <strong>{buildPsychologicalCandidates(selectedScene).length} 个候选</strong>
+                  <span>可拍动作候选</span>
+                  <strong>{buildFilmableCandidates(selectedScene).length} 个候选</strong>
                 </div>
                 <div className="visualization-candidates__list">
-                  {buildPsychologicalCandidates(selectedScene).map((candidate) => (
+                  {buildFilmableCandidates(selectedScene).map((candidate) => (
                     <article className="visualization-candidate" key={candidate.type}>
                       <header>
                         <span>{candidate.type}</span>
@@ -899,7 +794,8 @@ export function SourceTraceWorkbench({
             />
           )}
         </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
@@ -939,14 +835,14 @@ function renderHighlightedSource(content: string, excerpt: string): ReactNode {
   );
 }
 
-type PsychologicalCandidate = {
+type FilmableCandidate = {
   after: string;
   before: string;
   title: string;
   type: string;
 };
 
-function buildPsychologicalCandidates(scene: ScriptTraceScene): PsychologicalCandidate[] {
+function buildFilmableCandidates(scene: ScriptTraceScene): FilmableCandidate[] {
   const before = compactCandidateText(scene.action || scene.sourceExcerpt || scene.scenePurpose || scene.title);
   const evidence = compactCandidateText(scene.sourceExcerpt || scene.action || scene.title);
   const location = scene.location && scene.location !== "待补充" ? scene.location : "现场";
@@ -984,12 +880,8 @@ function compactCandidateText(value: string) {
 }
 
 type CharacterWorkbenchProps = {
-  activeDraftId: string;
   characters: ScriptCharacterCard[];
-  relationships: ScriptRelationship[];
-  rewritingVoice: boolean;
   scenes: ScriptTraceScene[];
-  onRewriteVoice: (speaker: string, instruction: string) => Promise<void> | void;
   yamlReady: boolean;
 };
 
@@ -998,46 +890,17 @@ type CharacterStat = {
   sceneCount: number;
 };
 
-type RelationshipView = {
-  description: string;
-  id: string;
-  sourceChapterIds: string[];
-  sourceName: string;
-  targetName: string;
-  type: string;
-};
-
 export function CharacterWorkbench({
-  activeDraftId,
   characters,
-  onRewriteVoice,
-  relationships,
-  rewritingVoice,
   scenes,
   yamlReady
 }: CharacterWorkbenchProps) {
-  const [voiceInstruction, setVoiceInstruction] = useState("");
-  const [voiceSpeaker, setVoiceSpeaker] = useState("");
   const candidateCharacters = characters.length > 0 ? characters : deriveCharacterCandidates(scenes);
   const usingCandidates = characters.length === 0 && candidateCharacters.length > 0;
   const characterStats = createCharacterStats(candidateCharacters, scenes);
-  const relationshipViews =
-    relationships.length > 0
-      ? relationships.map((relationship) => createRelationshipView(relationship, candidateCharacters))
-      : inferRelationshipViews(candidateCharacters, scenes);
-  const selectedVoiceSpeaker = voiceSpeaker || candidateCharacters[0]?.name || "";
-  const canRewriteVoice = Boolean(activeDraftId && selectedVoiceSpeaker && voiceInstruction.trim() && !rewritingVoice);
-
-  async function submitVoiceRewrite() {
-    if (!canRewriteVoice) {
-      return;
-    }
-    await onRewriteVoice(selectedVoiceSpeaker, voiceInstruction.trim());
-    setVoiceInstruction("");
-  }
 
   return (
-    <div className="character-workbench" aria-label="人物卡片与关系数据">
+    <div className="character-workbench" aria-label="人物卡片">
       <section className="studio-panel character-panel" aria-label="人物卡片">
         <div className="panel-heading">
           <div>
@@ -1101,88 +964,6 @@ export function CharacterWorkbench({
           )}
         </div>
       </section>
-
-      <section className="studio-panel relationship-panel" aria-label="人物关系数据">
-        <div className="panel-heading">
-          <div>
-            <p className="panel-kicker">Relationship Data</p>
-            <h2>关系线索</h2>
-          </div>
-          <StatusBadge
-            label={relationships.length > 0 ? `${relationships.length} 条结构化关系` : relationshipViews.length > 0 ? `${relationshipViews.length} 条共现线索` : "待补充"}
-            tone={relationshipViews.length > 0 ? "info" : "neutral"}
-          />
-        </div>
-
-        <div className="relationship-list">
-          <section className="voice-rewrite-box" aria-label="对白口吻一致性与重写">
-            <div className="voice-rewrite-box__heading">
-              <span>口吻重写</span>
-              <strong>{activeDraftId ? "多场景 patch" : "需先保存草稿"}</strong>
-            </div>
-            <label>
-              <span>人物</span>
-              <select
-                disabled={!activeDraftId || rewritingVoice || candidateCharacters.length === 0}
-                onChange={(event) => setVoiceSpeaker(event.target.value)}
-                value={selectedVoiceSpeaker}
-              >
-                {candidateCharacters.length > 0 ? (
-                  candidateCharacters.map((character) => (
-                    <option key={characterIdentity(character)} value={character.name}>
-                      {character.name}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">暂无人物</option>
-                )}
-              </select>
-            </label>
-            <textarea
-              disabled={!activeDraftId || rewritingVoice || candidateCharacters.length === 0}
-              maxLength={1000}
-              onChange={(event) => setVoiceInstruction(event.target.value)}
-              placeholder="例如：统一为冷静、短句、带观察细节的侦查口吻，不改变事实。"
-              value={voiceInstruction}
-            />
-            <ActionButton
-              disabled={!canRewriteVoice}
-              icon={<Sparkles aria-hidden="true" className={rewritingVoice ? "spin" : ""} size={15} />}
-              onClick={submitVoiceRewrite}
-              size="sm"
-              variant="primary"
-            >
-              重写对白
-            </ActionButton>
-          </section>
-
-          {relationshipViews.length > 0 ? (
-            relationshipViews.map((relationship) => (
-              <article className="relationship-item" key={relationship.id}>
-                <header>
-                  <span>{relationship.type}</span>
-                  <strong>{relationship.sourceName} → {relationship.targetName}</strong>
-                </header>
-                <p>{relationship.description || "关系描述待补充。"}</p>
-                {relationship.sourceChapterIds.length > 0 ? (
-                  <div className="relationship-sources">
-                    {relationship.sourceChapterIds.slice(0, 5).map((chapterId) => (
-                      <span key={chapterId}>{chapterIdLabel(chapterId) || chapterId}</span>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            ))
-          ) : (
-            <EmptyState
-              description="后续可由 AI 输出 relationships；当前页面已预留结构化关系和场景共现两种展示。"
-              icon={<ShieldCheck size={18} />}
-              size="sm"
-              title="暂无关系数据"
-            />
-          )}
-        </div>
-      </section>
     </div>
   );
 }
@@ -1230,52 +1011,6 @@ function createCharacterStats(characters: ScriptCharacterCard[], scenes: ScriptT
   });
 
   return stats;
-}
-
-function inferRelationshipViews(characters: ScriptCharacterCard[], scenes: ScriptTraceScene[]): RelationshipView[] {
-  const relationships = new Map<string, RelationshipView & {sceneIds: Set<string>}>();
-
-  scenes.forEach((scene) => {
-    const participants = characters.filter((character) => sceneMentionsCharacter(scene, character));
-    for (let sourceIndex = 0; sourceIndex < participants.length; sourceIndex += 1) {
-      for (let targetIndex = sourceIndex + 1; targetIndex < participants.length; targetIndex += 1) {
-        const source = participants[sourceIndex];
-        const target = participants[targetIndex];
-        const key = [characterIdentity(source), characterIdentity(target)].sort().join("|");
-        const current = relationships.get(key);
-        const next = current || {
-          description: "",
-          id: key,
-          sceneIds: new Set<string>(),
-          sourceChapterIds: [],
-          sourceName: source.name,
-          targetName: target.name,
-          type: "场景共现"
-        };
-        next.sceneIds.add(scene.id);
-        next.sourceChapterIds = Array.from(new Set([...next.sourceChapterIds, scene.sourceChapterId].filter(Boolean)));
-        next.description = `共同出现在 ${next.sceneIds.size} 个场景中，可作为关系图谱的候选边。`;
-        relationships.set(key, next);
-      }
-    }
-  });
-
-  return Array.from(relationships.values()).map(({sceneIds: _sceneIds, ...relationship}) => relationship);
-}
-
-function createRelationshipView(relationship: ScriptRelationship, characters: ScriptCharacterCard[]): RelationshipView {
-  return {
-    description: relationship.description,
-    id: relationship.id,
-    sourceChapterIds: relationship.sourceChapterIds,
-    sourceName: characterNameById(relationship.sourceCharacterId, characters),
-    targetName: characterNameById(relationship.targetCharacterId, characters),
-    type: relationship.type
-  };
-}
-
-function characterNameById(characterId: string, characters: ScriptCharacterCard[]) {
-  return characters.find((character) => character.id === characterId)?.name || characterId || "未知人物";
 }
 
 function sceneMentionsCharacter(scene: ScriptTraceScene, character: ScriptCharacterCard) {
@@ -1636,7 +1371,7 @@ export function AiChangeSummaryPanel({summary}: AiChangeSummaryPanelProps) {
         </div>
       ) : (
         <EmptyState
-          description="执行局部精修或对白口吻重写后，这里会显示 patch 摘要、风险和改动类型。"
+          description="执行局部精修后，这里会显示 patch 摘要、风险和改动类型。"
           icon={<ClipboardCopy size={18} />}
           size="sm"
           title="暂无 AI 改动"
@@ -1644,74 +1379,6 @@ export function AiChangeSummaryPanel({summary}: AiChangeSummaryPanelProps) {
       )}
     </section>
   );
-}
-
-type StyleVariantPanelProps = {
-  canCreate: boolean;
-  creatingStyle: ScriptStyleVariant | "";
-  draftCount: number;
-  onCreateVariant: (style: ScriptStyleVariant) => void;
-};
-
-export function StyleVariantPanel({
-  canCreate,
-  creatingStyle,
-  draftCount,
-  onCreateVariant
-}: StyleVariantPanelProps) {
-  return (
-    <section className="studio-panel style-variant-panel" aria-label="多版本风格草稿">
-      <div className="panel-heading">
-        <div>
-          <p className="panel-kicker">Style Revisions</p>
-          <h2>风格版本</h2>
-        </div>
-        <StatusBadge label={draftCount > 0 ? `${draftCount} 个草稿` : "未保存"} tone={draftCount > 0 ? "info" : "neutral"} />
-      </div>
-
-      <div className="style-variant-body">
-        <p>基于当前结构化底稿另存为新草稿，原稿不会被覆盖。</p>
-        <div className="style-variant-grid">
-          {scriptStyleVariantOptions.map((option) => {
-            const loading = creatingStyle === option.value;
-            return (
-              <article className="style-variant-card" key={option.value}>
-                <span className="style-variant-card__icon" aria-hidden="true">
-                  {styleVariantIcon(option.value)}
-                </span>
-                <div>
-                  <strong>{option.label}</strong>
-                  <p>{option.detail}</p>
-                </div>
-                <ActionButton
-                  disabled={!canCreate || Boolean(creatingStyle)}
-                  icon={loading ? <RefreshCcw aria-hidden="true" className="spin" size={15} /> : <Sparkles aria-hidden="true" size={15} />}
-                  onClick={() => onCreateVariant(option.value)}
-                  size="sm"
-                  variant="secondary"
-                >
-                  {loading ? "生成中" : "生成"}
-                </ActionButton>
-              </article>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function styleVariantIcon(value: ScriptStyleVariant) {
-  if (value === "screenplay") {
-    return <Film size={17} />;
-  }
-  if (value === "broadcast") {
-    return <Radio size={17} />;
-  }
-  if (value === "stage") {
-    return <BookOpen size={17} />;
-  }
-  return <Sparkles size={17} />;
 }
 
 type RhythmAnalysisPanelProps = {
@@ -1864,13 +1531,9 @@ function analysisModeLabel(mode?: string) {
 }
 
 type ScriptPreviewPanelProps = {
-  activeDraftId: string;
   canExport: boolean;
-  canRefreshDrafts: boolean;
   canSave: boolean;
     taskSummary: TaskSummary;
-  draftLoading: boolean;
-  drafts: DraftListItem[];
   draftId: string;
   exportLoading: boolean;
   fallbackReason: string;
@@ -1878,29 +1541,19 @@ type ScriptPreviewPanelProps = {
   generatedTitle: string;
   onCopyYaml: () => void;
   onExportYaml: () => void;
-  onLoadDraft: (draftId: string) => void;
-  onRefreshDrafts: () => void;
   onSaveDraft: () => void;
   onYamlChange: (value: string) => void;
-  projectId: string;
   saveLoading: boolean;
-  schemaChecks: ValidationCheck[];
   schemaVersion: string;
-  validationError: string;
-  validationStatus: string;
   yaml: string;
   yamlMessage: string;
   yamlPlaceholder: string;
 };
 
 export function ScriptPreviewPanel({
-  activeDraftId,
   canExport,
-  canRefreshDrafts,
   canSave,
                                        taskSummary,
-  draftLoading,
-  drafts,
   draftId,
   exportLoading,
   fallbackReason,
@@ -1908,16 +1561,10 @@ export function ScriptPreviewPanel({
   generatedTitle,
   onCopyYaml,
   onExportYaml,
-  onLoadDraft,
-  onRefreshDrafts,
   onSaveDraft,
   onYamlChange,
-  projectId,
   saveLoading,
-  schemaChecks,
   schemaVersion,
-  validationError,
-  validationStatus,
   yaml,
   yamlMessage,
   yamlPlaceholder
@@ -1946,15 +1593,6 @@ export function ScriptPreviewPanel({
             icon={<FileDown aria-hidden="true" className={exportLoading ? "spin" : ""} size={15} />}
             iconOnly
             onClick={onExportYaml}
-            size="sm"
-            variant="ghost"
-          />
-          <ActionButton
-            aria-label="刷新草稿列表"
-            disabled={!canRefreshDrafts}
-            icon={<RefreshCcw aria-hidden="true" className={draftLoading ? "spin" : ""} size={15} />}
-            iconOnly
-            onClick={onRefreshDrafts}
             size="sm"
             variant="ghost"
           />
@@ -2011,42 +1649,6 @@ export function ScriptPreviewPanel({
         <span>{yamlMessage}</span>
       </div>
 
-      <SchemaValidationPanel checks={schemaChecks} error={validationError} status={validationStatus} yamlReady={Boolean(yaml.trim())} />
-
-      <section className="draft-history" aria-label="已保存草稿">
-        <div className="draft-history__heading">
-          <span>
-            <History size={15} aria-hidden="true" />
-            保存记录
-          </span>
-          {projectId ? <strong>{drafts.length} 条</strong> : null}
-        </div>
-        <div className="draft-list">
-          {drafts.length > 0 ? (
-            drafts.map((draft) => (
-              <button
-                className="draft-item"
-                data-active={draft.draftId === activeDraftId}
-                key={draft.draftId}
-                onClick={() => onLoadDraft(draft.draftId)}
-                type="button"
-              >
-                <span>{draft.title}</span>
-                <small>
-                  {draft.schemaVersion} / {draft.validationStatus}
-                </small>
-              </button>
-            ))
-          ) : (
-            <EmptyState
-              description="保存后可在此重新加载草稿版本。"
-              icon={<History size={18} />}
-              size="sm"
-              title="暂无保存记录"
-            />
-          )}
-        </div>
-      </section>
     </aside>
   );
 }
@@ -2131,7 +1733,7 @@ type SchemaValidationPanelProps = {
 
 export function SchemaValidationPanel({ checks, error, status, yamlReady }: SchemaValidationPanelProps) {
   return (
-    <section className="schema-panel" aria-label="Schema 校验结果">
+    <section className="studio-panel schema-panel" aria-label="Schema 校验结果">
       <div className="schema-panel__heading">
         <span>
           <ListChecks size={15} aria-hidden="true" />
@@ -2150,6 +1752,74 @@ export function SchemaValidationPanel({ checks, error, status, yamlReady }: Sche
             </div>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+type DraftHistoryPanelProps = {
+  activeDraftId: string;
+  canRefreshDrafts: boolean;
+  draftLoading: boolean;
+  drafts: DraftListItem[];
+  onLoadDraft: (draftId: string) => void;
+  onRefreshDrafts: () => void;
+  projectId: string;
+};
+
+export function DraftHistoryPanel({
+  activeDraftId,
+  canRefreshDrafts,
+  draftLoading,
+  drafts,
+  onLoadDraft,
+  onRefreshDrafts,
+  projectId
+}: DraftHistoryPanelProps) {
+  return (
+    <section className="studio-panel draft-history" aria-label="已保存草稿">
+      <div className="draft-history__heading">
+        <span>
+          <History size={15} aria-hidden="true" />
+          保存记录
+        </span>
+        <div className="draft-history__actions">
+          {projectId ? <strong>{drafts.length} 条</strong> : null}
+          <ActionButton
+            aria-label="刷新草稿列表"
+            disabled={!canRefreshDrafts}
+            icon={<RefreshCcw aria-hidden="true" className={draftLoading ? "spin" : ""} size={15} />}
+            iconOnly
+            onClick={onRefreshDrafts}
+            size="sm"
+            variant="ghost"
+          />
+        </div>
+      </div>
+      <div className="draft-list">
+        {drafts.length > 0 ? (
+          drafts.map((draft) => (
+            <button
+              className="draft-item"
+              data-active={draft.draftId === activeDraftId}
+              key={draft.draftId}
+              onClick={() => onLoadDraft(draft.draftId)}
+              type="button"
+            >
+              <span>{draft.title}</span>
+              <small>
+                {draft.schemaVersion} / {draft.validationStatus}
+              </small>
+            </button>
+          ))
+        ) : (
+          <EmptyState
+            description="保存后可在此重新加载草稿版本。"
+            icon={<History size={18} />}
+            size="sm"
+            title="暂无保存记录"
+          />
+        )}
       </div>
     </section>
   );
@@ -2230,9 +1900,6 @@ type ConflictHeatmapPanelProps = {
 
 export function ConflictHeatmapPanel({ analysis, onSelectScene, yamlReady }: ConflictHeatmapPanelProps) {
   const maxConflict = analysis ? Math.max(1, ...analysis.scenes.map((scene) => scene.conflictScore)) : 5;
-  const maxDensity = analysis
-    ? Math.max(1, ...analysis.characterDensity.map((char) => char.sceneCount))
-    : 1;
 
   return (
     <div className="heatmap-workbench" aria-label="冲突热力图与角色出场密度">

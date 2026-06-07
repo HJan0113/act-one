@@ -100,11 +100,6 @@ class ScriptYamlGenerationServiceTest {
                 ruleBasedDraftService,
                 stages,
                 stages,
-                stages,
-                stages,
-                stages,
-                stages,
-                stages,
                 stages
         );
     }

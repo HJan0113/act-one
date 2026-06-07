@@ -10,29 +10,11 @@ public enum PromptTemplateId {
             "prompt/v1/chapter-summary.st",
             List.of("chapter_id", "chapter_index", "chapter_title", "chapter_content")
     ),
-    GLOBAL_STORY_EXTRACTION(
-            "global-story-extraction",
-            "1.0.0",
-            "prompt/v1/global-story-extraction.st",
-            List.of("chapter_summaries", "existing_global_story_state")
-    ),
     SCENE_PLANNING(
             "scene-planning",
             "1.0.0",
             "prompt/v1/scene-planning.st",
-            List.of("chapter_summaries", "global_story_state")
-    ),
-    CINEMATIC_TREATMENT(
-            "cinematic-treatment",
-            "1.0.0",
-            "prompt/v1/cinematic-treatment.st",
-            List.of("chapter_summaries", "global_story_state", "scene_plan")
-    ),
-    DIALOGUE_GENERATION(
-            "dialogue-generation",
-            "1.0.0",
-            "prompt/v1/dialogue-generation.st",
-            List.of("global_story_state", "scene_plan", "cinematic_treatment")
+            List.of("chapter_summaries")
     ),
     SCRIPT_YAML_GENERATION(
             "script-yaml-generation",
@@ -43,11 +25,9 @@ public enum PromptTemplateId {
                     "author",
                     "logline",
                     "chapter_count",
-                    "global_story_state",
-                    "scene_plans",
-                    "cinematic_treatment",
-                    "dialogue_draft",
-                    "source_trace",
+                    "generation_scope",
+                    "chapter_summaries",
+                    "scene_plan",
                     "schema_summary"
             )
     ),
@@ -68,12 +48,6 @@ public enum PromptTemplateId {
             "1.0.0",
             "prompt/v1/rhythm-analysis.st",
             List.of("scenes_metrics_json", "schema_summary")
-    ),
-    YAML_REPAIR(
-            "yaml-repair",
-            "1.0.0",
-            "prompt/v1/yaml-repair.st",
-            List.of("invalid_yaml", "validation_errors", "schema_summary", "chapter_count")
     ),
     STORYBOARD_SUGGESTION(
             "storyboard-suggestion",

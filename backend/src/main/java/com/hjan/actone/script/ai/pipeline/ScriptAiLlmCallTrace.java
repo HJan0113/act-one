@@ -10,8 +10,16 @@ final class ScriptAiLlmCallTrace {
     }
 
     static Scope open(String taskId, PipelineStage stage, int retry) {
+        return bind(new Trace(taskId, stage, retry));
+    }
+
+    static Scope bind(Trace trace) {
         Trace previous = CURRENT.get();
-        CURRENT.set(new Trace(taskId, stage, retry));
+        if (trace == null) {
+            CURRENT.remove();
+        } else {
+            CURRENT.set(trace);
+        }
         return () -> {
             if (previous == null) {
                 CURRENT.remove();

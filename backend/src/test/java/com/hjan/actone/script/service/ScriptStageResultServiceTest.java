@@ -5,7 +5,6 @@ import com.hjan.actone.common.context.LoginUser;
 import com.hjan.actone.common.context.UserContext;
 import com.hjan.actone.common.exception.ClientException;
 import com.hjan.actone.script.ai.model.ChapterSummary;
-import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineStage;
 import com.hjan.actone.script.ai.model.ScenePlan;
 import com.hjan.actone.script.ai.model.SourceEvidence;
@@ -150,7 +149,7 @@ class ScriptStageResultServiceTest {
     void loadMissingStageReturnsEmpty() {
         when(stageResultMapper.selectOne(any())).thenReturn(null);
 
-        Optional<GlobalStoryState> loaded = service.loadGlobalStoryState("task_1");
+        Optional<ScenePlan> loaded = service.loadScenePlan("task_1");
 
         assertThat(loaded).isEmpty();
     }
@@ -170,7 +169,7 @@ class ScriptStageResultServiceTest {
     void saveRejectsMissingTask() {
         when(taskMapper.selectById("missing")).thenReturn(null);
 
-        assertThatThrownBy(() -> service.saveGlobalStoryState("missing", GlobalStoryState.empty()))
+        assertThatThrownBy(() -> service.saveScenePlan("missing", scenePlan()))
                 .isInstanceOf(ClientException.class)
                 .hasMessageContaining("转换任务不存在");
     }
@@ -180,9 +179,6 @@ class ScriptStageResultServiceTest {
         assertThatThrownBy(() -> service.saveChapterSummaries("task_1", List.of()))
                 .isInstanceOf(ClientException.class)
                 .hasMessageContaining("章节摘要不能为空");
-        assertThatThrownBy(() -> service.saveGlobalStoryState("task_1", null))
-                .isInstanceOf(ClientException.class)
-                .hasMessageContaining("全局故事状态不能为空");
         assertThatThrownBy(() -> service.saveScenePlan("task_1", null))
                 .isInstanceOf(ClientException.class)
                 .hasMessageContaining("场景规划不能为空");

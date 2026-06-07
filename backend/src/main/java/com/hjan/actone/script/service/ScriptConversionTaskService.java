@@ -281,17 +281,8 @@ public class ScriptConversionTaskService {
     private PipelineStage resolveResumeStage(PipelineStage failedStage) {
         return switch (failedStage) {
             case INIT, CHAPTER_SUMMARY -> PipelineStage.CHAPTER_SUMMARY;
-            case GLOBAL_STORY_EXTRACTION -> PipelineStage.GLOBAL_STORY_EXTRACTION;
             case SCENE_PLANNING -> PipelineStage.SCENE_PLANNING;
-            case PSYCHOLOGICAL_VISUALIZATION,
-                 DIALOGUE_GENERATION,
-                 SOURCE_TRACE,
-                 CONSISTENCY_CHECK,
-                 SCRIPT_YAML_GENERATION,
-                 YAML_VALIDATION,
-                 FACT_CONSTRAINT_CHECK,
-                 YAML_REPAIR,
-                 COMPLETED -> PipelineStage.PSYCHOLOGICAL_VISUALIZATION;
+            case SCRIPT_YAML_GENERATION, YAML_VALIDATION, COMPLETED -> PipelineStage.SCRIPT_YAML_GENERATION;
         };
     }
 

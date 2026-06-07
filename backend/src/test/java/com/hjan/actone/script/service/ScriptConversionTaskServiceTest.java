@@ -178,11 +178,11 @@ class ScriptConversionTaskServiceTest {
         assertThat(response.failedStage()).isEqualTo(PipelineStage.SCRIPT_YAML_GENERATION.name());
         assertThat(response.errorType()).isEqualTo(IllegalStateException.class.getSimpleName());
         assertThat(response.retryable()).isTrue();
-        assertThat(response.resumeStage()).isEqualTo(PipelineStage.PSYCHOLOGICAL_VISUALIZATION.name());
+        assertThat(response.resumeStage()).isEqualTo(PipelineStage.SCRIPT_YAML_GENERATION.name());
         assertThat(response.message())
                 .contains("errorType=IllegalStateException")
                 .contains("retryable=true")
-                .contains("resumeStage=PSYCHOLOGICAL_VISUALIZATION");
+                .contains("resumeStage=SCRIPT_YAML_GENERATION");
     }
 
     @Test
@@ -193,7 +193,7 @@ class ScriptConversionTaskServiceTest {
         task.setStartTime(LocalDateTime.of(2026, 6, 6, 11, 0));
         task.setEndTime(LocalDateTime.of(2026, 6, 6, 12, 0));
         task.setErrorMessage("provider timeout");
-        task.setMessage("stage=SCRIPT_YAML_GENERATION; errorType=IllegalStateException; retryable=true; resumeStage=PSYCHOLOGICAL_VISUALIZATION; 转换失败");
+        task.setMessage("stage=SCRIPT_YAML_GENERATION; errorType=IllegalStateException; retryable=true; resumeStage=SCRIPT_YAML_GENERATION; 转换失败");
         when(taskMapper.selectById("task_1")).thenReturn(task);
 
         var response = service.retryFailed("task_1");
@@ -204,7 +204,7 @@ class ScriptConversionTaskServiceTest {
         assertThat(response.startTime()).isNull();
         assertThat(response.endTime()).isNull();
         assertThat(response.message())
-                .contains("stage=PSYCHOLOGICAL_VISUALIZATION")
+                .contains("stage=SCRIPT_YAML_GENERATION")
                 .contains("retryOf=SCRIPT_YAML_GENERATION")
                 .contains("从安全阶段继续");
         verify(taskMapper).updateById(task);

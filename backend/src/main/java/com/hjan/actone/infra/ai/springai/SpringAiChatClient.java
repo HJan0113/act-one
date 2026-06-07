@@ -9,6 +9,7 @@ import com.hjan.actone.infra.ai.ChatClient;
 import com.hjan.actone.infra.ai.config.AiModelProperties;
 import com.hjan.actone.infra.ai.error.ModelClientErrorType;
 import com.hjan.actone.infra.ai.error.ModelClientException;
+import com.hjan.actone.infra.ai.model.ModelTarget;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -41,7 +42,6 @@ import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -51,16 +51,19 @@ public class SpringAiChatClient implements ChatClient {
 
     private static final String DEFAULT_EMBEDDINGS_PATH = "/v1/embeddings";
 
-    private final AiModelProperties properties;
+    private final String providerId;
+    private final AiModelProperties.ChatSettings settings;
     private final Function<Duration, RestClient.Builder> restClientBuilderFactory;
 
-    public SpringAiChatClient(AiModelProperties properties) {
-        this(properties, SpringAiChatClient::newRestClientBuilder);
+    public SpringAiChatClient(String providerId, AiModelProperties.ChatSettings settings) {
+        this(providerId, settings, SpringAiChatClient::newRestClientBuilder);
     }
 
-    SpringAiChatClient(AiModelProperties properties,
+    SpringAiChatClient(String providerId,
+                       AiModelProperties.ChatSettings settings,
                        Function<Duration, RestClient.Builder> restClientBuilderFactory) {
-        this.properties = Objects.requireNonNull(properties, "Spring AI 配置不能为空");
+        this.providerId = requireText(providerId, "Spring AI provider id 未配置");
+        this.settings = Objects.requireNonNull(settings, "Spring AI chat settings 不能为空");
         this.restClientBuilderFactory = Objects.requireNonNull(
                 restClientBuilderFactory,
                 "RestClient.Builder 工厂不能为空"
@@ -69,23 +72,22 @@ public class SpringAiChatClient implements ChatClient {
 
     @Override
     public String provider() {
-        return "spring-ai-openai-compatible";
+        return providerId;
     }
 
     @Override
-    public ChatResponse chat(ChatRequest request) {
+    public ChatResponse chat(ChatRequest request, ModelTarget target) {
         Objects.requireNonNull(request, "ChatRequest 不能为空");
+        Objects.requireNonNull(target, "ModelTarget 不能为空");
         try {
-            ModelTarget target = resolveTarget(request);
-            String model = target.model();
-            OpenAiChatOptions options = createOptions(request, model);
+            OpenAiChatOptions options = createOptions(request, target.model());
             OpenAiChatModel chatModel = createModel(target, resolveTimeout(request), options);
             org.springframework.ai.chat.model.ChatResponse response = org.springframework.ai.chat.client.ChatClient
                     .create(chatModel)
                     .prompt(new Prompt(toMessages(request), options))
                     .call()
                     .chatResponse();
-            return toResponse(response, model);
+            return toResponse(response, target.model());
         } catch (ModelClientException ex) {
             throw ex;
         } catch (RuntimeException ex) {
@@ -96,11 +98,19 @@ public class SpringAiChatClient implements ChatClient {
     private OpenAiChatModel createModel(ModelTarget target,
                                         Duration timeout,
                                         OpenAiChatOptions options) {
+        AiModelProperties.ProviderConfig provider = target.provider();
+        if (provider == null) {
+            throw new ModelClientException(
+                    "Spring AI provider 未配置: " + target.id(),
+                    ModelClientErrorType.CONFIGURATION_ERROR,
+                    null
+            );
+        }
         OpenAiApi api = OpenAiApi.builder()
-                .baseUrl(requireText(target.provider().getUrl(), "Spring AI provider url 未配置"))
-                .apiKey(requireText(target.provider().getApiKey(), "Spring AI provider apiKey 未配置"))
-                .completionsPath(resolveEndpoint(target.provider(), "chat", "/v1/chat/completions"))
-                .embeddingsPath(resolveEndpoint(target.provider(), "embedding", DEFAULT_EMBEDDINGS_PATH))
+                .baseUrl(requireText(provider.getUrl(), "Spring AI provider url 未配置"))
+                .apiKey(requireText(provider.getApiKey(), "Spring AI provider apiKey 未配置"))
+                .completionsPath(resolveEndpoint(provider, "chat", "/v1/chat/completions"))
+                .embeddingsPath(resolveEndpoint(provider, "embedding", DEFAULT_EMBEDDINGS_PATH))
                 .restClientBuilder(restClientBuilderFactory.apply(timeout))
                 .responseErrorHandler(new ModelResponseErrorHandler())
                 .build();
@@ -112,7 +122,6 @@ public class SpringAiChatClient implements ChatClient {
     }
 
     private OpenAiChatOptions createOptions(ChatRequest request, String model) {
-        AiModelProperties.ChatSettings settings = properties.getSpringAi().getChat();
         OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder()
                 .model(model)
                 .temperature(request.temperature() == null ? settings.getTemperature() : request.temperature())
@@ -223,49 +232,8 @@ public class SpringAiChatClient implements ChatClient {
         );
     }
 
-    private ModelTarget resolveTarget(ChatRequest request) {
-        AiModelProperties.ModelGroup chat = properties.getChat();
-        if (chat == null || chat.getCandidates() == null || chat.getCandidates().isEmpty()) {
-            throw new ModelClientException(
-                    "Spring AI chat candidates 未配置",
-                    ModelClientErrorType.CONFIGURATION_ERROR,
-                    null
-            );
-        }
-        AiModelProperties.ModelCandidate candidate = chat.getCandidates().stream()
-                .filter(Objects::nonNull)
-                .filter(item -> !Boolean.FALSE.equals(item.getEnabled()))
-                .filter(item -> Objects.equals(item.getId(), chat.getDefaultModel()))
-                .findFirst()
-                .orElseGet(() -> chat.getCandidates().stream()
-                        .filter(Objects::nonNull)
-                        .filter(item -> !Boolean.FALSE.equals(item.getEnabled()))
-                        .min(Comparator.comparing(
-                                AiModelProperties.ModelCandidate::getPriority,
-                                Comparator.nullsLast(Integer::compareTo)
-                        ))
-                        .orElseThrow(() -> new ModelClientException(
-                                "Spring AI 没有可用的 chat candidate",
-                                ModelClientErrorType.CONFIGURATION_ERROR,
-                                null
-                        )));
-
-        AiModelProperties.ProviderConfig provider = properties.getProviders().get(candidate.getProvider());
-        if (provider == null) {
-            throw new ModelClientException(
-                    "Spring AI provider 未配置: " + candidate.getProvider(),
-                    ModelClientErrorType.CONFIGURATION_ERROR,
-                    null
-            );
-        }
-        String model = StringUtils.hasText(request.model())
-                ? request.model().trim()
-                : requireText(candidate.getModel(), "Spring AI candidate model 未配置");
-        return new ModelTarget(model, provider);
-    }
-
     private Duration resolveTimeout(ChatRequest request) {
-        Duration configured = properties.getSpringAi().getChat().getTimeout();
+        Duration configured = settings.getTimeout();
         if (configured == null || configured.isZero() || configured.isNegative()) {
             throw new ModelClientException(
                     "Spring AI timeout 配置无效",
@@ -339,11 +307,5 @@ public class SpringAiChatClient implements ChatClient {
                     status.value()
             );
         }
-    }
-
-    private record ModelTarget(
-            String model,
-            AiModelProperties.ProviderConfig provider
-    ) {
     }
 }

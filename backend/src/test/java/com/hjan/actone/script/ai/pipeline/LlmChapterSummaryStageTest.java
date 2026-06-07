@@ -49,8 +49,8 @@ class LlmChapterSummaryStageTest {
         assertThat(request.model()).isNull();
         assertThat(request.temperature()).isEqualTo(0.2D);
         assertThat(request.topP()).isEqualTo(0.8D);
-        assertThat(request.maxTokens()).isEqualTo(2048);
-        assertThat(request.timeout()).isEqualTo(Duration.ofSeconds(60));
+        assertThat(request.maxTokens()).isEqualTo(4096);
+        assertThat(request.timeout()).isEqualTo(Duration.ofSeconds(120));
         assertThat(request.messages()).singleElement()
                 .satisfies(message -> {
                     assertThat(message.role()).isEqualTo(ChatRole.USER);
@@ -96,6 +96,21 @@ class LlmChapterSummaryStageTest {
                 .hasMessage("AI 章节摘要结构非法")
                 .hasMessageNotContaining("api-key")
                 .hasMessageNotContaining("原始小说正文");
+    }
+
+    @Test
+    void summarizeRejectsTruncatedModelResponse() {
+        LlmChapterSummaryStage stage = stage(RecordingLlmService.responding(new ChatResponse(
+                "{\"chapterId\":\"chapter_1\",\"sourceEvidence\":[{\"excerpt\":\"未结束",
+                "qwen3-max",
+                "LENGTH",
+                null,
+                "request_1"
+        )));
+
+        assertThatThrownBy(() -> stage.summarize(chapter()))
+                .isInstanceOf(RemoteException.class)
+                .hasMessage("AI 章节摘要输出被截断");
     }
 
     @Test

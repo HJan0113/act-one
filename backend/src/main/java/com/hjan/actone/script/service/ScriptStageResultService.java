@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hjan.actone.common.context.UserContext;
 import com.hjan.actone.common.exception.ClientException;
 import com.hjan.actone.script.ai.model.ChapterSummary;
-import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineStage;
 import com.hjan.actone.script.ai.model.ScenePlan;
 import com.hjan.actone.script.dao.entity.ScriptConversionTaskDO;
@@ -60,14 +59,6 @@ public class ScriptStageResultService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public ScriptStageResultResponse saveGlobalStoryState(String taskId, GlobalStoryState state) {
-        if (state == null) {
-            throw new ClientException("全局故事状态不能为空。");
-        }
-        return save(taskId, PipelineStage.GLOBAL_STORY_EXTRACTION, state);
-    }
-
-    @Transactional(rollbackFor = Exception.class)
     public ScriptStageResultResponse saveScenePlan(String taskId, ScenePlan scenePlan) {
         if (scenePlan == null) {
             throw new ClientException("场景规划不能为空。");
@@ -77,10 +68,6 @@ public class ScriptStageResultService {
 
     public Optional<List<ChapterSummary>> loadChapterSummaries(String taskId) {
         return load(taskId, PipelineStage.CHAPTER_SUMMARY, CHAPTER_SUMMARIES_TYPE);
-    }
-
-    public Optional<GlobalStoryState> loadGlobalStoryState(String taskId) {
-        return load(taskId, PipelineStage.GLOBAL_STORY_EXTRACTION, GlobalStoryState.class);
     }
 
     public Optional<ScenePlan> loadScenePlan(String taskId) {

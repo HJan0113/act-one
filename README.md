@@ -1,48 +1,176 @@
 # Act One
 
-AI 小说转剧本工具 — 从小说文本到可编辑、可追溯、可校验的结构化剧本 YAML 初稿。
+Act One 是一个 AI 小说转剧本 YAML 工作台。它面向小说作者和编剧协作场景，把 3 章以上小说文本解析为可编辑、可追溯、可校验的结构化剧本初稿，并提供流式生成、草稿保存、局部精修、节奏分析、分镜建议和对白口吻重写等能力。
 
-## 项目简介
+当前项目不是单纯的 LLM 文本生成 Demo。后端把 AI 生成拆成可观测的 Pipeline，并用 YAML Schema、阶段结果暂存、模型路由和规则降级保护生成结果；前端则围绕“导入小说、生成 YAML、编辑草稿、审查来源、导出结果”的作者工作流组织界面。
 
-Act One 是一款面向小说作者的 AI 辅助编剧工作台。用户输入 3 章以上小说文本，系统通过 **11 阶段 AI Pipeline** 自动完成章节分析、角色抽取、场景拆分、心理描写影视化、对白生成、源文追溯、一致性校验和 YAML 生成，最终输出一份结构化、可编辑、符合 Schema v1 规范的剧本初稿。
+## 目录
 
-### 核心特色
+- [项目定位](#项目定位)
+- [核心链路](#核心链路)
+- [功能清单](#功能清单)
+- [技术栈](#技术栈)
+- [系统结构](#系统结构)
+- [快速启动](#快速启动)
+- [数据库结构](#数据库结构)
+- [测试与质量](#测试与质量)
+- [参考文档](#参考文档)
 
-| 维度 | 说明 |
+## 项目定位
+
+Act One 的目标是让小说改编剧本的早期阶段更可控：
+
+- 输入长篇小说文本，识别章节并进行基础清洗。
+- 通过 AI Pipeline 生成章节摘要、场景规划和剧本 YAML。
+- 保留每个场景的来源章节和原文摘录，方便作者核对 AI 改编依据。
+- 用 Schema 校验防止非法 YAML 静默进入草稿系统。
+- 在模型失败、超时或 YAML 不合规时，显式降级为规则版脚手架，而不是返回不可用结果。
+- 支持作者在生成后继续做局部精修、对白改写、节奏分析和分镜建议。
+
+适合的使用场景：
+
+- 小说作者快速得到可编辑的剧本初稿。
+- 编剧团队把长文本拆成场景、幕结构和对白草稿。
+- AI 应用开发中演示“模型编排 + 结构化生成 + 可追溯降级”的完整链路。
+
+
+## 核心链路
+
+### 小说转剧本 Pipeline
+
+```text
+小说文本
+  -> NovelChapterParser 章节识别、清洗、长章节分块
+  -> ChapterSummaryStage 章节摘要和证据提取
+  -> ScenePlanningStage 场景规划和自动拆场
+  -> ScriptYamlGenerationStage 剧本 YAML 生成
+  -> ScriptYamlValidator Schema 校验
+  -> 成功返回 ai_pipeline 结果
+  -> 或显式降级为 rule_based_fallback
+```
+
+关键设计点：
+
+- `NovelChapterParser` 要求至少识别 3 个章节；过长章节会按自然段和句子边界拆分。
+- `ChapterSummary`、`ScenePlan`、`PipelineContext` 是 AI 阶段之间的结构化中间模型。
+- Prompt 模板放在 `backend/src/main/resources/prompt/v1/`，通过 `PromptTemplateService` 渲染。
+- 生成的 YAML 必须通过 `ScriptYamlValidator`，不合规则进入规则版 fallback。
+- 规则版脚手架同样保留幕、场景、来源章节、原文摘录和基础元数据。
+
+### 模型路由与降级
+
+模型调用通过稳定端口 `LLMService` 进入基础设施层：
+
+```text
+script.ai Pipeline
+  -> LLMService
+  -> DefaultLLMService
+  -> ModelSelector + ModelRoutingExecutor
+  -> SpringAiChatClient
+  -> OpenAI-compatible Provider
+```
+
+当前配置里聊天模型候选来自 `application.yml`：
+
+- `qwen3.7-max-2026-05-17`
+- `deepseek-v4-flash`
+
+路由策略按模型候选优先级、启用状态和健康状态选择目标；单个候选失败后会标记失败并尝试下一个候选。若 AI 阶段最终失败，剧本 Pipeline 会返回 `generationMode=rule_based_fallback`、`fallback=true` 和 `fallbackReason`，让前端和用户明确知道结果来自降级链路。
+
+## 功能清单
+
+### 已落地功能
+
+| 模块 | 功能 |
 | --- | --- |
-| **结构化改编** | 不是一次性 LLM 文本输出，而是 11 阶段可解释、可校验的工程管线 |
-| **长文本一致性** | 逐块滚动抽取 + 增量合并的「剧本圣经」，解决跨章节角色、别名、关系漂移 |
-| **场景自动拆场** | 按地点/时间/人物/冲突四维变化拆分，不机械一章一场 |
-| **心理影视化** | 识别「心想/内心/意识到」等不可拍表述，转为动作/表情/道具/沉默四类可拍元素 |
-| **全链路溯源** | 每个场景绑定来源章节 ID 和原文摘录，作者可随时审查 AI 改编依据 |
-| **双重校验安全网** | Schema 结构校验 + 事实约束检查，不合法 YAML 绝不静默输出 |
-| **AI 透明降级** | AI 任何阶段失败都显式降级为规则版脚手架，结果暴露 `generationMode` 和 `fallbackReason` |
-| **SSE 实时进度** | 作者能实时看到 AI 在做什么阶段，可随时停止，失败后可从安全阶段恢复 |
-| **作者可控精修** | 局部命令式精修、对白口吻重写、多版本风格草稿，不重写全篇 |
+| 登录与用户 | 默认管理员登录、当前用户、退出、管理员用户管理、修改密码 |
+| 小说导入 | 小说正文输入、章节预览、至少 3 章校验、内置演示小说《星轨回音》 |
+| 项目管理 | 从文本创建项目、项目列表、项目删除 |
+| YAML 生成 | 同步生成、SSE 流式生成、任务取消、失败任务安全阶段恢复 |
+| 草稿管理 | 保存草稿、草稿列表、草稿详情、草稿删除、YAML 导出 |
+| AI 追溯 | 场景来源章节、来源摘录、阶段结果暂存 |
+| 作者精修 | 指定场景局部精修、对白口吻重写 |
+| 分析展示 | 节奏分析、冲突指标、角色出场密度、分镜建议 |
+| 工程质量 | 后端包边界测试、AI Pipeline Fake LLM 测试、模型路由/异常映射测试 |
 
-### 11 阶段 AI Pipeline
+### 生成模式
 
-```
-章节解析 → 章节摘要 → 全局故事抽取 → 场景规划 → 心理影视化
-→ 对白生成 → 源文追溯 → 一致性检查 → YAML 生成
-→ Schema 校验 → 事实约束检查 → 自动修复/规则兜底
-```
+| `generationMode` | 含义 |
+| --- | --- |
+| `ai_pipeline` | AI Pipeline 完整执行并通过 YAML Schema 校验 |
+| `rule_based_scaffold` | AI Pipeline Bean 不可用时，直接生成规则版脚手架 |
+| `rule_based_fallback` | AI 阶段失败或 AI YAML 校验失败后，显式降级生成规则版脚手架 |
 
 ## 技术栈
 
-| 层级 | 技术 | 版本 |
+| 层级 | 技术 | 当前版本 |
 | --- | --- | --- |
 | 后端语言 | Java | 17 |
 | 后端框架 | Spring Boot | 3.5.7 |
 | ORM | MyBatis-Plus | 3.5.14 |
 | 认证 | Sa-Token | 1.43.0 |
-| AI 集成 | Spring AI (OpenAI-compatible) | 1.1.6 |
-| AI 模型 | Bailian qwen3-max / SiliconFlow | — |
-| 数据库 | PostgreSQL (HikariCP) | — |
-| 构建工具 | Maven | 3.9+ |
-| 前端框架 | React | 18.3 |
-| 前端语言 | TypeScript | 5.7 |
-| 前端构建 | Vite | 5.4 |
+| AI 集成 | Spring AI OpenAI-compatible | 1.1.6 |
+| YAML 处理 | SnakeYAML | Spring Boot 管理版本 |
+| 数据库 | PostgreSQL + HikariCP | 本地或外部 PostgreSQL |
+| 构建工具 | Maven | 3.9+ 推荐 |
+| 前端框架 | React | 18.3.1 |
+| 前端语言 | TypeScript | 5.7.2 |
+| 前端构建 | Vite | 5.4.11 |
+| 图标 | lucide-react | 0.468.0 |
+
+## 系统结构
+
+```text
+act-one/
+├── backend/
+│   ├── pom.xml
+│   └── src/
+│       ├── main/java/com/hjan/actone/
+│       │   ├── ActOneApplication.java
+│       │   ├── ai/                  # AI 稳定端口、消息模型、Prompt 接口
+│       │   ├── infra/ai/            # Spring AI 客户端、模型路由、异常映射、响应清理
+│       │   ├── script/
+│       │   │   ├── ai/              # 剧本 AI Pipeline、中间模型、阶段编排
+│       │   │   ├── controller/      # 小说、项目、草稿、Demo REST/SSE 接口
+│       │   │   ├── service/         # 章节解析、YAML 生成、草稿、精修、分析
+│       │   │   ├── dao/             # MyBatis-Plus Mapper 和 DO
+│       │   │   └── model/           # 请求/响应 DTO
+│       │   ├── user/                # 登录、用户管理、Sa-Token 集成
+│       │   ├── common/              # Result、异常、上下文、SSE Sender
+│       │   └── config/              # 数据库等全局配置
+│       ├── main/resources/
+│       │   ├── application.yml
+│       │   ├── db/schema_pg.sql
+│       │   ├── demo/星轨回音.txt
+│       │   └── prompt/v1/
+│       └── test/                    # 后端单元测试和 Fake LLM 测试资源
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── src/
+│       ├── App.tsx                  # 当前主要页面状态和工作流编排
+│       ├── components/              # 工作台 UI 组件
+│       ├── services/                # auth/script API 封装
+│       ├── types/api.ts             # 前后端 DTO 类型
+│       ├── utils/                   # YAML 追溯解析工具
+│       └── styles.css
+├── docs/                            # 架构、Schema、Prompt、前端 API 层说明
+├── notice/                          # 项目分析、演讲稿、规划和过程材料
+├── output/                          # 本地输出和历史中间产物
+└── README.md
+```
+
+### 后端包边界
+
+当前后端暂不拆 Maven 多模块，但通过包边界和测试固定依赖方向：
+
+```text
+script.ai  -> script / common
+infra.ai   -> ai / common / Spring AI
+ai         -> JDK only
+```
+
+`BackendPackageBoundaryTest` 会检查 AI 端口层、模型基础设施层和剧本 Pipeline 层的依赖方向，避免业务逻辑直接绑定具体模型客户端。
 
 ## 快速启动
 
@@ -53,37 +181,41 @@ Act One 是一款面向小说作者的 AI 辅助编剧工作台。用户输入 3
 - Node.js 18+
 - PostgreSQL
 
-### 1. 数据库初始化
+### 1. 初始化数据库
 
-```bash
-# 创建数据库
-createdb act_one
+初始化脚本会创建 `act_one` 数据库、建表并插入默认管理员。
 
-# 执行建表脚本
-psql act_one < backend/src/main/resources/db/schema_pg.sql
+脚本路径：sql/act-one.sql
+
+默认管理员账号仅用于本地演示：
+
+```text
+username: admin
+password: admin
 ```
 
-### 2. 配置环境变量
+### 2. 配置后端环境变量
 
-在 `backend/.env` 中配置数据库和 AI API Key：
+可以在 `backend/.env` 中放本地环境变量。当前已将.env.example放入根目录，修改为自己的配置即可
 
 ```bash
-# 数据库配置
-export DB_URL=jdbc:postgresql://localhost:5432/act_one
-export DB_USERNAME=your_username
-export DB_PASSWORD=your_password
+export ACT_ONE_DB_URL=jdbc:postgresql://localhost:5432/act_one?client_encoding=UTF8
+export ACT_ONE_DB_USERNAME=postgres
+export ACT_ONE_DB_PASSWORD=your_password
 
-# AI 模型配置（百炼）
-export BAILIAN_API_KEY=your_api_key
+export BAILIAN_API_KEY=your_bailian_api_key
+export SILICONFLOW_API_KEY=your_siliconflow_api_key
 ```
 
-⚠️ `backend/.env` 包含敏感信息，不进入 Git。
+没有可用模型 Key 时，应用仍可启动；AI 调用失败后会降级到规则版脚手架，但生成质量会明显下降。
 
 ### 3. 启动后端
 
 ```bash
 cd backend
-set -a && source .env && set +a
+set -a
+source .env
+set +a
 mvn spring-boot:run
 ```
 
@@ -101,138 +233,96 @@ npm install
 npm run dev
 ```
 
-访问：`http://localhost:5173`
+前端默认地址：
 
-默认管理员账号：`admin / admin`
-
-## 项目结构
-
-```
-act-one/
-├── backend/                         # Spring Boot 后端
-│   └── src/main/java/com/hjan/actone/
-│       ├── ai/                      # AI 抽象端口（LLMService、Prompt、消息模型）
-│       ├── infra/ai/                # AI 基础设施实现（Spring AI、客户端、配置）
-│       ├── script/
-│       │   ├── ai/                  # 剧本 AI Pipeline（11 阶段 + 中间模型）
-│       │   ├── controller/          # REST/SSE 控制器
-│       │   ├── service/             # 业务服务
-│       │   ├── dao/                 # 数据访问层（MyBatis-Plus）
-│       │   └── model/               # 请求/响应 DTO
-│       ├── common/                  # 通用基础设施（Result、异常、上下文）
-│       ├── config/                  # 全局配置
-│       └── user/                    # 用户认证与鉴权
-├── frontend/                        # React + TypeScript 前端
-│   └── src/
-│       ├── App.tsx                  # 页面状态编排
-│       ├── components/
-│       │   └── workspace.tsx        # 所有 UI 组件
-│       ├── services/                # API 客户端
-│       ├── types/                   # TypeScript 类型定义
-│       └── utils/                   # YAML 解析工具
-├── docs/                            # 设计文档
-│   ├── script-yaml-schema.md        # YAML Schema 规范
-│   ├── ai-prompt-templates.md       # Prompt 模板说明
-│   ├── demo-script.md               # 答辩演示脚本
-│   └── ...
-├── notice/                          # 项目规划文档
-│   ├── pipline.md                   # 开发流水线
-│   ├── 项目全景总结.md               # 全景架构说明
-│   └── 创新功能列表.md               # 创新功能详细设计
-└── output/                          # 构建输出
+```text
+http://localhost:5173
 ```
 
-## 功能矩阵
+`frontend/vite.config.ts` 已将 `/api` 代理到 `http://localhost:10001`。
 
-### P0 — 核心转换能力
+## API 概览
 
-| 功能 | 说明 |
-| --- | --- |
-| 分阶段 AI 转换管线 | 11 阶段 Pipeline，可解释可校验可迭代 |
-| 长文本全局一致性记忆 | 逐块滚动抽取 + 增量合并的「剧本圣经」 |
-| 场景规划与自动拆场 | 基于地点/时间/人物/冲突变化拆分场景 |
-| 心理描写影视化改写 | 内心独白 → 可拍动作/表情/道具/对白 |
-| YAML Schema 校验与自动修复 | 双重校验 + AI 修复 + 降级安全网 |
-| 源文追溯与改编依据 | 全链路保留 sourceChapterId + sourceExcerpt |
-| 超长章节结构化分块 | 自然段优先 + 不切句 |
-| 事实约束与幻觉检查 | 无来源人物/speaker 检测 + AI 扩写标记 |
+### 基础与认证
 
-### P1 — 作者精修工作台
-
-| 功能 | 说明 |
-| --- | --- |
-| 源文追溯三栏对照 | 小说原文 / YAML 场景 / 可读剧本并排展示 |
-| 人物卡片与关系数据 | 角色身份/别名/目标/出场统计/共现线索 |
-| 角色一致性报告 | 别名冲突/出场异常/未知引用/speaker 归属 |
-| 局部命令式精修 | 只改指定场景/字段，返回结构化 patch |
-| 对白口吻一致性与重写 | 按人物 + instruction 多场景对白重写 |
-| 心理影视化候选 | 动作/表情/道具/沉默四类 before/after 对照 |
-| AI 改动差异摘要 | 事实/表达/节奏/格式四类变更说明 |
-
-### P2 — 展示增强
-
-| 功能 | 说明 |
-| --- | --- |
-| 冲突热力图 | 按场景排列的颜色编码冲突强度网格（1-5 级） |
-| 角色出场密度 | 角色出场场次、对白句数、密度条可视化 |
-| 分镜与画面建议 | AI 生成镜头类型、主体、动作、声音、道具、色调 |
-| 可读剧本预览 | YAML → 完整可读剧本格式渲染 |
-| 一键演示 | 内置 10 章赛博朋克演示小说，自动填入 |
-| 答辩演示脚本 | 完整演示路径文档 |
-
-## API 接口
-
-| Method | Path | 功能 |
+| Method | Path | 说明 |
 | --- | --- | --- |
-| POST | `/api/auth/login` | 用户登录 |
-| GET | `/api/auth/current` | 获取当前用户 |
-| GET | `/api/health` | 健康检查 |
-| POST | `/api/novels/chapters/preview` | 章节解析预览 |
-| POST | `/api/script/drafts/yaml/from-text` | 同步生成剧本 YAML |
-| POST | `/api/script/drafts/yaml/from-text/stream` | SSE 流式生成剧本 YAML |
-| POST | `/api/script/drafts/tasks/{id}/cancel` | 取消进行中任务 |
-| POST | `/api/script/drafts` | 保存草稿 |
-| GET | `/api/script/drafts?projectId=` | 草稿列表 |
-| GET | `/api/script/drafts/{id}` | 草稿详情 |
-| GET | `/api/script/drafts/{id}/export.yaml` | 导出 YAML 文件 |
-| GET | `/api/script/drafts/{id}/rhythm-analysis` | 节奏分析（含角色密度） |
-| POST | `/api/script/drafts/{id}/scenes/{sid}/refine` | 局部场景精修 |
-| POST | `/api/script/drafts/{id}/scenes/{sid}/storyboard` | 分镜建议生成 |
-| POST | `/api/script/drafts/{id}/dialogues/voice-rewrite` | 对白口吻重写 |
-| GET | `/api/script/demo/novel` | 获取内置演示小说 |
-| POST | `/api/script/projects` | 创建项目 |
-| GET | `/api/script/projects` | 项目列表 |
+| `GET` | `/api/health` | 健康检查 |
+| `POST` | `/api/auth/login` | 登录 |
+| `POST` | `/api/auth/logout` | 退出 |
+| `GET` | `/api/user/me` | 当前用户 |
+| `PUT` | `/api/user/password` | 修改当前用户密码 |
 
-## 测试
+### 用户管理
+
+管理员权限接口：
+
+| Method | Path | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/users` | 用户分页列表 |
+| `POST` | `/api/users` | 创建用户 |
+| `PUT` | `/api/users/{id}` | 更新用户 |
+| `DELETE` | `/api/users/{id}` | 删除用户 |
+
+### 小说、项目与草稿
+
+| Method | Path | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/novels/chapters/preview` | 章节解析预览 |
+| `GET` | `/api/script/demo/novel` | 获取内置演示小说 |
+| `POST` | `/api/script/projects/from-text` | 从小说文本创建项目 |
+| `GET` | `/api/script/projects/my` | 当前用户项目列表 |
+| `DELETE` | `/api/script/projects/{projectId}` | 删除项目 |
+| `POST` | `/api/script/drafts/yaml/from-text` | 同步生成剧本 YAML |
+| `POST` | `/api/script/drafts/yaml/from-text/stream` | SSE 流式生成剧本 YAML |
+| `POST` | `/api/script/drafts/tasks/{taskId}/cancel` | 取消生成任务 |
+| `POST` | `/api/script/drafts` | 保存草稿 |
+| `GET` | `/api/script/drafts?projectId={projectId}` | 草稿列表 |
+| `GET` | `/api/script/drafts/{draftId}` | 草稿详情 |
+| `DELETE` | `/api/script/drafts/{draftId}` | 删除草稿 |
+| `GET` | `/api/script/drafts/{draftId}/export.yaml` | 导出 YAML |
+
+### 分析与精修
+
+| Method | Path | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/script/drafts/{draftId}/rhythm-analysis` | 节奏分析和角色密度 |
+| `POST` | `/api/script/drafts/{draftId}/scenes/{sceneId}/refine` | 局部场景精修 |
+| `POST` | `/api/script/drafts/{draftId}/scenes/{sceneId}/storyboard` | 分镜建议 |
+| `POST` | `/api/script/drafts/{draftId}/dialogues/voice-rewrite` | 对白口吻重写 |
+
+## 测试与质量
+
+### 后端测试
 
 ```bash
-# 后端全量测试（218 项）
-cd backend && mvn test
-
-# 前端类型检查 + 构建
-cd frontend && npm run build
+cd backend
+mvn test
 ```
 
-## 演示步骤
+当前本地验证结果：
 
-1. 启动后端 + 前端，访问 `http://localhost:5173`
-2. 使用 `admin / admin` 登录
-3. 点击「一键演示」加载内置小说《星轨回音》（10 章赛博朋克风格）
-4. 点击「解析章节」验证章节识别
-5. 点击「开始生成」启动 11 阶段 AI Pipeline（SSE 流式进度可见）
-6. 在「结果」页查看/编辑生成的 YAML，查看节奏分析指标
-7. 点击「热力图」查看场景冲突和角色出场密度
-8. 在「追溯」页查看原文/YAML/可读剧本三栏对照，可执行局部精修
-9. 在「预览」页查看完整可读剧本
-10. 在「追溯」页点击「生成分镜」获取镜头建议
-11. 在「人物」页查看角色卡，执行对白口吻重写
-12. 保存草稿并导出 YAML 文件
+```text
+Tests run: 169, Failures: 0, Errors: 0, Skipped: 0
+```
 
-## 开发分支策略
+覆盖重点包括：
 
-- `main`：稳定主分支，普通代码内容
-- `actone-ai-development`：AI 功能开发分支
-- 所有变更最终合并回 `main`
+- 章节解析、长章节分块和 YAML Schema 校验。
+- AI Pipeline 成功、失败、重试、降级和日志。
+- Prompt 模板加载、LLM 响应清理、模型路由和健康状态。
+- 草稿、项目、转换任务、阶段结果等业务服务。
+- 后端包边界约束。
+
+### 前端检查
+
+```bash
+cd frontend
+npm run build
+```
+
+该命令会先运行 `tsc --noEmit`，再执行 Vite 生产构建。
+
 
 ## Git 远程仓库
 

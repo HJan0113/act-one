@@ -3,8 +3,6 @@ import type {
     ApiResult,
     ChapterPreviewData,
     ScriptDemoNovelData,
-    ScriptDialogueVoiceRewriteData,
-    ScriptDialogueVoiceRewriteRequest,
     ScriptConversionTaskData,
     ScriptDraftDetail,
     ScriptDraftListItem,
@@ -45,20 +43,6 @@ export function previewChapters(text: string, token?: string) {
       token
     },
     "章节解析失败"
-  );
-}
-
-export function generateYaml(request: ScriptYamlGenerateRequest, token?: string, signal?: AbortSignal) {
-  return requestApi<ScriptYamlData>(
-    "/api/script/drafts/yaml/from-text",
-    {
-      body: JSON.stringify(request),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-        signal,
-      token
-    },
-    "YAML 生成失败"
   );
 }
 
@@ -256,19 +240,6 @@ export function refineScene(request: ScriptSceneRefineRequest, token?: string) {
       token
     },
     "局部精修失败"
-  );
-}
-
-export function rewriteDialogueVoice(request: ScriptDialogueVoiceRewriteRequest, token?: string) {
-  return requestApi<ScriptDialogueVoiceRewriteData>(
-    `/api/script/drafts/${encodeURIComponent(request.draftId)}/dialogues/voice-rewrite`,
-    {
-      body: JSON.stringify(request),
-      headers: {"Content-Type": "application/json"},
-      method: "POST",
-      token
-    },
-    "对白口吻重写失败"
   );
 }
 

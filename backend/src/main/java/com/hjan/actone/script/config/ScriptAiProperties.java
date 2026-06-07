@@ -11,16 +11,27 @@ public class ScriptAiProperties {
 
     private int maxStageRetries = 1;
     private Timeouts timeouts = new Timeouts();
+    private Concurrency concurrency = new Concurrency();
 
     @Data
     public static class Timeouts {
 
-        private Duration chapterSummary = Duration.ofSeconds(60);
-        private Duration globalStoryExtraction = Duration.ofSeconds(90);
-        private Duration scenePlanning = Duration.ofSeconds(90);
-        private Duration cinematicTreatment = Duration.ofSeconds(90);
-        private Duration dialogueGeneration = Duration.ofSeconds(90);
-        private Duration scriptYamlGeneration = Duration.ofSeconds(120);
-        private Duration yamlRepair = Duration.ofSeconds(120);
+        private Duration chapterSummary = Duration.ofSeconds(300);
+        private Duration scenePlanning = Duration.ofSeconds(480);
+        private Duration scriptYamlGeneration = Duration.ofSeconds(480);
+    }
+
+    @Data
+    public static class Concurrency {
+
+        private int chapterSummaryCorePoolSize = 0;
+        private int chapterSummaryMaxPoolSize = 0;
+        private int chapterSummaryQueueCapacity = 64;
+        private int scenePlanningCorePoolSize = 0;
+        private int scenePlanningMaxPoolSize = 0;
+        private int scenePlanningQueueCapacity = 32;
+        private int yamlGenerationCorePoolSize = 0;
+        private int yamlGenerationMaxPoolSize = 0;
+        private int yamlGenerationQueueCapacity = 32;
     }
 }

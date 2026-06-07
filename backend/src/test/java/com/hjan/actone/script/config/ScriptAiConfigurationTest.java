@@ -5,33 +5,22 @@ import com.hjan.actone.ai.model.ChatRequest;
 import com.hjan.actone.ai.model.ChatResponse;
 import com.hjan.actone.ai.prompt.PromptTemplateService;
 import com.hjan.actone.ai.service.LLMService;
+import com.hjan.actone.infra.ai.config.AiClientConfiguration;
 import com.hjan.actone.infra.ai.prompt.ClasspathPromptTemplateService;
-import com.hjan.actone.script.ai.pipeline.CinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.ChapterSummaryStage;
-import com.hjan.actone.script.ai.pipeline.DialogueGenerationStage;
-import com.hjan.actone.script.ai.pipeline.DeterministicSourceTraceStage;
-import com.hjan.actone.script.ai.pipeline.GlobalStoryExtractionStage;
-import com.hjan.actone.script.ai.pipeline.GlobalStoryStateMerger;
-import com.hjan.actone.script.ai.pipeline.LlmCinematicTreatmentStage;
 import com.hjan.actone.script.ai.pipeline.LlmChapterSummaryStage;
-import com.hjan.actone.script.ai.pipeline.LlmDialogueGenerationStage;
-import com.hjan.actone.script.ai.pipeline.LlmGlobalStoryExtractionStage;
 import com.hjan.actone.script.ai.pipeline.LlmScenePlanningStage;
 import com.hjan.actone.script.ai.pipeline.LlmScriptYamlGenerationStage;
-import com.hjan.actone.script.ai.pipeline.LlmYamlRepairStage;
-import com.hjan.actone.script.ai.pipeline.PipelineConsistencyChecker;
 import com.hjan.actone.script.ai.pipeline.ScenePlanningStage;
-import com.hjan.actone.script.ai.pipeline.SourceTraceStage;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineService;
-import com.hjan.actone.script.ai.pipeline.ScriptYamlFactConstraintChecker;
 import com.hjan.actone.script.ai.pipeline.ScriptYamlGenerationStage;
-import com.hjan.actone.script.ai.pipeline.YamlRepairStage;
 import com.hjan.actone.script.service.NovelChapterParser;
 import com.hjan.actone.script.service.ScriptYamlDraftService;
 import com.hjan.actone.script.service.ScriptYamlValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.time.Duration;
 
@@ -45,84 +34,128 @@ class ScriptAiConfigurationTest {
             .withBean(PromptTemplateService.class, () -> new ClasspathPromptTemplateService(new DefaultResourceLoader()));
 
     @Test
-    void registersChapterSummaryStageWhenLlmServiceIsAvailable() {
+    void registersReducedStagesWhenLlmServiceIsAvailable() {
         contextRunner
+                .withPropertyValues("ai.spring-ai.chat.enabled=true")
                 .withBean(LLMService.class, StubLlmService::new)
                 .run(context -> {
-                    assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
-                    assertThat(context).hasSingleBean(PipelineConsistencyChecker.class);
-                    assertThat(context).hasSingleBean(ScriptYamlFactConstraintChecker.class);
                     assertThat(context).hasSingleBean(ChapterSummaryStage.class);
-                    assertThat(context).hasSingleBean(GlobalStoryExtractionStage.class);
                     assertThat(context).hasSingleBean(ScenePlanningStage.class);
-                    assertThat(context).hasSingleBean(CinematicTreatmentStage.class);
-                    assertThat(context).hasSingleBean(DialogueGenerationStage.class);
-                    assertThat(context).hasSingleBean(SourceTraceStage.class);
                     assertThat(context).hasSingleBean(ScriptYamlGenerationStage.class);
-                    assertThat(context).hasSingleBean(YamlRepairStage.class);
                     assertThat(context).doesNotHaveBean(ScriptAiPipelineService.class);
                     assertThat(context.getBean(ChapterSummaryStage.class))
                             .isInstanceOf(LlmChapterSummaryStage.class);
-                    assertThat(context.getBean(GlobalStoryExtractionStage.class))
-                            .isInstanceOf(LlmGlobalStoryExtractionStage.class);
                     assertThat(context.getBean(ScenePlanningStage.class))
                             .isInstanceOf(LlmScenePlanningStage.class);
-                    assertThat(context.getBean(CinematicTreatmentStage.class))
-                            .isInstanceOf(LlmCinematicTreatmentStage.class);
-                    assertThat(context.getBean(DialogueGenerationStage.class))
-                            .isInstanceOf(LlmDialogueGenerationStage.class);
-                    assertThat(context.getBean(SourceTraceStage.class))
-                            .isInstanceOf(DeterministicSourceTraceStage.class);
                     assertThat(context.getBean(ScriptYamlGenerationStage.class))
                             .isInstanceOf(LlmScriptYamlGenerationStage.class);
-                    assertThat(context.getBean(YamlRepairStage.class))
-                            .isInstanceOf(LlmYamlRepairStage.class);
                 });
     }
 
     @Test
-    void registersScriptAiPipelineServiceWhenAllStagesAndBaseServicesAreAvailable() {
+    void registersScriptAiPipelineServiceWhenReducedStagesAndBaseServicesAreAvailable() {
         contextRunner
+                .withPropertyValues("ai.spring-ai.chat.enabled=true")
                 .withBean(LLMService.class, StubLlmService::new)
                 .withBean(NovelChapterParser.class, NovelChapterParser::new)
                 .withBean(ScriptYamlValidator.class, ScriptYamlValidator::new)
                 .withBean(ScriptYamlDraftService.class, () -> new ScriptYamlDraftService(new NovelChapterParser()))
+                .run(context -> {
+                    assertThat(context).hasSingleBean(ScriptAiPipelineService.class);
+                    assertThat(context).hasBean("scriptAiChapterSummaryExecutor");
+                });
+    }
+
+    @Test
+    void registersScriptAiPipelineServiceWhenScriptConfigurationIsProcessedBeforeAiClientConfiguration() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(ScriptAiConfiguration.class, AiClientConfiguration.class)
+                .withBean(ObjectMapper.class, ObjectMapper::new)
+                .withBean(NovelChapterParser.class, NovelChapterParser::new)
+                .withBean(ScriptYamlValidator.class, ScriptYamlValidator::new)
+                .withBean(ScriptYamlDraftService.class, () -> new ScriptYamlDraftService(new NovelChapterParser()))
+                .withPropertyValues(
+                        "ai.providers.siliconflow.url=https://mock.example",
+                        "ai.providers.siliconflow.api-key=test-api-key",
+                        "ai.providers.siliconflow.endpoints.chat=/v1/chat/completions",
+                        "ai.spring-ai.chat.enabled=true",
+                        "ai.chat.default-model=spring-ai-test",
+                        "ai.chat.candidates[0].id=spring-ai-test",
+                        "ai.chat.candidates[0].provider=siliconflow",
+                        "ai.chat.candidates[0].model=test-model",
+                        "ai.chat.candidates[0].enabled=true"
+                )
                 .run(context -> assertThat(context).hasSingleBean(ScriptAiPipelineService.class));
     }
 
     @Test
-    void bindsScriptAiCostAndTimeoutProperties() {
+    void bindsScriptAiTimeoutAndConcurrencyProperties() {
         contextRunner
                 .withPropertyValues(
                         "script.ai.max-stage-retries=2",
+                        "script.ai.concurrency.chapter-summary-core-pool-size=3",
+                        "script.ai.concurrency.chapter-summary-max-pool-size=5",
+                        "script.ai.concurrency.chapter-summary-queue-capacity=32",
                         "script.ai.timeouts.chapter-summary=7s",
+                        "script.ai.timeouts.scene-planning=9s",
                         "script.ai.timeouts.script-yaml-generation=30s"
                 )
                 .run(context -> {
                     assertThat(context).hasSingleBean(ScriptAiProperties.class);
                     ScriptAiProperties properties = context.getBean(ScriptAiProperties.class);
                     assertThat(properties.getMaxStageRetries()).isEqualTo(2);
+                    assertThat(properties.getConcurrency().getChapterSummaryCorePoolSize()).isEqualTo(3);
+                    assertThat(properties.getConcurrency().getChapterSummaryMaxPoolSize()).isEqualTo(5);
+                    assertThat(properties.getConcurrency().getChapterSummaryQueueCapacity()).isEqualTo(32);
                     assertThat(properties.getTimeouts().getChapterSummary()).isEqualTo(Duration.ofSeconds(7));
+                    assertThat(properties.getTimeouts().getScenePlanning()).isEqualTo(Duration.ofSeconds(9));
                     assertThat(properties.getTimeouts().getScriptYamlGeneration()).isEqualTo(Duration.ofSeconds(30));
                 });
     }
 
     @Test
-    void doesNotRegisterChapterSummaryStageWithoutLlmService() {
+    void registersConfigurableChapterSummaryExecutor() {
+        contextRunner
+                .withPropertyValues(
+                        "script.ai.concurrency.chapter-summary-core-pool-size=3",
+                        "script.ai.concurrency.chapter-summary-max-pool-size=5",
+                        "script.ai.concurrency.chapter-summary-queue-capacity=32"
+                )
+                .run(context -> {
+                    assertThat(context).hasBean("scriptAiChapterSummaryExecutor");
+                    ThreadPoolTaskExecutor executor = context.getBean(
+                            "scriptAiChapterSummaryExecutor",
+                            ThreadPoolTaskExecutor.class
+                    );
+                    assertThat(executor.getCorePoolSize()).isEqualTo(3);
+                    assertThat(executor.getMaxPoolSize()).isEqualTo(5);
+                    assertThat(executor.getThreadNamePrefix()).isEqualTo("script-ai-summary-");
+                });
+    }
+
+    @Test
+    void registersAutoSizedExecutorsWhenPoolSizesAreNotConfigured() {
         contextRunner.run(context -> {
-            assertThat(context).hasSingleBean(GlobalStoryStateMerger.class);
-            assertThat(context).hasSingleBean(PipelineConsistencyChecker.class);
-            assertThat(context).hasSingleBean(ScriptYamlFactConstraintChecker.class);
-            assertThat(context).hasSingleBean(SourceTraceStage.class);
-            assertThat(context.getBean(SourceTraceStage.class))
-                    .isInstanceOf(DeterministicSourceTraceStage.class);
+            int availableProcessors = Math.max(1, Runtime.getRuntime().availableProcessors());
+
+            assertThat(context.getBean("scriptAiChapterSummaryExecutor", ThreadPoolTaskExecutor.class))
+                    .extracting(ThreadPoolTaskExecutor::getCorePoolSize, ThreadPoolTaskExecutor::getMaxPoolSize)
+                    .containsExactly(availableProcessors, availableProcessors);
+            assertThat(context.getBean("scriptAiScenePlanningExecutor", ThreadPoolTaskExecutor.class))
+                    .extracting(ThreadPoolTaskExecutor::getCorePoolSize, ThreadPoolTaskExecutor::getMaxPoolSize)
+                    .containsExactly(availableProcessors, availableProcessors);
+            assertThat(context.getBean("scriptAiYamlGenerationExecutor", ThreadPoolTaskExecutor.class))
+                    .extracting(ThreadPoolTaskExecutor::getCorePoolSize, ThreadPoolTaskExecutor::getMaxPoolSize)
+                    .containsExactly(availableProcessors, availableProcessors);
+        });
+    }
+
+    @Test
+    void doesNotRegisterLlmStagesWithoutLlmService() {
+        contextRunner.run(context -> {
             assertThat(context).doesNotHaveBean(ChapterSummaryStage.class);
-            assertThat(context).doesNotHaveBean(GlobalStoryExtractionStage.class);
             assertThat(context).doesNotHaveBean(ScenePlanningStage.class);
-            assertThat(context).doesNotHaveBean(CinematicTreatmentStage.class);
-            assertThat(context).doesNotHaveBean(DialogueGenerationStage.class);
             assertThat(context).doesNotHaveBean(ScriptYamlGenerationStage.class);
-            assertThat(context).doesNotHaveBean(YamlRepairStage.class);
             assertThat(context).doesNotHaveBean(ScriptAiPipelineService.class);
         });
     }

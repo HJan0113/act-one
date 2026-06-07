@@ -12,13 +12,8 @@ public record PipelineContext(
         Integer chapterCount,
         PipelineStage currentStage,
         List<ChapterSummary> chapterSummaries,
-        GlobalStoryState globalStoryState,
         ScenePlan scenePlan,
-        CinematicTreatment cinematicTreatment,
-        DialogueDraft dialogueDraft,
-        SourceTrace sourceTrace,
         String generatedYaml,
-        String repairedYaml,
         String validationStatus,
         String validationError
 ) {
@@ -33,9 +28,7 @@ public record PipelineContext(
         chapterCount = ModelValidation.requirePositive(chapterCount, "chapterCount");
         currentStage = currentStage == null ? PipelineStage.INIT : currentStage;
         chapterSummaries = ModelValidation.copyList(chapterSummaries, "chapterSummaries");
-        globalStoryState = globalStoryState == null ? GlobalStoryState.empty() : globalStoryState;
         generatedYaml = ModelValidation.optionalText(generatedYaml);
-        repairedYaml = ModelValidation.optionalText(repairedYaml);
         validationStatus = ModelValidation.optionalText(validationStatus);
         validationError = ModelValidation.optionalText(validationError);
     }
@@ -54,11 +47,6 @@ public record PipelineContext(
                 chapterCount,
                 PipelineStage.INIT,
                 List.of(),
-                GlobalStoryState.empty(),
-                null,
-                null,
-                null,
-                null,
                 null,
                 null,
                 null,
@@ -76,35 +64,8 @@ public record PipelineContext(
                 chapterCount,
                 PipelineStage.CHAPTER_SUMMARY,
                 summaries,
-                globalStoryState,
                 scenePlan,
-                cinematicTreatment,
-                dialogueDraft,
-                sourceTrace,
                 generatedYaml,
-                repairedYaml,
-                validationStatus,
-                validationError
-        );
-    }
-
-    public PipelineContext withGlobalStoryState(GlobalStoryState state) {
-        return new PipelineContext(
-                taskId,
-                projectId,
-                projectTitle,
-                author,
-                logline,
-                chapterCount,
-                PipelineStage.GLOBAL_STORY_EXTRACTION,
-                chapterSummaries,
-                state,
-                scenePlan,
-                cinematicTreatment,
-                dialogueDraft,
-                sourceTrace,
-                generatedYaml,
-                repairedYaml,
                 validationStatus,
                 validationError
         );
@@ -120,79 +81,8 @@ public record PipelineContext(
                 chapterCount,
                 PipelineStage.SCENE_PLANNING,
                 chapterSummaries,
-                globalStoryState,
                 plan,
-                cinematicTreatment,
-                dialogueDraft,
-                sourceTrace,
                 generatedYaml,
-                repairedYaml,
-                validationStatus,
-                validationError
-        );
-    }
-
-    public PipelineContext withCinematicTreatment(CinematicTreatment treatment) {
-        return new PipelineContext(
-                taskId,
-                projectId,
-                projectTitle,
-                author,
-                logline,
-                chapterCount,
-                PipelineStage.PSYCHOLOGICAL_VISUALIZATION,
-                chapterSummaries,
-                globalStoryState,
-                scenePlan,
-                treatment,
-                dialogueDraft,
-                sourceTrace,
-                generatedYaml,
-                repairedYaml,
-                validationStatus,
-                validationError
-        );
-    }
-
-    public PipelineContext withDialogueDraft(DialogueDraft draft) {
-        return new PipelineContext(
-                taskId,
-                projectId,
-                projectTitle,
-                author,
-                logline,
-                chapterCount,
-                PipelineStage.DIALOGUE_GENERATION,
-                chapterSummaries,
-                globalStoryState,
-                scenePlan,
-                cinematicTreatment,
-                draft,
-                sourceTrace,
-                generatedYaml,
-                repairedYaml,
-                validationStatus,
-                validationError
-        );
-    }
-
-    public PipelineContext withSourceTrace(SourceTrace trace) {
-        return new PipelineContext(
-                taskId,
-                projectId,
-                projectTitle,
-                author,
-                logline,
-                chapterCount,
-                PipelineStage.SOURCE_TRACE,
-                chapterSummaries,
-                globalStoryState,
-                scenePlan,
-                cinematicTreatment,
-                dialogueDraft,
-                trace,
-                generatedYaml,
-                repairedYaml,
                 validationStatus,
                 validationError
         );
@@ -208,13 +98,8 @@ public record PipelineContext(
                 chapterCount,
                 PipelineStage.SCRIPT_YAML_GENERATION,
                 chapterSummaries,
-                globalStoryState,
                 scenePlan,
-                cinematicTreatment,
-                dialogueDraft,
-                sourceTrace,
                 yaml,
-                repairedYaml,
                 validationStatus,
                 validationError
         );
@@ -230,37 +115,10 @@ public record PipelineContext(
                 chapterCount,
                 PipelineStage.YAML_VALIDATION,
                 chapterSummaries,
-                globalStoryState,
                 scenePlan,
-                cinematicTreatment,
-                dialogueDraft,
-                sourceTrace,
                 generatedYaml,
-                repairedYaml,
                 status,
                 error
-        );
-    }
-
-    public PipelineContext withRepairedYaml(String yaml) {
-        return new PipelineContext(
-                taskId,
-                projectId,
-                projectTitle,
-                author,
-                logline,
-                chapterCount,
-                PipelineStage.YAML_REPAIR,
-                chapterSummaries,
-                globalStoryState,
-                scenePlan,
-                cinematicTreatment,
-                dialogueDraft,
-                sourceTrace,
-                generatedYaml,
-                yaml,
-                validationStatus,
-                validationError
         );
     }
 
@@ -274,13 +132,8 @@ public record PipelineContext(
                 chapterCount,
                 PipelineStage.COMPLETED,
                 chapterSummaries,
-                globalStoryState,
                 scenePlan,
-                cinematicTreatment,
-                dialogueDraft,
-                sourceTrace,
                 generatedYaml,
-                repairedYaml,
                 validationStatus,
                 validationError
         );

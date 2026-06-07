@@ -1,9 +1,9 @@
 package com.hjan.actone.script.ai.pipeline;
 
-import com.hjan.actone.ai.model.ChatMessage;
 import com.hjan.actone.ai.model.ChatRequest;
 import com.hjan.actone.ai.model.ChatResponse;
 import com.hjan.actone.ai.service.LLMService;
+import com.hjan.actone.common.log.AiExceptionDiagnostics;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
@@ -41,72 +41,39 @@ public final class ScriptAiMeteredLlmService implements LLMService {
         } catch (RuntimeException ex) {
             ScriptAiUsageTracker.record(request, null);
             ScriptAiLlmCallTrace.Trace trace = ScriptAiLlmCallTrace.current();
-            log.warn(
-                    "event=actone_ai_pipeline_llm_failure taskId={} stage={} retry={} model={} responseFormat={} durationMs={} errorType={} errorMessage={}",
-                    traceTaskId(trace),
-                    traceStage(trace),
-                    traceRetry(trace),
-                    safeText(request.model(), DEFAULT_MODEL),
-                    request.responseFormat(),
+            log.warn("LLM调用失败 taskId={} stage={} retry={} 模型={} 响应格式={} 耗时={}ms 错误类型={} 错误码={} 错误信息={} 模型错误类型={} 模型状态={} 根因类型={} 根因信息={}",
+                    traceTaskId(trace), traceStage(trace), traceRetry(trace),
+                    safeText(request.model(), DEFAULT_MODEL), request.responseFormat(),
                     elapsedMillis(startedNanos),
-                    ex.getClass().getSimpleName(),
-                    ex.getMessage()
-            );
+                    AiExceptionDiagnostics.errorType(ex), AiExceptionDiagnostics.errorCode(ex),
+                    AiExceptionDiagnostics.safeMessage(ex), AiExceptionDiagnostics.modelErrorType(ex),
+                    AiExceptionDiagnostics.modelStatusCode(ex), AiExceptionDiagnostics.rootCauseType(ex),
+                    AiExceptionDiagnostics.rootCauseSafeMessage(ex));
             throw ex;
         }
     }
 
     private void logLlmRequest(ChatRequest request) {
         ScriptAiLlmCallTrace.Trace trace = ScriptAiLlmCallTrace.current();
-        log.info(
-                "event=actone_ai_pipeline_llm_request taskId={} stage={} retry={} model={} responseFormat={} temperature={} topP={} maxTokens={} timeoutMs={} messageCount={} messages={}",
-                traceTaskId(trace),
-                traceStage(trace),
-                traceRetry(trace),
-                safeText(request.model(), DEFAULT_MODEL),
-                request.responseFormat(),
-                request.temperature(),
-                request.topP(),
-                request.maxTokens(),
-                timeoutMillis(request.timeout()),
-                request.messages().size(),
-                formatMessages(request)
-        );
+        log.info("LLM请求 taskId={} stage={} retry={} 模型={} 响应格式={} 温度={} topP={} 最大token数={} 超时={}ms 消息数={}",
+                traceTaskId(trace), traceStage(trace), traceRetry(trace),
+                safeText(request.model(), DEFAULT_MODEL), request.responseFormat(),
+                request.temperature(), request.topP(), request.maxTokens(),
+                timeoutMillis(request.timeout()), request.messages().size());
     }
 
     private void logLlmResponse(ChatRequest request, ChatResponse response, long startedNanos) {
         ScriptAiLlmCallTrace.Trace trace = ScriptAiLlmCallTrace.current();
-        log.info(
-                "event=actone_ai_pipeline_llm_response taskId={} stage={} retry={} model={} responseModel={} responseFormat={} durationMs={} requestId={} finishReason={} promptTokens={} completionTokens={} totalTokens={} content={}",
-                traceTaskId(trace),
-                traceStage(trace),
-                traceRetry(trace),
+        log.info("LLM响应 taskId={} stage={} retry={} 请求模型={} 响应模型={} 响应格式={} 耗时={}ms 请求ID={} 结束原因={} 提示token={} 生成token={} 总token={}",
+                traceTaskId(trace), traceStage(trace), traceRetry(trace),
                 safeText(request.model(), DEFAULT_MODEL),
                 response == null ? null : safeText(response.model(), safeText(request.model(), DEFAULT_MODEL)),
-                request.responseFormat(),
-                elapsedMillis(startedNanos),
+                request.responseFormat(), elapsedMillis(startedNanos),
                 response == null ? null : safeText(response.requestId(), "n/a"),
                 response == null ? null : safeText(response.finishReason(), "n/a"),
                 response == null || response.usage() == null ? null : response.usage().promptTokens(),
                 response == null || response.usage() == null ? null : response.usage().completionTokens(),
-                response == null || response.usage() == null ? null : response.usage().totalTokens(),
-                response == null ? null : response.content()
-        );
-    }
-
-    private String formatMessages(ChatRequest request) {
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < request.messages().size(); i++) {
-            ChatMessage message = request.messages().get(i);
-            if (i > 0) {
-                builder.append('\n');
-            }
-            builder.append("message[").append(i).append("] role=")
-                    .append(message.role())
-                    .append('\n')
-                    .append(message.content());
-        }
-        return builder.toString();
+                response == null || response.usage() == null ? null : response.usage().totalTokens());
     }
 
     private String traceTaskId(ScriptAiLlmCallTrace.Trace trace) {

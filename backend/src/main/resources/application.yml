@@ -50,39 +50,66 @@ ai:
       api-key: ${BAILIAN_API_KEY:}
       endpoints:
         chat: /compatible-mode/v1/chat/completions
-        rerank: /api/v1/services/rerank/text-rerank/text-rerank
     siliconflow:
       url: https://api.siliconflow.cn
       api-key: ${SILICONFLOW_API_KEY:}
       endpoints:
         chat: /v1/chat/completions
-        embedding: /v1/embeddings
 
   spring-ai:
     chat:
       enabled: true
       temperature: 0.3
       top-p: 0.9
-      max-tokens: 4096
-      timeout: 60s
+      max-tokens: 16384
+      timeout: 1000s
 
   chat:
-    default-model: qwen3-max
+    default-model: qwen3.7-max
     candidates:
       - id: qwen3-max
         provider: bailian
         model: qwen3-max
         enabled: true
+        priority: 10
+      - id: qwen3.7-max-2026-05-17
+        provider: bailian
+        model: qwen3.7-max-2026-05-17
+        enabled: true
+        priority: 7
+      - id: deepseek-v4-flash
+        provider: bailian
+        model: deepseek-v4-flash
+        enabled: true
         priority: 1
+      - id: qwen3.7-max
+        provider: bailian
+        model: qwen3.7-max
+        enabled: true
+        priority: 4
+      - id: qwen3.7-max-2026-05-20
+        provider: bailian
+        model: qwen3.7-max-2026-05-20
+        enabled: true
+        priority: 2
+  selection:
+    failure-threshold: 2
+    open-duration-ms: 30000
 
 script:
   ai:
     max-stage-retries: ${ACT_ONE_SCRIPT_AI_MAX_STAGE_RETRIES:1}
+    concurrency:
+      chapter-summary-core-pool-size: ${ACT_ONE_SCRIPT_AI_CHAPTER_SUMMARY_CORE_POOL_SIZE:0}
+      chapter-summary-max-pool-size: ${ACT_ONE_SCRIPT_AI_CHAPTER_SUMMARY_MAX_POOL_SIZE:0}
+      chapter-summary-queue-capacity: ${ACT_ONE_SCRIPT_AI_CHAPTER_SUMMARY_QUEUE_CAPACITY:64}
+      scene-planning-core-pool-size: ${ACT_ONE_SCRIPT_AI_SCENE_PLANNING_CORE_POOL_SIZE:0}
+      scene-planning-max-pool-size: ${ACT_ONE_SCRIPT_AI_SCENE_PLANNING_MAX_POOL_SIZE:0}
+      scene-planning-queue-capacity: ${ACT_ONE_SCRIPT_AI_SCENE_PLANNING_QUEUE_CAPACITY:32}
+      yaml-generation-core-pool-size: ${ACT_ONE_SCRIPT_AI_YAML_GENERATION_CORE_POOL_SIZE:0}
+      yaml-generation-max-pool-size: ${ACT_ONE_SCRIPT_AI_YAML_GENERATION_MAX_POOL_SIZE:0}
+      yaml-generation-queue-capacity: ${ACT_ONE_SCRIPT_AI_YAML_GENERATION_QUEUE_CAPACITY:32}
     timeouts:
-      chapter-summary: ${ACT_ONE_SCRIPT_AI_CHAPTER_SUMMARY_TIMEOUT:60s}
-      global-story-extraction: ${ACT_ONE_SCRIPT_AI_GLOBAL_STORY_EXTRACTION_TIMEOUT:90s}
-      scene-planning: ${ACT_ONE_SCRIPT_AI_SCENE_PLANNING_TIMEOUT:90s}
-      cinematic-treatment: ${ACT_ONE_SCRIPT_AI_CINEMATIC_TREATMENT_TIMEOUT:90s}
-      dialogue-generation: ${ACT_ONE_SCRIPT_AI_DIALOGUE_GENERATION_TIMEOUT:90s}
-      script-yaml-generation: ${ACT_ONE_SCRIPT_AI_YAML_GENERATION_TIMEOUT:120s}
-      yaml-repair: ${ACT_ONE_SCRIPT_AI_YAML_REPAIR_TIMEOUT:120s}
+      chapter-summary: ${ACT_ONE_SCRIPT_AI_CHAPTER_SUMMARY_TIMEOUT:480s}
+      scene-planning: ${ACT_ONE_SCRIPT_AI_SCENE_PLANNING_TIMEOUT:900s}
+      script-yaml-generation: ${ACT_ONE_SCRIPT_AI_YAML_GENERATION_TIMEOUT:600s}

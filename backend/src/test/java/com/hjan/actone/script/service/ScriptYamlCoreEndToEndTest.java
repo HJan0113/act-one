@@ -85,11 +85,6 @@ class ScriptYamlCoreEndToEndTest {
                 ruleBasedDraftService,
                 stages,
                 stages,
-                stages,
-                stages,
-                stages,
-                stages,
-                stages,
                 stages
         );
     }

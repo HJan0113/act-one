@@ -8,12 +8,16 @@ import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineService;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
 import org.springframework.beans.factory.ObjectProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
 
 @Service
 public class ScriptYamlGenerationService {
+
+    private static final Logger log = LoggerFactory.getLogger(ScriptYamlGenerationService.class);
 
     private final ScriptYamlDraftService ruleBasedDraftService;
     private final ScriptYamlValidator yamlValidator;
@@ -47,8 +51,10 @@ public class ScriptYamlGenerationService {
                                                        ScriptAiPipelineResumeState resumeState) {
         ScriptAiPipelineService aiPipelineService = aiPipelineProvider.getIfAvailable();
         if (aiPipelineService != null) {
+            log.info("event=actone_script_generation_route mode=ai_pipeline");
             return fromAiPipeline(aiPipelineService.generate(request, observer, resumeState));
         }
+        log.warn("event=actone_script_generation_route mode=rule_based_scaffold reason=script_ai_pipeline_service_missing");
         return ruleBasedScaffold(request);
     }
 

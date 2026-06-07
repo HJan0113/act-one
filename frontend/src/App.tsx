@@ -25,18 +25,17 @@ import {
     ConflictHeatmapPanel,
     ConsistencyWorkbench,
     ConversionProgress,
+    DraftHistoryPanel,
     InputPanel,
     type ProgressStep,
     RhythmAnalysisPanel,
+    SchemaValidationPanel,
     ScriptPreviewPanel,
     ScriptReadableView,
     CharacterWorkbench,
     Sidebar,
-    SourceTraceWorkbench,
+    SourceReviewWorkbench,
     StoryboardPanel,
-    type ScriptStyleVariant,
-    scriptStyleVariantOptions,
-    StyleVariantPanel,
     TaskConsole,
     type AiChangeSummary,
     type TaskStatus,
@@ -62,13 +61,19 @@ import {
     listMyProjects,
     previewChapters as previewNovelChapters,
     refineScene as refineScriptScene,
-    rewriteDialogueVoice as rewriteScriptDialogueVoice,
     saveDraft as saveScriptDraft,
     streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
-import type {AuthSession, ScriptDraftListItem, ScriptDemoNovelData, ScriptProjectListItem, ScriptStoryboardData, ScriptYamlStreamPayload} from "./types/api";
-import type {ScriptDialogueVoiceRewriteData, ScriptRhythmAnalysisData, ScriptSceneRefineData} from "./types/api";
-import {parseScriptYamlCharacters, parseScriptYamlRelationships, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
+import type {
+    AuthSession,
+    ScriptDraftListItem,
+    ScriptProjectListItem,
+    ScriptStoryboardData,
+    ScriptYamlStreamEventName,
+    ScriptYamlStreamPayload
+} from "./types/api";
+import type {ScriptRhythmAnalysisData, ScriptSceneRefineData} from "./types/api";
+import {parseScriptYamlCharacters, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
 
 const placeholderYaml = `schema_version: "1.0"
 kind: "screenplay_draft"
@@ -96,6 +101,26 @@ const defaultLoginPassword = "admin";
 const chapterHeadingPattern = /^第\s*([0-9一二三四五六七八九十百千万两〇零]+)\s*[章节回集部卷幕].*$/gm;
 
 type ConversionTaskState = Omit<TaskSummary, "canCancel" | "canRetry">;
+
+type PipelineTimelineEvent = {
+    eventName: ScriptYamlStreamEventName | "local";
+    id: string;
+    message: string;
+    progress?: number;
+    stage: string;
+    timestamp: number;
+    tone: StatusTone;
+};
+
+type PipelineTimelineEventInput = Omit<PipelineTimelineEvent, "id" | "timestamp">;
+
+type PipelineStageFlowItem = {
+    detail: string;
+    label: string;
+    progress: number;
+    stage: string;
+    status: ProgressStep["status"];
+};
 
 type DeleteTarget = {
   id: string;
@@ -130,8 +155,6 @@ function App() {
   const [projectLoading, setProjectLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
   const [sceneRefinementLoading, setSceneRefinementLoading] = useState(false);
-  const [dialogueVoiceLoading, setDialogueVoiceLoading] = useState(false);
-  const [styleVariantLoading, setStyleVariantLoading] = useState<ScriptStyleVariant | "">("");
   const [rhythmLoading, setRhythmLoading] = useState(false);
   const [rhythmAnalysis, setRhythmAnalysis] = useState<ScriptRhythmAnalysisData | null>(null);
   const [storyboardLoading, setStoryboardLoading] = useState(false);
@@ -146,21 +169,23 @@ function App() {
   const [activeTraceSceneId, setActiveTraceSceneId] = useState("");
   const [validationStatus, setValidationStatus] = useState("pending");
   const [validationError, setValidationError] = useState("");
-  const [generationMode, setGenerationMode] = useState("");
-  const [fallbackReason, setFallbackReason] = useState("");
+    const [generationMode, setGenerationMode] = useState("");
+    const [fallbackReason, setFallbackReason] = useState("");
     const [conversionTask, setConversionTask] = useState<ConversionTaskState>(() => createInitialTask());
+    const [pipelineEvents, setPipelineEvents] = useState<PipelineTimelineEvent[]>([]);
     const [activeView, setActiveView] = useState<WorkspaceView>("source");
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const generationAbortRef = useRef<AbortController | null>(null);
+    const pipelineEventIdRef = useRef(0);
 
-  const canPreview = useMemo(() => novelText.trim().length > 0 && !previewLoading, [novelText, previewLoading]);
-  const canGenerate = useMemo(() => novelText.trim().length > 0 && !yamlLoading, [novelText, yamlLoading]);
+  const hasNovelText = useMemo(() => novelText.trim().length > 0, [novelText]);
+  const canPreview = useMemo(() => hasNovelText && !previewLoading, [hasNovelText, previewLoading]);
+  const canGenerate = useMemo(() => hasNovelText && isValid && !yamlLoading, [hasNovelText, isValid, yamlLoading]);
   const canSave = useMemo(() => yamlDraft.trim().length > 0 && !saveLoading, [yamlDraft, saveLoading]);
   const canExport = useMemo(() => draftId.length > 0 && !exportLoading, [draftId, exportLoading]);
   const canRefreshDrafts = useMemo(() => projectId.length > 0 && !draftLoading, [projectId, draftLoading]);
   const chapterOutline = useMemo(() => parseChapterOutline(novelText), [novelText]);
   const characterCards = useMemo(() => parseScriptYamlCharacters(yamlDraft), [yamlDraft]);
-  const relationships = useMemo(() => parseScriptYamlRelationships(yamlDraft), [yamlDraft]);
   const traceScenes = useMemo(() => parseScriptYamlScenes(yamlDraft), [yamlDraft]);
   const selectedChapter = useMemo(
     () => chapterOutline.find((chapter) => chapter.index === activeChapterIndex) || chapterOutline[0],
@@ -215,6 +240,16 @@ function App() {
           yamlMessage
       ]
   );
+    const pipelineStageFlow = useMemo(
+        () => createPipelineStageFlow({
+            conversionTask,
+            isValid,
+            previewLoading,
+            validationStatus,
+            yamlDraft
+        }),
+        [conversionTask, isValid, previewLoading, validationStatus, yamlDraft]
+    );
     const topBarStatus = useMemo(
         () => getTopBarStatus({
             isValid,
@@ -226,6 +261,36 @@ function App() {
         }),
         [conversionTask.status, isValid, novelText, previewLoading, yamlDraft, yamlLoading]
     );
+
+    function createPipelineTimelineEvent(input: PipelineTimelineEventInput): PipelineTimelineEvent {
+        pipelineEventIdRef.current += 1;
+        return {
+            ...input,
+            id: `pipeline-event-${pipelineEventIdRef.current}`,
+            timestamp: Date.now()
+        };
+    }
+
+    function resetPipelineTimeline(input: PipelineTimelineEventInput) {
+        setPipelineEvents([createPipelineTimelineEvent(input)]);
+    }
+
+    function appendPipelineTimeline(input: PipelineTimelineEventInput) {
+        const nextEvent = createPipelineTimelineEvent(input);
+        setPipelineEvents((current) => {
+            const latest = current[0];
+            if (
+                latest &&
+                latest.eventName === nextEvent.eventName &&
+                latest.message === nextEvent.message &&
+                latest.stage === nextEvent.stage &&
+                latest.progress === nextEvent.progress
+            ) {
+                return current;
+            }
+            return [nextEvent, ...current].slice(0, 16);
+        });
+    }
 
   useEffect(() => {
     if (traceScenes.length === 0) {
@@ -356,13 +421,22 @@ function App() {
             currentStage: "等待章节解析",
             message: "文本已更新，请先解析章节再开始 AI 转换。",
             progress: 8,
+            stage: "INIT",
             status: "ready"
+        });
+        resetPipelineTimeline({
+            eventName: "local",
+            message: "小说文本已更新，等待章节解析。",
+            progress: 8,
+            stage: "小说输入",
+            tone: "info"
         });
     } else {
       setIsValid(false);
       setChapterCount(0);
       setMessage(initialChapterMessage);
         setConversionTask(createInitialTask());
+        setPipelineEvents([]);
     }
   }
 
@@ -404,8 +478,16 @@ function App() {
           errorMessage: "",
           message: "正在识别章节标题、正文边界和章节数量。",
           progress: Math.max(current.progress, 12),
+          stage: "INIT",
           status: "running"
       }));
+      appendPipelineTimeline({
+          eventName: "local",
+          message: "开始解析章节标题与正文边界。",
+          progress: 12,
+          stage: "章节解析",
+          tone: "active"
+      });
     try {
       const data = await requestWithAuth((token) => previewNovelChapters(novelText, token));
       setIsValid(data.valid);
@@ -417,8 +499,16 @@ function App() {
             errorMessage: data.valid ? "" : data.message,
             message: data.valid ? "章节解析通过，可以开始生成剧本 YAML。" : data.message,
             progress: data.valid ? 20 : 14,
+            stage: "INIT",
             status: data.valid ? "ready" : "failed"
         }));
+        appendPipelineTimeline({
+            eventName: "local",
+            message: data.valid ? `章节解析通过，识别 ${data.chapterCount} 个章节。` : data.message,
+            progress: data.valid ? 20 : 14,
+            stage: "章节解析",
+            tone: data.valid ? "success" : "danger"
+        });
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "章节解析失败。";
       setIsValid(false);
@@ -429,8 +519,16 @@ function App() {
             errorMessage,
             message: "请检查章节格式后重试。",
             progress: Math.max(current.progress, 10),
+            stage: "INIT",
             status: "failed"
         }));
+        appendPipelineTimeline({
+            eventName: "local",
+            message: errorMessage,
+            progress: 10,
+            stage: "章节解析",
+            tone: "danger"
+        });
     } finally {
       setPreviewLoading(false);
     }
@@ -455,8 +553,16 @@ function App() {
           errorMessage: "",
           message: resumeTaskId ? "正在从失败任务的安全阶段继续。" : "流式生成已提交，正在等待后端 meta / progress 事件。",
           progress: 4,
+          stage: "INIT",
           status: "running",
           taskId: streamTaskId
+      });
+      resetPipelineTimeline({
+          eventName: "local",
+          message: resumeTaskId ? "已提交继续生成请求，等待后端恢复安全阶段。" : "已提交 AI 转换请求，等待后端创建任务。",
+          progress: 4,
+          stage: "任务提交",
+          tone: "active"
       });
 
       const updateTaskFromStream = (payload: ScriptYamlStreamPayload, status: TaskStatus = "running") => {
@@ -478,6 +584,7 @@ function App() {
               progress: nextTaskProgress(payload.progress, current.progress),
               resumeStage: payload.resumeStage || current.resumeStage,
               retryable: payload.retryable ?? current.retryable,
+              stage: payload.stage || current.stage,
               status,
               taskId: payload.taskId || current.taskId || streamTaskId,
               usageSummary: payload.result?.usageSummary || current.usageSummary
@@ -510,6 +617,9 @@ function App() {
                 onFinish: (payload) => {
                     updateTaskFromStream(payload, "success");
                 },
+                onEvent: (eventName, payload) => {
+                    appendPipelineTimeline(createStreamTimelineEvent(eventName, payload));
+                },
                 onMessage: (payload) => {
                     updateTaskFromStream(payload);
                     if (payload.message) {
@@ -532,7 +642,7 @@ function App() {
                         setYamlMessage(
                             payload.validationStatus === "valid"
                                 ? `${stageLabel}通过，等待完成事件。`
-                                : payload.validationError || `${stageLabel}未通过，等待自动修复或兜底结果。`
+                                : payload.validationError || `${stageLabel}未通过，等待规则兜底结果。`
                         );
                     }
                 }
@@ -562,9 +672,17 @@ function App() {
             errorMessage: data.validationError || "",
             message: nextYamlMessage,
             progress: data.validationStatus === "valid" ? 100 : 96,
+            stage: data.validationStatus === "valid" ? "COMPLETED" : "YAML_VALIDATION",
             status: data.validationStatus === "invalid" ? "failed" : "success",
             taskId: streamTaskId,
             usageSummary: data.usageSummary
+        });
+        appendPipelineTimeline({
+            eventName: "local",
+            message: nextYamlMessage,
+            progress: data.validationStatus === "valid" ? 100 : 96,
+            stage: data.validationStatus === "valid" ? "转换完成" : "Schema 校验",
+            tone: data.validationStatus === "invalid" ? "danger" : "success"
         });
         setActiveView("result");
     } catch (error) {
@@ -585,6 +703,13 @@ function App() {
             status: aborted ? "canceled" : "failed",
             taskId: streamTaskId
         }));
+        appendPipelineTimeline({
+            eventName: "local",
+            message: errorMessage,
+            progress: aborted ? undefined : 42,
+            stage: aborted ? "停止生成" : "生成失败",
+            tone: aborted ? "warning" : "danger"
+        });
         setActiveView(aborted ? "source" : "pipeline");
     } finally {
         generationAbortRef.current = null;
@@ -605,6 +730,13 @@ function App() {
             progress: Math.max(current.progress, 20),
             status: "canceled"
         }));
+        appendPipelineTimeline({
+            eventName: "local",
+            message: isBackendTaskId(taskId) ? "已发送后端取消请求。" : "正在中止前端流式连接。",
+            progress: Math.max(conversionTask.progress, 20),
+            stage: "停止生成",
+            tone: "warning"
+        });
         try {
             if (isBackendTaskId(taskId)) {
                 const data = await requestWithAuth((token) => cancelScriptGenerationTask(taskId, token));
@@ -617,6 +749,13 @@ function App() {
                     status: "canceled",
                     taskId: data.taskId
                 }));
+                appendPipelineTimeline({
+                    eventName: "local",
+                    message: data.message || "后端任务已取消。",
+                    progress: data.progress ?? undefined,
+                    stage: pipelineStageLabel(extractTaskStage(data.message)) || "停止生成",
+                    tone: "warning"
+                });
             }
         } catch (error) {
             setYamlMessage(error instanceof Error ? error.message : "停止生成失败，已中止前端连接。");
@@ -725,6 +864,17 @@ function App() {
 
   async function saveDraft() {
     if (!canSave) return;
+    const defaultDraftTitle = generatedTitle || title || "未命名剧本";
+    const requestedTitle = window.prompt("请输入本次保存的草稿标题", defaultDraftTitle);
+    if (requestedTitle === null) {
+      setYamlMessage("已取消保存。");
+      return;
+    }
+    const draftTitle = requestedTitle.trim();
+    if (!draftTitle) {
+      setYamlMessage("草稿标题不能为空。");
+      return;
+    }
     setSaveLoading(true);
     setYamlMessage("正在保存 YAML 草稿...");
     try {
@@ -734,7 +884,7 @@ function App() {
           {
             projectId: activeProjectId,
             schemaVersion: schemaVersion || "1.0",
-            title: generatedTitle || title || "未命名剧本",
+            title: draftTitle,
             yaml: yamlDraft
           },
           token
@@ -779,77 +929,6 @@ function App() {
         }));
     } finally {
       setSaveLoading(false);
-    }
-  }
-
-  async function createStyleVariantDraft(style: ScriptStyleVariant) {
-    if (!yamlDraft.trim()) {
-      setYamlMessage("请先生成或加载 YAML，再创建风格版本。");
-      return;
-    }
-    if (!projectId && !novelText.trim()) {
-      setYamlMessage("当前没有项目上下文，请先保存或加载一个项目草稿。");
-      return;
-    }
-
-    const option = styleVariantOption(style);
-    const variantYaml = createStyleVariantYaml(yamlDraft, style);
-    const variantTitle = createStyleVariantTitle(generatedTitle || title || "未命名剧本", style);
-    setStyleVariantLoading(style);
-    setYamlMessage(`正在创建${option.label}版本草稿...`);
-    try {
-      const activeProjectId = await ensureProject();
-      const data = await requestWithAuth((token) =>
-        saveScriptDraft(
-          {
-            projectId: activeProjectId,
-            schemaVersion: schemaVersion || "1.0",
-            title: variantTitle,
-            yaml: variantYaml
-          },
-          token
-        )
-      );
-      setYamlDraft(variantYaml);
-      setAiChangeSummary(null);
-      setRhythmAnalysis(null);
-      setDraftId(data.draftId);
-      setProjectId(data.projectId);
-      setGeneratedTitle(data.title);
-      setSchemaVersion(data.schemaVersion);
-      setValidationStatus(data.validationStatus);
-      setValidationError(data.validationError || "");
-      setGenerationMode(extractGenerationMode(variantYaml));
-      setFallbackReason("");
-      setYamlMessage(
-        data.validationStatus === "valid"
-          ? `已创建${option.label}版本草稿，原稿未覆盖。`
-          : `已创建${option.label}版本但校验未通过：${data.validationError || "请查看 Schema 校验面板。"}`
-      );
-      setConversionTask((current) => ({
-        ...current,
-        currentStage: data.validationStatus === "valid" ? "风格版本已归档" : "风格版本需修正",
-        errorMessage: data.validationError || "",
-        message: `基于当前 YAML 另存为${option.label}版本，草稿列表已刷新。`,
-        progress: data.validationStatus === "valid" ? 100 : Math.max(current.progress, 88),
-        status: data.validationStatus === "valid" ? "success" : "failed",
-        taskId: data.draftId
-      }));
-      await loadDrafts(data.projectId);
-      setActiveView("result");
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "风格版本创建失败。";
-      setYamlMessage(errorMessage);
-      setConversionTask((current) => ({
-        ...current,
-        currentStage: "风格版本创建失败",
-        errorMessage,
-        message: "当前 YAML 未被覆盖，可稍后重试。",
-        progress: Math.max(current.progress, 82),
-        status: "failed"
-      }));
-    } finally {
-      setStyleVariantLoading("");
     }
   }
 
@@ -1072,61 +1151,6 @@ function App() {
     }
   }
 
-  async function rewriteDialogueVoicePatch(speaker: string, instruction: string) {
-    if (!draftId) {
-      setYamlMessage("请先保存当前 YAML 草稿，再执行对白口吻重写。");
-      return;
-    }
-    setDialogueVoiceLoading(true);
-    setYamlMessage("正在生成对白口吻 patch...");
-    try {
-      const data = await requestWithAuth((token) =>
-        rewriteScriptDialogueVoice(
-          {
-            draftId,
-            instruction,
-            speaker
-          },
-          token
-        )
-      );
-      setYamlDraft(data.patchedYaml);
-      setAiChangeSummary(createVoicePatchChangeSummary(data));
-      setRhythmAnalysis(null);
-      setDraftId("");
-      setValidationStatus(data.validationStatus || "edited");
-      setValidationError(data.validationError || "");
-      setGenerationMode(extractGenerationMode(data.patchedYaml));
-      setFallbackReason("");
-      setYamlMessage(
-        data.validationStatus === "valid"
-          ? `对白口吻已重写：${data.voicePatch.summary || data.voicePatch.voiceSample || "voice patch 已应用到当前编辑器，请保存为新草稿。"}`
-          : `对白口吻重写返回但校验未通过：${data.validationError || "请查看 Schema 校验。"}`
-      );
-      setConversionTask((current) => ({
-        ...current,
-        currentStage: data.validationStatus === "valid" ? "对白口吻重写完成" : "对白口吻重写需修正",
-        errorMessage: data.validationError || "",
-        message: data.voicePatch.summary || data.voicePatch.voiceSample || "voice patch 已应用到 YAML 编辑器。",
-        progress: Math.max(current.progress, data.validationStatus === "valid" ? 96 : 88),
-        status: data.validationStatus === "valid" ? "success" : "failed"
-      }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "对白口吻重写失败。";
-      setYamlMessage(errorMessage);
-      setConversionTask((current) => ({
-        ...current,
-        currentStage: "对白口吻重写失败",
-        errorMessage,
-        message: "YAML 未被覆盖，可调整人物或指令后重试。",
-        progress: Math.max(current.progress, 70),
-        status: "failed"
-      }));
-    } finally {
-      setDialogueVoiceLoading(false);
-    }
-  }
-
   async function exportDraftYaml() {
     if (!canExport) return;
     setExportLoading(true);
@@ -1199,36 +1223,25 @@ function App() {
 
     const scriptPanel = (
         <ScriptPreviewPanel
-            activeDraftId={draftId}
             canExport={canExport}
-            canRefreshDrafts={canRefreshDrafts}
             canSave={canSave}
             taskSummary={taskSummary}
             draftId={draftId}
-            draftLoading={draftLoading}
-            drafts={drafts}
             generatedTitle={generatedTitle}
             fallbackReason={fallbackReason}
             generationMode={generationMode}
             onExportYaml={exportDraftYaml}
             onCopyYaml={copyYaml}
-            onLoadDraft={loadDraftDetail}
-            onRefreshDrafts={() => loadDrafts()}
             onSaveDraft={saveDraft}
             onYamlChange={handleYamlDraftChange}
-            projectId={projectId}
             saveLoading={saveLoading}
-            schemaChecks={schemaChecks}
             schemaVersion={schemaVersion}
             exportLoading={exportLoading}
-            validationError={validationError}
-            validationStatus={validationStatus}
             yaml={yamlDraft}
             yamlMessage={yamlMessage}
             yamlPlaceholder={placeholderYaml}
         />
     );
-
     return (
         <AppShell
             activeView={activeView}
@@ -1343,21 +1356,110 @@ function App() {
                     <div className="studio-panel page-side-panel">
                         <ConversionProgress steps={workflowSteps}/>
                     </div>
-                    <section className="studio-panel task-details" aria-label="后续任务能力">
+                    <section className="studio-panel task-details pipeline-execution" aria-label="AI 转换执行流程">
                         <div className="panel-heading">
                             <div>
-                                <p className="panel-kicker">Task Runtime</p>
-                                <h2>任务化生成准备区</h2>
+                                <p className="panel-kicker">Pipeline Runtime</p>
+                                <h2>AI 转换执行流程</h2>
                             </div>
                             <StatusBadge label={taskSummary.currentStage}
-                                         tone={taskSummary.status === "failed" ? "danger" : "info"}/>
+                                         tone={taskStatusBadgeTone(taskSummary.status)}/>
                         </div>
-                        <div className="task-details__body">
-                            <p>{taskSummary.errorMessage || taskSummary.message}</p>
-                            <div className="task-detail-list">
-                                <span>此页实时显示后端 `meta / progress / validation / finish / error` 事件。</span>
-                                <span>停止生成会调用后端取消接口，并中止当前流式连接。</span>
-                                <span>失败后保留小说输入与任务 ID，可从控制台或顶部按钮继续生成。</span>
+                        <div className="pipeline-execution__body">
+                            <div className="pipeline-execution__summary" data-status={taskSummary.status}>
+                                <div className="pipeline-execution__metric">
+                                    <span>进度</span>
+                                    <strong>{taskSummary.progress}%</strong>
+                                </div>
+                                <div className="pipeline-execution__current">
+                                    <strong>{taskSummary.currentStage}</strong>
+                                    <p>{taskSummary.errorMessage || taskSummary.message}</p>
+                                </div>
+                                <div className="pipeline-execution__actions">
+                                    {yamlLoading ? (
+                                        <ActionButton
+                                            disabled={!taskSummary.canCancel}
+                                            icon={<CircleStop aria-hidden="true" size={16}/>}
+                                            onClick={stopGeneration}
+                                            variant="ghost"
+                                        >
+                                            停止生成
+                                        </ActionButton>
+                                    ) : isValid ? (
+                                        <ActionButton
+                                            disabled={!canGenerate}
+                                            icon={taskSummary.canRetry ? <RefreshCcw aria-hidden="true" size={16}/> : <Wand2 aria-hidden="true" size={16}/>}
+                                            onClick={generateYaml}
+                                            variant="primary"
+                                        >
+                                            {taskSummary.canRetry ? "继续生成" : "开始 AI 转换"}
+                                        </ActionButton>
+                                    ) : (
+                                        <ActionButton
+                                            disabled={!canPreview}
+                                            icon={previewLoading ? <Loader2 aria-hidden="true" className="spin" size={16}/> : <Play aria-hidden="true" size={16}/>}
+                                            onClick={previewChapters}
+                                            variant="secondary"
+                                        >
+                                            {hasNovelText ? "解析章节" : "等待小说输入"}
+                                        </ActionButton>
+                                    )}
+                                </div>
+                                <progress aria-label="AI 转换总进度" className="pipeline-execution__meter" max={100} value={taskSummary.progress}/>
+                            </div>
+
+                            <div className="pipeline-execution__main">
+                                <div className="pipeline-stage-flow" aria-label="Pipeline 阶段流">
+                                    <div className="pipeline-block-heading">
+                                        <span>阶段流</span>
+                                        <small>{pipelineFlowStatusLabel(pipelineStageFlow)}</small>
+                                    </div>
+                                    <ol>
+                                        {pipelineStageFlow.map((step) => (
+                                            <li data-status={step.status} key={step.stage}>
+                                                <span className="pipeline-stage-flow__index">{step.progress}%</span>
+                                                <div>
+                                                    <strong>{step.label}</strong>
+                                                    <small>{step.detail}</small>
+                                                </div>
+                                                <StatusBadge label={pipelineStepStatusLabel(step.status)} tone={pipelineStepTone(step.status)}/>
+                                            </li>
+                                        ))}
+                                    </ol>
+                                </div>
+
+                                <div className="pipeline-live-log" aria-label="Pipeline 实时输出">
+                                    <div className="pipeline-block-heading">
+                                        <span>实时输出</span>
+                                        <small>{pipelineEvents.length > 0 ? `最近 ${pipelineEvents.length} 条` : "等待事件"}</small>
+                                    </div>
+                                    {pipelineEvents.length > 0 ? (
+                                        <ol>
+                                            {pipelineEvents.map((event) => (
+                                                <li key={event.id}>
+                                                    <time>{formatTimelineTime(event.timestamp)}</time>
+                                                    <div>
+                                                        <div className="pipeline-live-log__row">
+                                                            <strong>{event.stage}</strong>
+                                                            <StatusBadge label={streamEventLabel(event.eventName)} tone={event.tone}/>
+                                                        </div>
+                                                        <p>{event.message}</p>
+                                                        {typeof event.progress === "number" ? (
+                                                            <span className="pipeline-live-log__progress">{event.progress}%</span>
+                                                        ) : null}
+                                                    </div>
+                                                </li>
+                                            ))}
+                                        </ol>
+                                    ) : (
+                                        <div className="pipeline-live-log__empty">等待后端事件</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="pipeline-execution__meta">
+                                <span>Task ID <strong>{taskSummary.taskId || "未创建"}</strong></span>
+                                <span>模型调用 <strong>{formatUsageSummary(taskSummary.usageSummary)}</strong></span>
                             </div>
                         </div>
                     </section>
@@ -1368,19 +1470,20 @@ function App() {
                 <div className="result-workbench">
                     {scriptPanel}
                     <div className="result-side-stack">
-                        <StyleVariantPanel
-                            canCreate={Boolean(yamlDraft.trim()) && !styleVariantLoading}
-                            creatingStyle={styleVariantLoading}
-                            draftCount={drafts.length}
-                            onCreateVariant={createStyleVariantDraft}
-                        />
-                        <RhythmAnalysisPanel
-                            activeDraftId={draftId}
-                            analysis={rhythmAnalysis}
-                            loading={rhythmLoading}
-                            onAnalyze={analyzeRhythm}
-                            onViewHeatmap={() => { setActiveView("heatmap"); }}
+                        <SchemaValidationPanel
+                            checks={schemaChecks}
+                            error={validationError}
+                            status={validationStatus}
                             yamlReady={Boolean(yamlDraft.trim())}
+                        />
+                        <DraftHistoryPanel
+                            activeDraftId={draftId}
+                            canRefreshDrafts={canRefreshDrafts}
+                            draftLoading={draftLoading}
+                            drafts={drafts}
+                            onLoadDraft={loadDraftDetail}
+                            onRefreshDrafts={() => loadDrafts()}
+                            projectId={projectId}
                         />
                         <AiChangeSummaryPanel summary={aiChangeSummary}/>
                     </div>
@@ -1389,7 +1492,7 @@ function App() {
 
             {activeView === "trace" ? (
                 <div className="trace-full-workbench">
-                    <SourceTraceWorkbench
+                    <SourceReviewWorkbench
                         activeDraftId={draftId}
                         activeSceneId={activeTraceSceneId}
                         chapters={chapterOutline}
@@ -1419,20 +1522,25 @@ function App() {
             ) : null}
 
             {activeView === "heatmap" ? (
-                <ConflictHeatmapPanel
-                    analysis={rhythmAnalysis}
-                    onSelectScene={(sceneId) => { setActiveTraceSceneId(sceneId); setActiveView("trace"); }}
-                    yamlReady={Boolean(yamlDraft.trim())}
-                />
+                <div className="heatmap-page-stack">
+                    <ConflictHeatmapPanel
+                        analysis={rhythmAnalysis}
+                        onSelectScene={(sceneId) => { setActiveTraceSceneId(sceneId); setActiveView("trace"); }}
+                        yamlReady={Boolean(yamlDraft.trim())}
+                    />
+                    <RhythmAnalysisPanel
+                        activeDraftId={draftId}
+                        analysis={rhythmAnalysis}
+                        loading={rhythmLoading}
+                        onAnalyze={analyzeRhythm}
+                        yamlReady={Boolean(yamlDraft.trim())}
+                    />
+                </div>
             ) : null}
 
             {activeView === "characters" ? (
                 <CharacterWorkbench
-                    activeDraftId={draftId}
                     characters={characterCards}
-                    onRewriteVoice={rewriteDialogueVoicePatch}
-                    relationships={relationships}
-                    rewritingVoice={dialogueVoiceLoading}
                     scenes={traceScenes}
                     yamlReady={Boolean(yamlDraft.trim())}
                 />
@@ -1742,49 +1850,6 @@ function createGenerationMessage(generationMode: string, fallback: boolean, fall
   return `${label} 生成成功，可继续复制或编辑。`;
 }
 
-function createStyleVariantYaml(yaml: string, style: ScriptStyleVariant) {
-  const option = styleVariantOption(style);
-  const note = `风格版本：${option.label}；${option.prompt}`;
-  return appendYamlNote(yaml, note);
-}
-
-function appendYamlNote(yaml: string, note: string) {
-  const source = yaml.trimEnd();
-  const noteLine = `  - "${escapeYamlDoubleQuoted(note)}"`;
-  if (source.includes(noteLine)) {
-    return source;
-  }
-
-  const inlineEmptyNotes = /^notes:\s*\[\s*]\s*$/m;
-  if (inlineEmptyNotes.test(source)) {
-    return source.replace(inlineEmptyNotes, `notes:\n${noteLine}`);
-  }
-
-  const notesMatch = source.match(/^notes:\s*$/m);
-  if (!notesMatch || notesMatch.index === undefined) {
-    return `${source}\nnotes:\n${noteLine}`;
-  }
-
-  const insertAt = source.indexOf("\n", notesMatch.index);
-  if (insertAt === -1) {
-    return `${source}\n${noteLine}`;
-  }
-  return `${source.slice(0, insertAt)}\n${noteLine}${source.slice(insertAt)}`;
-}
-
-function escapeYamlDoubleQuoted(value: string) {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-function createStyleVariantTitle(baseTitle: string, style: ScriptStyleVariant) {
-  const cleanBase = baseTitle.replace(/\s*[·-]\s*(影视剧|短剧|舞台剧|广播剧)版$/u, "").trim() || "未命名剧本";
-  return `${cleanBase} · ${styleVariantOption(style).label}版`;
-}
-
-function styleVariantOption(style: ScriptStyleVariant) {
-  return scriptStyleVariantOptions.find((option) => option.value === style) || scriptStyleVariantOptions[0];
-}
-
 function generationModeLabel(generationMode: string) {
   if (generationMode === "ai_pipeline") {
     return "AI Pipeline";
@@ -1835,47 +1900,13 @@ function createScenePatchChangeSummary(data: ScriptSceneRefineData): AiChangeSum
   };
 }
 
-function createVoicePatchChangeSummary(data: ScriptDialogueVoiceRewriteData): AiChangeSummary {
-  const patch = data.voicePatch;
-  const riskWarnings = patch.riskWarnings || [];
-  const sceneIds = patch.scenePatches.map((scenePatch) => scenePatch.sceneId);
-  const dialogueCount = patch.scenePatches.reduce((total, scenePatch) => total + scenePatch.dialogues.length, 0);
-  return {
-    changes: [
-      {
-        detail: riskWarnings.length > 0 ? "口吻重写返回了事实或关系风险，保存前需要复核。" : "仅允许改写指定 speaker 的对白，事实字段未被修改。",
-        tone: riskWarnings.length > 0 ? "warning" : "success",
-        type: "事实"
-      },
-      {
-        detail: `${patch.speaker} 的 ${dialogueCount} 句对白已按统一口吻重写。`,
-        tone: "info",
-        type: "表达"
-      },
-      {
-        detail: sceneIds.length > 1 ? `跨 ${sceneIds.length} 个场景统一口吻，可能改变对白节奏。` : "单场景对白口吻调整。",
-        tone: sceneIds.length > 1 ? "warning" : "info",
-        type: "节奏"
-      },
-      {
-        detail: `完整 YAML 已重新校验，状态为 ${data.validationStatus}；dialogues 数组保持结构化输出。`,
-        tone: data.validationStatus === "valid" ? "success" : "danger",
-        type: "格式"
-      }
-    ],
-    riskWarnings,
-    sceneIds,
-    summary: patch.summary || patch.voiceSample || "对白口吻 patch 已应用到当前 YAML。",
-    validationStatus: data.validationStatus
-  };
-}
-
 function createInitialTask(): ConversionTaskState {
     return {
         currentStage: "等待输入",
         errorMessage: "",
         message: "导入或粘贴小说正文后开始转换。",
         progress: 0,
+        stage: "",
         status: "idle",
         taskId: ""
     };
@@ -1896,16 +1927,9 @@ function extractTaskStage(message?: string | null) {
 const pipelineStageLabels: Record<string, string> = {
     CHAPTER_SUMMARY: "章节摘要",
     COMPLETED: "转换完成",
-    CONSISTENCY_CHECK: "一致性校验",
-    DIALOGUE_GENERATION: "对白生成",
-    FACT_CONSTRAINT_CHECK: "事实约束",
-    GLOBAL_STORY_EXTRACTION: "全局故事抽取",
     INIT: "任务初始化",
-    PSYCHOLOGICAL_VISUALIZATION: "心理影视化",
     SCENE_PLANNING: "场景规划",
     SCRIPT_YAML_GENERATION: "YAML 生成",
-    SOURCE_TRACE: "源文追溯",
-    YAML_REPAIR: "YAML 自动修复",
     YAML_VALIDATION: "Schema 校验"
 };
 
@@ -1916,6 +1940,63 @@ function pipelineStageLabel(stage?: string | null) {
     return pipelineStageLabels[stage] || stage;
 }
 
+const pipelineStageRuntime = [
+    {
+        detail: "创建任务、解析章节、建立可恢复上下文",
+        label: "任务初始化",
+        stage: "INIT",
+        startProgress: 2,
+        successProgress: 8
+    },
+    {
+        detail: "并发提炼章节摘要、人物、冲突和证据摘录",
+        label: "章节摘要",
+        stage: "CHAPTER_SUMMARY",
+        startProgress: 10,
+        successProgress: 30
+    },
+    {
+        detail: "按章节批次规划场景、节拍和来源映射",
+        label: "场景规划",
+        stage: "SCENE_PLANNING",
+        startProgress: 32,
+        successProgress: 52
+    },
+    {
+        detail: "按场景批次生成剧本 YAML 片段并合并",
+        label: "YAML 生成",
+        stage: "SCRIPT_YAML_GENERATION",
+        startProgress: 60,
+        successProgress: 82
+    },
+    {
+        detail: "执行 Schema 校验，必要时进入规则兜底",
+        label: "Schema 校验",
+        stage: "YAML_VALIDATION",
+        startProgress: 88,
+        successProgress: 96
+    },
+    {
+        detail: "返回 YAML、校验结果和模型调用统计",
+        label: "转换完成",
+        stage: "COMPLETED",
+        startProgress: 100,
+        successProgress: 100
+    }
+] as const;
+
+const streamEventLabels: Record<ScriptYamlStreamEventName | "local", string> = {
+    cancel: "取消",
+    done: "关闭",
+    error: "错误",
+    finish: "完成",
+    local: "本地",
+    message: "消息",
+    meta: "任务",
+    progress: "进度",
+    validation: "校验"
+};
+
 function nextTaskProgress(value: number | null | undefined, current: number) {
     if (typeof value !== "number" || !Number.isFinite(value)) {
         return current;
@@ -1924,8 +2005,214 @@ function nextTaskProgress(value: number | null | undefined, current: number) {
     return Math.max(current, normalized);
 }
 
+function optionalTaskProgress(value: number | null | undefined) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return undefined;
+    }
+    return Math.max(0, Math.min(100, Math.round(value)));
+}
+
 function isAbortError(error: unknown) {
     return error instanceof DOMException && error.name === "AbortError" || error instanceof Error && error.name === "AbortError";
+}
+
+function createStreamTimelineEvent(eventName: ScriptYamlStreamEventName, payload: ScriptYamlStreamPayload): PipelineTimelineEventInput {
+    const stage = pipelineStageLabel(payload.stage) || "AI Pipeline";
+    return {
+        eventName,
+        message: payload.message || streamEventMessage(eventName, payload),
+        progress: optionalTaskProgress(payload.progress),
+        stage,
+        tone: streamEventTone(eventName, payload)
+    };
+}
+
+function streamEventMessage(eventName: ScriptYamlStreamEventName, payload: ScriptYamlStreamPayload) {
+    if (eventName === "validation") {
+        return payload.validationStatus === "valid"
+            ? "Schema 校验通过。"
+            : payload.validationError || "Schema 校验返回结果。";
+    }
+    if (eventName === "finish") {
+        return "生成结果已返回。";
+    }
+    if (eventName === "cancel") {
+        return "生成任务已停止。";
+    }
+    if (eventName === "error") {
+        return payload.validationError || "生成任务失败。";
+    }
+    if (eventName === "meta") {
+        return payload.taskId ? `任务已创建：${payload.taskId}` : "任务元数据已返回。";
+    }
+    if (eventName === "done") {
+        return "流式连接已关闭。";
+    }
+    return "后端进度已更新。";
+}
+
+function streamEventTone(eventName: ScriptYamlStreamEventName, payload: ScriptYamlStreamPayload): StatusTone {
+    if (eventName === "error") {
+        return "danger";
+    }
+    if (eventName === "cancel") {
+        return "warning";
+    }
+    if (eventName === "finish" || payload.validationStatus === "valid") {
+        return "success";
+    }
+    if (eventName === "validation" && payload.validationStatus && payload.validationStatus !== "valid") {
+        return "danger";
+    }
+    if (eventName === "progress") {
+        return "active";
+    }
+    return "info";
+}
+
+function createPipelineStageFlow({
+    conversionTask,
+    isValid,
+    previewLoading,
+    validationStatus,
+    yamlDraft
+}: {
+    conversionTask: ConversionTaskState;
+    isValid: boolean;
+    previewLoading: boolean;
+    validationStatus: string;
+    yamlDraft: string;
+}): PipelineStageFlowItem[] {
+    const currentStage = conversionTask.stage || stageKeyFromLabel(conversionTask.currentStage);
+    const hasYaml = yamlDraft.trim().length > 0;
+    const progress = conversionTask.progress;
+    const taskFailed = conversionTask.status === "failed";
+    const taskCanceled = conversionTask.status === "canceled";
+    const taskComplete = conversionTask.status === "success" || validationStatus === "valid";
+
+    return pipelineStageRuntime.map((step) => {
+        let status: ProgressStep["status"] = "idle";
+        if (taskComplete || progress >= step.successProgress) {
+            status = "complete";
+        } else if (currentStage === step.stage) {
+            status = taskFailed ? "error" : taskCanceled ? "warning" : "active";
+        } else if (progress >= step.startProgress && progress < step.successProgress) {
+            status = taskFailed ? "error" : taskCanceled ? "warning" : "active";
+        }
+
+        if (step.stage === "INIT") {
+            if (previewLoading) {
+                status = "active";
+            } else if (isValid || progress >= step.successProgress || hasYaml) {
+                status = "complete";
+            }
+        }
+        if ((taskFailed || validationStatus === "invalid") && currentStage === step.stage) {
+            status = "error";
+        }
+        if (taskCanceled && currentStage === step.stage) {
+            status = "warning";
+        }
+        if (step.stage === "COMPLETED" && taskFailed) {
+            status = "idle";
+        }
+
+        return {
+            detail: step.detail,
+            label: step.label,
+            progress: step.successProgress,
+            stage: step.stage,
+            status
+        };
+    });
+}
+
+function stageKeyFromLabel(label: string) {
+    return Object.entries(pipelineStageLabels).find(([, value]) => value === label)?.[0] || "";
+}
+
+function pipelineStepStatusLabel(status: ProgressStep["status"]) {
+    if (status === "complete") {
+        return "完成";
+    }
+    if (status === "active") {
+        return "执行中";
+    }
+    if (status === "error") {
+        return "失败";
+    }
+    if (status === "warning") {
+        return "已停止";
+    }
+    return "等待";
+}
+
+function pipelineFlowStatusLabel(steps: PipelineStageFlowItem[]) {
+    if (steps.some((step) => step.status === "error")) {
+        return "失败";
+    }
+    if (steps.some((step) => step.status === "warning")) {
+        return "已停止";
+    }
+    if (steps.some((step) => step.status === "active")) {
+        return "执行中";
+    }
+    if (steps.every((step) => step.status === "complete")) {
+        return "完成";
+    }
+    return "等待";
+}
+
+function pipelineStepTone(status: ProgressStep["status"]): StatusTone {
+    if (status === "complete") {
+        return "success";
+    }
+    if (status === "active") {
+        return "active";
+    }
+    if (status === "error") {
+        return "danger";
+    }
+    if (status === "warning") {
+        return "warning";
+    }
+    return "neutral";
+}
+
+function taskStatusBadgeTone(status: TaskStatus): StatusTone {
+    if (status === "running") {
+        return "active";
+    }
+    if (status === "success") {
+        return "success";
+    }
+    if (status === "failed") {
+        return "danger";
+    }
+    if (status === "canceled" || status === "ready") {
+        return "warning";
+    }
+    return "neutral";
+}
+
+function streamEventLabel(eventName: ScriptYamlStreamEventName | "local") {
+    return streamEventLabels[eventName] || eventName;
+}
+
+function formatTimelineTime(timestamp: number) {
+    return new Date(timestamp).toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+    });
+}
+
+function formatUsageSummary(summary: TaskSummary["usageSummary"]) {
+    if (!summary || summary.callCount <= 0) {
+        return "待返回";
+    }
+    const tokenPrefix = summary.estimated ? "~" : "";
+    return `${summary.callCount} 次 / ${tokenPrefix}${summary.totalTokens} tokens`;
 }
 
 function createWorkflowSteps({

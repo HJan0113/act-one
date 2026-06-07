@@ -241,37 +241,6 @@ export type ScriptSceneRefineData = {
   validationStatus: string;
 };
 
-export type ScriptDialogueScenePatchData = {
-  dialogues: ScriptDialoguePatchData[];
-  riskWarnings?: string[] | null;
-  sceneId: string;
-  summary?: string | null;
-};
-
-export type ScriptDialogueVoicePatchData = {
-  riskWarnings?: string[] | null;
-  scenePatches: ScriptDialogueScenePatchData[];
-  speaker: string;
-  summary?: string | null;
-  voiceSample?: string | null;
-};
-
-export type ScriptDialogueVoiceRewriteRequest = {
-  draftId: string;
-  instruction: string;
-  sceneIds?: string[];
-  speaker: string;
-};
-
-export type ScriptDialogueVoiceRewriteData = {
-  draftId: string;
-  patchedYaml: string;
-  speaker: string;
-  validationError?: string | null;
-  validationStatus: string;
-  voicePatch: ScriptDialogueVoicePatchData;
-};
-
 export type ScriptCharacterDensityMetric = {
   characterId: string;
   characterName: string;

@@ -65,12 +65,12 @@ class ClasspathPromptTemplateServiceTest {
 
     @Test
     void rejectsNullVariableValue() {
-        Map<String, Object> variables = variablesFor(PromptTemplateId.YAML_REPAIR);
-        variables.put("invalid_yaml", null);
+        Map<String, Object> variables = variablesFor(PromptTemplateId.SCRIPT_YAML_GENERATION);
+        variables.put("scene_plan", null);
 
-        assertThatThrownBy(() -> service.render(PromptTemplateId.YAML_REPAIR, variables))
+        assertThatThrownBy(() -> service.render(PromptTemplateId.SCRIPT_YAML_GENERATION, variables))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Prompt 缺少必填变量：yaml-repair -> invalid_yaml");
+                .hasMessage("Prompt 缺少必填变量：script-yaml-generation -> scene_plan");
     }
 
     @Test
@@ -97,9 +97,9 @@ class ClasspathPromptTemplateServiceTest {
         ClasspathPromptTemplateService missingService =
                 new ClasspathPromptTemplateService(fixedResourceLoader(missingResource));
 
-        assertThatThrownBy(() -> missingService.load(PromptTemplateId.YAML_REPAIR))
+        assertThatThrownBy(() -> missingService.load(PromptTemplateId.SCRIPT_YAML_GENERATION))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("Prompt 模板不存在：prompt/v1/yaml-repair.st");
+                .hasMessage("Prompt 模板不存在：prompt/v1/script-yaml-generation.st");
     }
 
     private Map<String, Object> variablesFor(PromptTemplateId templateId) {
@@ -117,19 +117,12 @@ class ClasspathPromptTemplateServiceTest {
             case "chapter_title" -> "第三章 暗门";
             case "chapter_content" -> "林夏推开暗门，发现失踪多年的道具箱。";
             case "chapter_summaries" -> "[{\"chapterId\":\"chapter_3\"}]";
-            case "global_story_state" -> "{\"characters\":[]}";
-            case "scene_plans" -> "{\"scenes\":[]}";
             case "scene_plan" -> "{\"scenes\":[]}";
-            case "cinematic_treatment" -> "{\"scenes\":[]}";
-            case "dialogue_draft" -> "{\"scenes\":[]}";
-            case "source_trace" -> "{\"scenes\":[]}";
             case "scenes_metrics_json" -> "[{\"sceneId\":\"scene_001\",\"dialogueRatio\":40,\"actionRatio\":60}]";
             case "project_title" -> "暗门";
             case "author" -> "测试作者";
             case "logline" -> "林夏追查旧剧场的秘密。";
             case "schema_summary" -> "schema_version、kind、characters、acts、scenes 为必填字段。";
-            case "invalid_yaml" -> "kind screenplay_draft";
-            case "validation_errors" -> "YAML 语法错误：缺少冒号";
             default -> "测试值";
         };
     }

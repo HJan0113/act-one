@@ -3,8 +3,8 @@ package com.hjan.actone.script.service;
 import com.hjan.actone.common.context.LoginUser;
 import com.hjan.actone.common.context.UserContext;
 import com.hjan.actone.common.web.SseEmitterSender;
+import com.hjan.actone.common.log.AiExceptionDiagnostics;
 import com.hjan.actone.script.ai.model.ChapterSummary;
-import com.hjan.actone.script.ai.model.GlobalStoryState;
 import com.hjan.actone.script.ai.model.PipelineContext;
 import com.hjan.actone.script.ai.model.PipelineStage;
 import com.hjan.actone.script.ai.model.ScenePlan;
@@ -12,12 +12,13 @@ import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineCanceledException;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineObserver;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineResult;
 import com.hjan.actone.script.ai.pipeline.ScriptAiPipelineResumeState;
-import com.hjan.actone.script.ai.pipeline.ScriptYamlFactConstraintChecker;
 import com.hjan.actone.script.model.ScriptConversionTaskResponse;
 import com.hjan.actone.script.model.ScriptYamlGenerateRequest;
 import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
 import com.hjan.actone.script.model.ScriptYamlStreamEventType;
 import com.hjan.actone.script.model.ScriptYamlStreamPayload;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -36,23 +37,17 @@ import java.util.concurrent.atomic.AtomicReference;
 @Service
 public class ScriptYamlStreamService {
 
+    private static final Logger log = LoggerFactory.getLogger(ScriptYamlStreamService.class);
     private static final long SSE_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(10);
     private static final Map<PipelineStage, Integer> STAGE_START_PROGRESS = new EnumMap<>(PipelineStage.class);
     private static final Map<PipelineStage, Integer> STAGE_SUCCESS_PROGRESS = new EnumMap<>(PipelineStage.class);
 
     static {
         register(PipelineStage.INIT, 2, 8);
-        register(PipelineStage.CHAPTER_SUMMARY, 10, 20);
-        register(PipelineStage.GLOBAL_STORY_EXTRACTION, 22, 32);
-        register(PipelineStage.SCENE_PLANNING, 34, 44);
-        register(PipelineStage.PSYCHOLOGICAL_VISUALIZATION, 46, 56);
-        register(PipelineStage.DIALOGUE_GENERATION, 58, 68);
-        register(PipelineStage.SOURCE_TRACE, 70, 76);
-        register(PipelineStage.CONSISTENCY_CHECK, 78, 82);
-        register(PipelineStage.SCRIPT_YAML_GENERATION, 84, 87);
-        register(PipelineStage.YAML_VALIDATION, 88, 90);
-        register(PipelineStage.FACT_CONSTRAINT_CHECK, 91, 93);
-        register(PipelineStage.YAML_REPAIR, 94, 96);
+        register(PipelineStage.CHAPTER_SUMMARY, 10, 30);
+        register(PipelineStage.SCENE_PLANNING, 32, 52);
+        register(PipelineStage.SCRIPT_YAML_GENERATION, 60, 82);
+        register(PipelineStage.YAML_VALIDATION, 88, 96);
         register(PipelineStage.COMPLETED, 100, 100);
     }
 
@@ -146,6 +141,15 @@ public class ScriptYamlStreamService {
         ScriptAiPipelineResumeState resumeState = loadResumeState(request, runningTask);
 
         try {
+            log.info(
+                    "event=actone_script_stream_start taskId={} persistent={} projectPresent={} resumeTaskPresent={} titlePresent={} textLength={}",
+                    runningTask.taskId(),
+                    runningTask.persistent(),
+                    StringUtils.hasText(request.projectId()),
+                    StringUtils.hasText(request.resumeTaskId()),
+                    StringUtils.hasText(request.title()),
+                    request.text() == null ? 0 : request.text().length()
+            );
             ScriptYamlGenerateResponse result = generationService.generateFromText(
                     request,
                     new StreamObserver(runningTask),
@@ -174,6 +178,19 @@ public class ScriptYamlStreamService {
         } catch (RuntimeException error) {
             PipelineStage stage = runningTask.currentStage();
             ScriptConversionTaskResponse failedTask = markFailed(runningTask, stage, error);
+            log.error(
+                    "event=actone_script_stream_failure taskId={} stage={} persistent={} errorType={} errorCode={} errorMessage={} modelErrorType={} modelStatus={} rootCauseType={} rootCauseMessage={}",
+                    runningTask.taskId(),
+                    stage,
+                    runningTask.persistent(),
+                    AiExceptionDiagnostics.errorType(error),
+                    AiExceptionDiagnostics.errorCode(error),
+                    AiExceptionDiagnostics.safeMessage(error),
+                    AiExceptionDiagnostics.modelErrorType(error),
+                    AiExceptionDiagnostics.modelStatusCode(error),
+                    AiExceptionDiagnostics.rootCauseType(error),
+                    AiExceptionDiagnostics.rootCauseSafeMessage(error)
+            );
             send(runningTask.sender(), ScriptYamlStreamEventType.ERROR, ScriptYamlStreamPayload.failure(
                     runningTask.taskId(),
                     stage.name(),
@@ -245,15 +262,10 @@ public class ScriptYamlStreamService {
             return ScriptAiPipelineResumeState.empty();
         }
 
-        Optional<GlobalStoryState> globalStoryState = stageResultService.loadGlobalStoryState(runningTask.taskId());
-        Optional<ScenePlan> scenePlan = globalStoryState.isPresent()
-                ? stageResultService.loadScenePlan(runningTask.taskId())
-                : Optional.empty();
+        Optional<ScenePlan> scenePlan = stageResultService.loadScenePlan(runningTask.taskId());
         PipelineStage resumeStage = scenePlan.isPresent()
-                ? PipelineStage.PSYCHOLOGICAL_VISUALIZATION
-                : globalStoryState.isPresent()
-                ? PipelineStage.SCENE_PLANNING
-                : PipelineStage.GLOBAL_STORY_EXTRACTION;
+                ? PipelineStage.SCRIPT_YAML_GENERATION
+                : PipelineStage.SCENE_PLANNING;
         send(runningTask.sender(), ScriptYamlStreamEventType.MESSAGE, ScriptYamlStreamPayload.of(
                 runningTask.taskId(),
                 resumeStage.name(),
@@ -262,7 +274,6 @@ public class ScriptYamlStreamService {
         ));
         return new ScriptAiPipelineResumeState(
                 chapterSummaries.get(),
-                globalStoryState.orElse(null),
                 scenePlan.orElse(null)
         );
     }
@@ -277,10 +288,6 @@ public class ScriptYamlStreamService {
                     stageResultService.saveChapterSummaries(runningTask.taskId(), context.chapterSummaries());
                 }
             }
-            case GLOBAL_STORY_EXTRACTION -> stageResultService.saveGlobalStoryState(
-                    runningTask.taskId(),
-                    context.globalStoryState()
-            );
             case SCENE_PLANNING -> {
                 if (context.scenePlan() != null) {
                     stageResultService.saveScenePlan(runningTask.taskId(), context.scenePlan());
@@ -391,11 +398,6 @@ public class ScriptYamlStreamService {
         }
 
         private PipelineStage validationStage(ScriptYamlValidationResult validationResult) {
-            String errorMessage = validationResult == null ? null : validationResult.errorMessage();
-            if (StringUtils.hasText(errorMessage)
-                    && errorMessage.startsWith(ScriptYamlFactConstraintChecker.ERROR_PREFIX)) {
-                return PipelineStage.FACT_CONSTRAINT_CHECK;
-            }
             return PipelineStage.YAML_VALIDATION;
         }
 

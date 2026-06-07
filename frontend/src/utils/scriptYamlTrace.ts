@@ -17,15 +17,6 @@ export type ScriptCharacterCard = {
   sourceChapterIds: string[];
 };
 
-export type ScriptRelationship = {
-  description: string;
-  id: string;
-  sourceCharacterId: string;
-  sourceChapterIds: string[];
-  targetCharacterId: string;
-  type: string;
-};
-
 export type ScriptTraceScene = {
   actId: string;
   action: string;
@@ -49,12 +40,6 @@ export function parseScriptYamlCharacters(yaml: string): ScriptCharacterCard[] {
   return collectTopLevelListBlocks(yaml, "characters")
     .map(parseCharacterBlock)
     .filter((character): character is ScriptCharacterCard => Boolean(character));
-}
-
-export function parseScriptYamlRelationships(yaml: string): ScriptRelationship[] {
-  return collectTopLevelListBlocks(yaml, "relationships")
-    .map(parseRelationshipBlock)
-    .filter((relationship): relationship is ScriptRelationship => Boolean(relationship));
 }
 
 export function parseScriptYamlScenes(yaml: string): ScriptTraceScene[] {
@@ -122,27 +107,6 @@ function parseCharacterBlock(block: string[]): ScriptCharacterCard | null {
     name,
     role: parsed.fields.get("role") || "待补充",
     sourceChapterIds: getListField(parsed.lists, "source_chapter_ids", "sourceChapterIds")
-  };
-}
-
-function parseRelationshipBlock(block: string[]): ScriptRelationship | null {
-  const parsed = parseYamlItemBlock(block);
-  const id = parsed.fields.get("id") || "";
-  const sourceCharacterId =
-    parsed.fields.get("source_character_id") || parsed.fields.get("sourceCharacterId") || "";
-  const targetCharacterId =
-    parsed.fields.get("target_character_id") || parsed.fields.get("targetCharacterId") || "";
-  if (!id && (!sourceCharacterId || !targetCharacterId)) {
-    return null;
-  }
-
-  return {
-    description: parsed.fields.get("description") || "",
-    id: id || `${sourceCharacterId}-${targetCharacterId}`,
-    sourceCharacterId,
-    sourceChapterIds: getListField(parsed.lists, "source_chapter_ids", "sourceChapterIds"),
-    targetCharacterId,
-    type: parsed.fields.get("type") || "关系"
   };
 }
 
