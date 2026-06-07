@@ -65,16 +65,16 @@ ai:
       timeout: 1000s
 
   chat:
-    default-model: qwen3.7-plus
+    default-model: deepseek-v4-flash
     candidates:
       - id: qwen3-max
         provider: bailian
         model: qwen3-max
         enabled: true
         priority: 5
-      - id: qwen3.7-plus
+      - id: qwen3.7-max-2026-05-17
         provider: bailian
-        model: qwen3.7-plus
+        model: qwen3.7-max-2026-05-17
         enabled: true
         priority: 3
       - id: deepseek-v4-flash

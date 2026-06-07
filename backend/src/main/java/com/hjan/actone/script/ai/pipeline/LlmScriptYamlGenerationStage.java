@@ -647,6 +647,8 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
     private String dumpYaml(Map<String, Object> document) {
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+        options.setIndent(4);
+        options.setIndicatorIndent(2);
         options.setPrettyFlow(false);
         return new Yaml(options).dump(document).strip();
     }

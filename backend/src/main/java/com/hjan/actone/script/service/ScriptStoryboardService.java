@@ -209,6 +209,8 @@ public class ScriptStoryboardService {
     private String dumpYaml(Object value) {
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+        options.setIndent(4);
+        options.setIndicatorIndent(2);
         options.setPrettyFlow(true);
         return new Yaml(options).dump(value).strip();
     }

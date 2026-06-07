@@ -197,12 +197,6 @@ const workspaceNavItems: Array<{
         label: "人物"
     },
     {
-        detail: "一致性报告",
-        icon: <ShieldCheck size={18} aria-hidden="true"/>,
-        id: "consistency",
-        label: "校验"
-    },
-    {
         detail: "可读全剧本",
         icon: <ScrollText size={18} aria-hidden="true"/>,
         id: "preview",
@@ -886,11 +880,8 @@ function compactCandidateText(value: string) {
 }
 
 type CharacterWorkbenchProps = {
-  activeDraftId: string;
   characters: ScriptCharacterCard[];
-  rewritingVoice: boolean;
   scenes: ScriptTraceScene[];
-  onRewriteVoice: (speaker: string, instruction: string) => Promise<void> | void;
   yamlReady: boolean;
 };
 
@@ -900,31 +891,16 @@ type CharacterStat = {
 };
 
 export function CharacterWorkbench({
-  activeDraftId,
   characters,
-  onRewriteVoice,
-  rewritingVoice,
   scenes,
   yamlReady
 }: CharacterWorkbenchProps) {
-  const [voiceInstruction, setVoiceInstruction] = useState("");
-  const [voiceSpeaker, setVoiceSpeaker] = useState("");
   const candidateCharacters = characters.length > 0 ? characters : deriveCharacterCandidates(scenes);
   const usingCandidates = characters.length === 0 && candidateCharacters.length > 0;
   const characterStats = createCharacterStats(candidateCharacters, scenes);
-  const selectedVoiceSpeaker = voiceSpeaker || candidateCharacters[0]?.name || "";
-  const canRewriteVoice = Boolean(activeDraftId && selectedVoiceSpeaker && voiceInstruction.trim() && !rewritingVoice);
-
-  async function submitVoiceRewrite() {
-    if (!canRewriteVoice) {
-      return;
-    }
-    await onRewriteVoice(selectedVoiceSpeaker, voiceInstruction.trim());
-    setVoiceInstruction("");
-  }
 
   return (
-    <div className="character-workbench" aria-label="人物卡片与对白口吻">
+    <div className="character-workbench" aria-label="人物卡片">
       <section className="studio-panel character-panel" aria-label="人物卡片">
         <div className="panel-heading">
           <div>
@@ -986,62 +962,6 @@ export function CharacterWorkbench({
               title="暂无人物卡"
             />
           )}
-        </div>
-      </section>
-
-      <section className="studio-panel voice-panel" aria-label="对白口吻一致性与重写">
-        <div className="panel-heading">
-          <div>
-            <p className="panel-kicker">Voice Rewrite</p>
-            <h2>对白口吻</h2>
-          </div>
-          <StatusBadge
-            label={activeDraftId ? "多场景 patch" : "需先保存"}
-            tone={activeDraftId ? "info" : "neutral"}
-          />
-        </div>
-
-        <div className="voice-panel__body">
-          <section className="voice-rewrite-box" aria-label="对白口吻一致性与重写">
-            <div className="voice-rewrite-box__heading">
-              <span>口吻重写</span>
-              <strong>{activeDraftId ? "多场景 patch" : "需先保存草稿"}</strong>
-            </div>
-            <label>
-              <span>人物</span>
-              <select
-                disabled={!activeDraftId || rewritingVoice || candidateCharacters.length === 0}
-                onChange={(event) => setVoiceSpeaker(event.target.value)}
-                value={selectedVoiceSpeaker}
-              >
-                {candidateCharacters.length > 0 ? (
-                  candidateCharacters.map((character) => (
-                    <option key={characterIdentity(character)} value={character.name}>
-                      {character.name}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">暂无人物</option>
-                )}
-              </select>
-            </label>
-            <textarea
-              disabled={!activeDraftId || rewritingVoice || candidateCharacters.length === 0}
-              maxLength={1000}
-              onChange={(event) => setVoiceInstruction(event.target.value)}
-              placeholder="例如：统一为冷静、短句、带观察细节的侦查口吻，不改变事实。"
-              value={voiceInstruction}
-            />
-            <ActionButton
-              disabled={!canRewriteVoice}
-              icon={<Sparkles aria-hidden="true" className={rewritingVoice ? "spin" : ""} size={15} />}
-              onClick={submitVoiceRewrite}
-              size="sm"
-              variant="primary"
-            >
-              重写对白
-            </ActionButton>
-          </section>
         </div>
       </section>
     </div>
@@ -1451,7 +1371,7 @@ export function AiChangeSummaryPanel({summary}: AiChangeSummaryPanelProps) {
         </div>
       ) : (
         <EmptyState
-          description="执行局部精修或对白口吻重写后，这里会显示 patch 摘要、风险和改动类型。"
+          description="执行局部精修后，这里会显示 patch 摘要、风险和改动类型。"
           icon={<ClipboardCopy size={18} />}
           size="sm"
           title="暂无 AI 改动"

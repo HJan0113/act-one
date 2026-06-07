@@ -61,7 +61,6 @@ import {
     listMyProjects,
     previewChapters as previewNovelChapters,
     refineScene as refineScriptScene,
-    rewriteDialogueVoice as rewriteScriptDialogueVoice,
     saveDraft as saveScriptDraft,
     streamGenerateYaml as streamGenerateScriptYaml
 } from "./services/scriptService";
@@ -73,7 +72,7 @@ import type {
     ScriptYamlStreamEventName,
     ScriptYamlStreamPayload
 } from "./types/api";
-import type {ScriptDialogueVoiceRewriteData, ScriptRhythmAnalysisData, ScriptSceneRefineData} from "./types/api";
+import type {ScriptRhythmAnalysisData, ScriptSceneRefineData} from "./types/api";
 import {parseScriptYamlCharacters, parseScriptYamlScenes} from "./utils/scriptYamlTrace";
 
 const placeholderYaml = `schema_version: "1.0"
@@ -156,7 +155,6 @@ function App() {
   const [projectLoading, setProjectLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
   const [sceneRefinementLoading, setSceneRefinementLoading] = useState(false);
-  const [dialogueVoiceLoading, setDialogueVoiceLoading] = useState(false);
   const [rhythmLoading, setRhythmLoading] = useState(false);
   const [rhythmAnalysis, setRhythmAnalysis] = useState<ScriptRhythmAnalysisData | null>(null);
   const [storyboardLoading, setStoryboardLoading] = useState(false);
@@ -1153,61 +1151,6 @@ function App() {
     }
   }
 
-  async function rewriteDialogueVoicePatch(speaker: string, instruction: string) {
-    if (!draftId) {
-      setYamlMessage("请先保存当前 YAML 草稿，再执行对白口吻重写。");
-      return;
-    }
-    setDialogueVoiceLoading(true);
-    setYamlMessage("正在生成对白口吻 patch...");
-    try {
-      const data = await requestWithAuth((token) =>
-        rewriteScriptDialogueVoice(
-          {
-            draftId,
-            instruction,
-            speaker
-          },
-          token
-        )
-      );
-      setYamlDraft(data.patchedYaml);
-      setAiChangeSummary(createVoicePatchChangeSummary(data));
-      setRhythmAnalysis(null);
-      setDraftId("");
-      setValidationStatus(data.validationStatus || "edited");
-      setValidationError(data.validationError || "");
-      setGenerationMode(extractGenerationMode(data.patchedYaml));
-      setFallbackReason("");
-      setYamlMessage(
-        data.validationStatus === "valid"
-          ? `对白口吻已重写：${data.voicePatch.summary || data.voicePatch.voiceSample || "voice patch 已应用到当前编辑器，请保存为新草稿。"}`
-          : `对白口吻重写返回但校验未通过：${data.validationError || "请查看 Schema 校验。"}`
-      );
-      setConversionTask((current) => ({
-        ...current,
-        currentStage: data.validationStatus === "valid" ? "对白口吻重写完成" : "对白口吻重写需修正",
-        errorMessage: data.validationError || "",
-        message: data.voicePatch.summary || data.voicePatch.voiceSample || "voice patch 已应用到 YAML 编辑器。",
-        progress: Math.max(current.progress, data.validationStatus === "valid" ? 96 : 88),
-        status: data.validationStatus === "valid" ? "success" : "failed"
-      }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "对白口吻重写失败。";
-      setYamlMessage(errorMessage);
-      setConversionTask((current) => ({
-        ...current,
-        currentStage: "对白口吻重写失败",
-        errorMessage,
-        message: "YAML 未被覆盖，可调整人物或指令后重试。",
-        progress: Math.max(current.progress, 70),
-        status: "failed"
-      }));
-    } finally {
-      setDialogueVoiceLoading(false);
-    }
-  }
-
   async function exportDraftYaml() {
     if (!canExport) return;
     setExportLoading(true);
@@ -1542,14 +1485,6 @@ function App() {
                             onRefreshDrafts={() => loadDrafts()}
                             projectId={projectId}
                         />
-                        <RhythmAnalysisPanel
-                            activeDraftId={draftId}
-                            analysis={rhythmAnalysis}
-                            loading={rhythmLoading}
-                            onAnalyze={analyzeRhythm}
-                            onViewHeatmap={() => { setActiveView("heatmap"); }}
-                            yamlReady={Boolean(yamlDraft.trim())}
-                        />
                         <AiChangeSummaryPanel summary={aiChangeSummary}/>
                     </div>
                 </div>
@@ -1587,19 +1522,25 @@ function App() {
             ) : null}
 
             {activeView === "heatmap" ? (
-                <ConflictHeatmapPanel
-                    analysis={rhythmAnalysis}
-                    onSelectScene={(sceneId) => { setActiveTraceSceneId(sceneId); setActiveView("trace"); }}
-                    yamlReady={Boolean(yamlDraft.trim())}
-                />
+                <div className="heatmap-page-stack">
+                    <ConflictHeatmapPanel
+                        analysis={rhythmAnalysis}
+                        onSelectScene={(sceneId) => { setActiveTraceSceneId(sceneId); setActiveView("trace"); }}
+                        yamlReady={Boolean(yamlDraft.trim())}
+                    />
+                    <RhythmAnalysisPanel
+                        activeDraftId={draftId}
+                        analysis={rhythmAnalysis}
+                        loading={rhythmLoading}
+                        onAnalyze={analyzeRhythm}
+                        yamlReady={Boolean(yamlDraft.trim())}
+                    />
+                </div>
             ) : null}
 
             {activeView === "characters" ? (
                 <CharacterWorkbench
-                    activeDraftId={draftId}
                     characters={characterCards}
-                    onRewriteVoice={rewriteDialogueVoicePatch}
-                    rewritingVoice={dialogueVoiceLoading}
                     scenes={traceScenes}
                     yamlReady={Boolean(yamlDraft.trim())}
                 />
@@ -1955,41 +1896,6 @@ function createScenePatchChangeSummary(data: ScriptSceneRefineData): AiChangeSum
     riskWarnings,
     sceneIds: [data.sceneId],
     summary: patch.summary || "局部 scene patch 已应用到当前 YAML。",
-    validationStatus: data.validationStatus
-  };
-}
-
-function createVoicePatchChangeSummary(data: ScriptDialogueVoiceRewriteData): AiChangeSummary {
-  const patch = data.voicePatch;
-  const riskWarnings = patch.riskWarnings || [];
-  const sceneIds = patch.scenePatches.map((scenePatch) => scenePatch.sceneId);
-  const dialogueCount = patch.scenePatches.reduce((total, scenePatch) => total + scenePatch.dialogues.length, 0);
-  return {
-    changes: [
-      {
-        detail: riskWarnings.length > 0 ? "口吻重写返回了事实或关系风险，保存前需要复核。" : "仅允许改写指定 speaker 的对白，事实字段未被修改。",
-        tone: riskWarnings.length > 0 ? "warning" : "success",
-        type: "事实"
-      },
-      {
-        detail: `${patch.speaker} 的 ${dialogueCount} 句对白已按统一口吻重写。`,
-        tone: "info",
-        type: "表达"
-      },
-      {
-        detail: sceneIds.length > 1 ? `跨 ${sceneIds.length} 个场景统一口吻，可能改变对白节奏。` : "单场景对白口吻调整。",
-        tone: sceneIds.length > 1 ? "warning" : "info",
-        type: "节奏"
-      },
-      {
-        detail: `完整 YAML 已重新校验，状态为 ${data.validationStatus}；dialogues 数组保持结构化输出。`,
-        tone: data.validationStatus === "valid" ? "success" : "danger",
-        type: "格式"
-      }
-    ],
-    riskWarnings,
-    sceneIds,
-    summary: patch.summary || patch.voiceSample || "对白口吻 patch 已应用到当前 YAML。",
     validationStatus: data.validationStatus
   };
 }
