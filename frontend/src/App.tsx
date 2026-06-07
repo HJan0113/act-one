@@ -868,6 +868,17 @@ function App() {
 
   async function saveDraft() {
     if (!canSave) return;
+    const defaultDraftTitle = generatedTitle || title || "未命名剧本";
+    const requestedTitle = window.prompt("请输入本次保存的草稿标题", defaultDraftTitle);
+    if (requestedTitle === null) {
+      setYamlMessage("已取消保存。");
+      return;
+    }
+    const draftTitle = requestedTitle.trim();
+    if (!draftTitle) {
+      setYamlMessage("草稿标题不能为空。");
+      return;
+    }
     setSaveLoading(true);
     setYamlMessage("正在保存 YAML 草稿...");
     try {
@@ -877,7 +888,7 @@ function App() {
           {
             projectId: activeProjectId,
             schemaVersion: schemaVersion || "1.0",
-            title: generatedTitle || title || "未命名剧本",
+            title: draftTitle,
             yaml: yamlDraft
           },
           token
