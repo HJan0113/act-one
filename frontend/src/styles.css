@@ -1370,6 +1370,7 @@ h1 {
     display: grid;
     gap: var(--space-4);
     min-width: 0;
+    overflow: visible;
 }
 
 .trace-panel {
@@ -3195,12 +3196,11 @@ h1 {
 .trace-full-workbench {
   display: grid;
   gap: var(--space-4);
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .trace-side-panel {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: var(--space-4);
 }
 
