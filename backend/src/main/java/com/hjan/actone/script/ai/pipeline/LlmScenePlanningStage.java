@@ -32,7 +32,7 @@ public class LlmScenePlanningStage implements ScenePlanningStage {
     private static final double PLANNING_TOP_P = 0.8D;
     private static final int PLANNING_MAX_TOKENS = 8192;
     private static final int CHAPTER_BATCH_SIZE = 3;
-    private static final Duration DEFAULT_PLANNING_TIMEOUT = Duration.ofSeconds(90);
+    private static final Duration DEFAULT_PLANNING_TIMEOUT = Duration.ofSeconds(180);
     private static final Executor DIRECT_EXECUTOR = Runnable::run;
 
     private final LLMService llmService;

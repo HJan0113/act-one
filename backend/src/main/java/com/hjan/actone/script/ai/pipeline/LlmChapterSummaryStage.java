@@ -31,7 +31,7 @@ public class LlmChapterSummaryStage implements ChapterSummaryStage {
     private static final double SUMMARY_TEMPERATURE = 0.2D;
     private static final double SUMMARY_TOP_P = 0.8D;
     private static final int SUMMARY_MAX_TOKENS = 4096;
-    private static final Duration DEFAULT_SUMMARY_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration DEFAULT_SUMMARY_TIMEOUT = Duration.ofSeconds(120);
 
     private final LLMService llmService;
     private final PromptTemplateService promptTemplateService;

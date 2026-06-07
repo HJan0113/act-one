@@ -36,7 +36,7 @@ public class AiModelProperties {
         private Double temperature = 0.3;
         private Double topP = 0.9;
         private Integer maxTokens = 4096;
-        private Duration timeout = Duration.ofSeconds(60);
+        private Duration timeout = Duration.ofSeconds(120);
     }
 
     @Data

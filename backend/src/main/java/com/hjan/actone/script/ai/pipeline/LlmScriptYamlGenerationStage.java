@@ -43,7 +43,7 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
     private static final double YAML_TOP_P = 0.8D;
     private static final int YAML_MAX_TOKENS = 4096;
     private static final int SCENE_BATCH_SIZE = 6;
-    private static final Duration DEFAULT_YAML_TIMEOUT = Duration.ofSeconds(120);
+    private static final Duration DEFAULT_YAML_TIMEOUT = Duration.ofSeconds(240);
     private static final Executor DIRECT_EXECUTOR = Runnable::run;
     private static final Pattern LEADING_CODE_FENCE =
             Pattern.compile("^```[\\w.+-]*[\\t ]*\\n?");
