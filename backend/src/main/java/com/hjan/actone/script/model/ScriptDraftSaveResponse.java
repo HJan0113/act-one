@@ -5,6 +5,7 @@ public record ScriptDraftSaveResponse(
         String projectId,
         String title,
         String schemaVersion,
-        String validationStatus
+        String validationStatus,
+        String validationError
 ) {
 }

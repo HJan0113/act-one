@@ -1,8 +1,11 @@
 package com.hjan.actone.common.web;
 
+import cn.dev33.satoken.exception.NotLoginException;
+import cn.dev33.satoken.exception.NotRoleException;
 import com.hjan.actone.common.convention.Result;
 import com.hjan.actone.common.errorcode.BaseErrorCode;
 import com.hjan.actone.common.exception.AbstractException;
+import com.hjan.actone.common.exception.RemoteException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +33,30 @@ public class GlobalExceptionHandler {
         return Results.failure(ex);
     }
 
+    @ExceptionHandler(RemoteException.class)
+    public Result<Void> remoteException(HttpServletRequest request, RemoteException ex) {
+        log.warn(
+                "[{}] {} remote error: code={}, message={}",
+                request.getMethod(),
+                getUrl(request),
+                ex.getErrorCode(),
+                ex.getErrorMessage()
+        );
+        return Results.failure(ex);
+    }
+
+    @ExceptionHandler(NotLoginException.class)
+    public Result<Void> notLoginException(HttpServletRequest request, NotLoginException ex) {
+        log.warn("[{}] {} auth failed: {}", request.getMethod(), getUrl(request), ex.getMessage());
+        return Results.failure(BaseErrorCode.CLIENT_ERROR.code(), "未登录或登录已过期");
+    }
+
+    @ExceptionHandler(NotRoleException.class)
+    public Result<Void> notRoleException(HttpServletRequest request, NotRoleException ex) {
+        log.warn("[{}] {} role denied: {}", request.getMethod(), getUrl(request), ex.getMessage());
+        return Results.failure(BaseErrorCode.CLIENT_ERROR.code(), "权限不足");
+    }
+
     @ExceptionHandler(Throwable.class)
     public Result<Void> defaultErrorHandler(HttpServletRequest request, Throwable throwable) {
         log.error("[{}] {} unexpected error", request.getMethod(), getUrl(request), throwable);
@@ -42,4 +69,3 @@ public class GlobalExceptionHandler {
         return query == null || query.isBlank() ? url : url + "?" + query;
     }
 }
-

@@ -1,0 +1,183 @@
+package com.hjan.actone.script.ai.model;
+
+import java.util.List;
+
+public record PipelineContext(
+        String projectId,
+        String projectTitle,
+        String author,
+        String logline,
+        Integer chapterCount,
+        PipelineStage currentStage,
+        List<ChapterSummary> chapterSummaries,
+        GlobalStoryState globalStoryState,
+        ScenePlan scenePlan,
+        String generatedYaml,
+        String repairedYaml,
+        String validationStatus,
+        String validationError
+) {
+
+    public PipelineContext {
+        projectId = ModelValidation.optionalText(projectId);
+        projectTitle = ModelValidation.requireText(projectTitle, "projectTitle");
+        author = ModelValidation.optionalText(author);
+        logline = ModelValidation.optionalText(logline);
+        chapterCount = ModelValidation.requirePositive(chapterCount, "chapterCount");
+        currentStage = currentStage == null ? PipelineStage.INIT : currentStage;
+        chapterSummaries = ModelValidation.copyList(chapterSummaries, "chapterSummaries");
+        globalStoryState = globalStoryState == null ? GlobalStoryState.empty() : globalStoryState;
+        generatedYaml = ModelValidation.optionalText(generatedYaml);
+        repairedYaml = ModelValidation.optionalText(repairedYaml);
+        validationStatus = ModelValidation.optionalText(validationStatus);
+        validationError = ModelValidation.optionalText(validationError);
+    }
+
+    public static PipelineContext create(String projectId,
+                                         String projectTitle,
+                                         String author,
+                                         String logline,
+                                         Integer chapterCount) {
+        return new PipelineContext(
+                projectId,
+                projectTitle,
+                author,
+                logline,
+                chapterCount,
+                PipelineStage.INIT,
+                List.of(),
+                GlobalStoryState.empty(),
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    public PipelineContext withChapterSummaries(List<ChapterSummary> summaries) {
+        return new PipelineContext(
+                projectId,
+                projectTitle,
+                author,
+                logline,
+                chapterCount,
+                PipelineStage.CHAPTER_SUMMARY,
+                summaries,
+                globalStoryState,
+                scenePlan,
+                generatedYaml,
+                repairedYaml,
+                validationStatus,
+                validationError
+        );
+    }
+
+    public PipelineContext withGlobalStoryState(GlobalStoryState state) {
+        return new PipelineContext(
+                projectId,
+                projectTitle,
+                author,
+                logline,
+                chapterCount,
+                PipelineStage.GLOBAL_STORY_EXTRACTION,
+                chapterSummaries,
+                state,
+                scenePlan,
+                generatedYaml,
+                repairedYaml,
+                validationStatus,
+                validationError
+        );
+    }
+
+    public PipelineContext withScenePlan(ScenePlan plan) {
+        return new PipelineContext(
+                projectId,
+                projectTitle,
+                author,
+                logline,
+                chapterCount,
+                PipelineStage.SCENE_PLANNING,
+                chapterSummaries,
+                globalStoryState,
+                plan,
+                generatedYaml,
+                repairedYaml,
+                validationStatus,
+                validationError
+        );
+    }
+
+    public PipelineContext withGeneratedYaml(String yaml) {
+        return new PipelineContext(
+                projectId,
+                projectTitle,
+                author,
+                logline,
+                chapterCount,
+                PipelineStage.SCRIPT_YAML_GENERATION,
+                chapterSummaries,
+                globalStoryState,
+                scenePlan,
+                yaml,
+                repairedYaml,
+                validationStatus,
+                validationError
+        );
+    }
+
+    public PipelineContext withValidation(String status, String error) {
+        return new PipelineContext(
+                projectId,
+                projectTitle,
+                author,
+                logline,
+                chapterCount,
+                PipelineStage.YAML_VALIDATION,
+                chapterSummaries,
+                globalStoryState,
+                scenePlan,
+                generatedYaml,
+                repairedYaml,
+                status,
+                error
+        );
+    }
+
+    public PipelineContext withRepairedYaml(String yaml) {
+        return new PipelineContext(
+                projectId,
+                projectTitle,
+                author,
+                logline,
+                chapterCount,
+                PipelineStage.YAML_REPAIR,
+                chapterSummaries,
+                globalStoryState,
+                scenePlan,
+                generatedYaml,
+                yaml,
+                validationStatus,
+                validationError
+        );
+    }
+
+    public PipelineContext completed() {
+        return new PipelineContext(
+                projectId,
+                projectTitle,
+                author,
+                logline,
+                chapterCount,
+                PipelineStage.COMPLETED,
+                chapterSummaries,
+                globalStoryState,
+                scenePlan,
+                generatedYaml,
+                repairedYaml,
+                validationStatus,
+                validationError
+        );
+    }
+}

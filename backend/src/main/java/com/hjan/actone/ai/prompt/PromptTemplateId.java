@@ -1,0 +1,76 @@
+package com.hjan.actone.ai.prompt;
+
+import java.util.List;
+
+public enum PromptTemplateId {
+
+    CHAPTER_SUMMARY(
+            "chapter-summary",
+            "1.0.0",
+            "prompt/v1/chapter-summary.st",
+            List.of("chapter_id", "chapter_index", "chapter_title", "chapter_content")
+    ),
+    GLOBAL_STORY_EXTRACTION(
+            "global-story-extraction",
+            "1.0.0",
+            "prompt/v1/global-story-extraction.st",
+            List.of("chapter_summaries")
+    ),
+    SCENE_PLANNING(
+            "scene-planning",
+            "1.0.0",
+            "prompt/v1/scene-planning.st",
+            List.of("chapter_summaries", "global_story_state")
+    ),
+    SCRIPT_YAML_GENERATION(
+            "script-yaml-generation",
+            "1.0.0",
+            "prompt/v1/script-yaml-generation.st",
+            List.of(
+                    "project_title",
+                    "author",
+                    "logline",
+                    "chapter_count",
+                    "global_story_state",
+                    "scene_plans",
+                    "schema_summary"
+            )
+    ),
+    YAML_REPAIR(
+            "yaml-repair",
+            "1.0.0",
+            "prompt/v1/yaml-repair.st",
+            List.of("invalid_yaml", "validation_errors", "schema_summary", "chapter_count")
+    );
+
+    private final String id;
+    private final String version;
+    private final String resourcePath;
+    private final List<String> variables;
+
+    PromptTemplateId(String id,
+                     String version,
+                     String resourcePath,
+                     List<String> variables) {
+        this.id = id;
+        this.version = version;
+        this.resourcePath = resourcePath;
+        this.variables = List.copyOf(variables);
+    }
+
+    public String id() {
+        return id;
+    }
+
+    public String version() {
+        return version;
+    }
+
+    public String resourcePath() {
+        return resourcePath;
+    }
+
+    public List<String> variables() {
+        return variables;
+    }
+}

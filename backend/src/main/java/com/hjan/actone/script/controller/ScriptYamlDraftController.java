@@ -11,6 +11,10 @@ import com.hjan.actone.script.model.ScriptYamlGenerateResponse;
 import com.hjan.actone.script.service.ScriptDraftService;
 import com.hjan.actone.script.service.ScriptYamlDraftService;
 import jakarta.validation.Valid;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -53,5 +58,29 @@ public class ScriptYamlDraftController {
     @GetMapping("/{draftId}")
     public Result<ScriptDraftDetailResponse> detail(@PathVariable String draftId) {
         return Results.success(scriptDraftService.detail(draftId));
+    }
+
+    @GetMapping(value = "/{draftId}/export.yaml", produces = "application/x-yaml")
+    public ResponseEntity<String> exportYaml(@PathVariable String draftId) {
+        ScriptDraftDetailResponse draft = scriptDraftService.exportYaml(draftId);
+        String filename = sanitizeFilename(draft.title()) + "-" + draft.draftId() + ".yaml";
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/x-yaml; charset=UTF-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(filename, StandardCharsets.UTF_8)
+                                .build()
+                                .toString())
+                .body(draft.yaml());
+    }
+
+    private String sanitizeFilename(String value) {
+        String filename = value == null ? "script-draft" : value.trim();
+        filename = filename.replaceAll("[\\\\/:*?\"<>|\\s]+", "-");
+        filename = filename.replaceAll("-+", "-");
+        if (filename.isBlank()) {
+            return "script-draft";
+        }
+        return filename.length() > 80 ? filename.substring(0, 80) : filename;
     }
 }

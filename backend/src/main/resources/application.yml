@@ -33,3 +33,44 @@ mybatis-plus:
       logic-not-delete-value: 0
   configuration:
     map-underscore-to-camel-case: true
+
+sa-token:
+  token-name: Authorization
+  timeout: ${ACT_ONE_AUTH_TOKEN_TTL_SECONDS:2592000}
+  is-concurrent: true
+  is-share: false
+  token-style: simple-uuid
+  is-log: false
+  is-print: false
+
+ai:
+  providers:
+    bailian:
+      url: https://dashscope.aliyuncs.com
+      api-key: ${BAILIAN_API_KEY:}
+      endpoints:
+        chat: /compatible-mode/v1/chat/completions
+        rerank: /api/v1/services/rerank/text-rerank/text-rerank
+    siliconflow:
+      url: https://api.siliconflow.cn
+      api-key: ${SILICONFLOW_API_KEY:}
+      endpoints:
+        chat: /v1/chat/completions
+        embedding: /v1/embeddings
+
+  spring-ai:
+    chat:
+      enabled: true
+      temperature: 0.3
+      top-p: 0.9
+      max-tokens: 4096
+      timeout: 60s
+
+  chat:
+    default-model: qwen3-max
+    candidates:
+      - id: qwen3-max
+        provider: bailian
+        model: qwen3-max
+        enabled: true
+        priority: 1
