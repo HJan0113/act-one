@@ -53,11 +53,11 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
             顶层必须包含 schema_version、kind、metadata、source、characters、acts、scenes。
             schema_version 固定为 "1.0"，kind 固定为 "screenplay_draft"。
             source 必须包含 type（固定 "novel"）、generation_mode（固定 "ai_pipeline"）、chapter_count（正整数，与项目章节数一致）。
-            acts 每项必须包含 id、title、chapter_range（对象，含 start 和 end 正整数，start <= end）。
+            acts 每项必须包含 id、title、chapter_range（对象，含 start 和 end 正整数，start <= end），完整剧本需连续覆盖 chapter 1 到 chapter_count。
             scenes 每项必须包含 id、act_id、chapter_index、source_chapter_id、title、location、time、scene_purpose、action、dialogues、source_excerpt、ai_expansion。
             act_id 必须引用 acts 中已定义的 id；chapter_index 不能超过 source.chapter_count。
             dialogues 每项应包含 speaker、line，可包含 emotion。
-            characters 需要从 chapter_summaries 与 scene_plan 中归纳人物名或稳定人物标识。
+            characters 需要从 chapter_summaries 与 scene_plan 中归纳人物名或稳定人物标识，并包含 id、name、role、description、aliases、goal、motivation、first_appearance_chapter_id、source_chapter_ids。
             action 需要把心理、情绪和抽象叙述转译为可拍动作、表情、道具、沉默或转场。
             dialogues 需要基于场景冲突生成可编辑对白，避免角色口吻趋同。
             ai_expansion 为 boolean；当 action 或 dialogues 含源文摘录外的影视化、压缩、转场或对白改写时必须为 true。
@@ -304,7 +304,7 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
         merged.put("metadata", first.getOrDefault("metadata", defaultMetadata(context)));
         merged.put("source", defaultSource(context));
         merged.put("characters", mergeCharacters(context, documents));
-        merged.put("acts", List.of(defaultAct(context)));
+        merged.put("acts", defaultActs(context));
         merged.put("scenes", mergeScenes(documents));
         return normalizeDocument(context, merged, context.scenePlan());
     }
@@ -318,7 +318,7 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
         normalized.put("metadata", normalizeMetadata(context, document.get("metadata")));
         normalized.put("source", defaultSource(context));
         normalized.put("characters", mergeCharacters(context, List.of(document)));
-        normalized.put("acts", List.of(defaultAct(context)));
+        normalized.put("acts", defaultActs(context));
         normalized.put("scenes", normalizeScenes(document.get("scenes"), scenePlan, context.chapterCount()));
         return normalized;
     }
@@ -360,12 +360,26 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
         return source;
     }
 
-    private Map<String, Object> defaultAct(PipelineContext context) {
+    private List<Map<String, Object>> defaultActs(PipelineContext context) {
+        int chapterCount = Math.max(1, context.chapterCount());
+        if (chapterCount < 3) {
+            return List.of(defaultAct("act_1", "第一幕", "完成小说改编剧本主线", 1, chapterCount));
+        }
+        int firstEnd = Math.max(1, chapterCount / 3);
+        int secondEnd = Math.max(firstEnd + 1, chapterCount * 2 / 3);
+        return List.of(
+                defaultAct("act_1", "第一幕", "建立人物、目标与初始冲突", 1, firstEnd),
+                defaultAct("act_2", "第二幕", "推进阻碍、选择与关系变化", firstEnd + 1, secondEnd),
+                defaultAct("act_3", "第三幕", "完成高潮、抉择与结局", secondEnd + 1, chapterCount)
+        );
+    }
+
+    private Map<String, Object> defaultAct(String id, String title, String dramaticFunction, int start, int end) {
         Map<String, Object> act = new LinkedHashMap<>();
-        act.put("id", "act_1");
-        act.put("title", "第一幕");
-        act.put("chapter_range", Map.of("start", 1, "end", context.chapterCount()));
-        act.put("dramatic_function", "完成小说改编剧本主线");
+        act.put("id", id);
+        act.put("title", title);
+        act.put("chapter_range", Map.of("start", start, "end", end));
+        act.put("dramatic_function", dramaticFunction);
         return act;
     }
 
@@ -394,19 +408,63 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
                     .distinct()
                     .forEach(name -> byName.put(name, Map.of(
                             "name", name,
-                            "role", "人物",
+                            "role", "主要人物",
                             "description", "来自章节摘要的人物。"
                     )));
         }
         List<Map<String, Object>> result = new ArrayList<>();
         int index = 1;
         for (Map<String, Object> character : byName.values()) {
-            Map<String, Object> copy = new LinkedHashMap<>(character);
-            copy.put("id", "character_%03d".formatted(index++));
-            copy.putIfAbsent("name", copy.get("id"));
-            result.add(copy);
+            result.add(normalizeCharacter(context, character, index++));
         }
         return result;
+    }
+
+    private Map<String, Object> normalizeCharacter(PipelineContext context, Map<String, Object> character, int index) {
+        Map<String, Object> normalized = new LinkedHashMap<>(character);
+        String name = firstText(normalized.get("name"), normalized.get("id"), "人物%03d".formatted(index));
+        normalized.put("id", firstText(normalized.get("id"), "character_%03d".formatted(index)));
+        normalized.put("name", name);
+        normalized.put("role", firstText(normalized.get("role"), "主要人物"));
+        normalized.put("description", firstText(normalized.get("description"), "根据章节摘要归纳的剧中人物。"));
+        normalized.put("aliases", stringList(normalized.get("aliases")));
+        normalized.put("goal", firstText(normalized.get("goal"), normalized.get("objective"), "推进当前剧情目标。"));
+        normalized.put("motivation", firstText(normalized.get("motivation"), "围绕核心冲突采取行动。"));
+        normalized.put(
+                "first_appearance_chapter_id",
+                firstText(normalized.get("first_appearance_chapter_id"), firstChapterIdForCharacter(context, name))
+        );
+        List<String> sourceChapterIds = stringList(normalized.get("source_chapter_ids"));
+        if (sourceChapterIds.isEmpty()) {
+            sourceChapterIds = stringList(normalized.get("sourceChapterIds"));
+        }
+        if (sourceChapterIds.isEmpty()) {
+            sourceChapterIds = sourceChapterIdsForCharacter(context, name);
+        }
+        normalized.put("source_chapter_ids", sourceChapterIds);
+        return normalized;
+    }
+
+    private String firstChapterIdForCharacter(PipelineContext context, String characterName) {
+        return sourceChapterIdsForCharacter(context, characterName).stream()
+                .findFirst()
+                .orElse("chapter_1");
+    }
+
+    private List<String> sourceChapterIdsForCharacter(PipelineContext context, String characterName) {
+        List<String> sourceChapterIds = context.chapterSummaries().stream()
+                .filter(summary -> summary.characters().stream().anyMatch(name -> name.equals(characterName)))
+                .map(ChapterSummary::chapterId)
+                .distinct()
+                .toList();
+        if (!sourceChapterIds.isEmpty()) {
+            return sourceChapterIds;
+        }
+        return context.chapterSummaries().stream()
+                .map(ChapterSummary::chapterId)
+                .findFirst()
+                .map(List::of)
+                .orElse(List.of("chapter_1"));
     }
 
     @SuppressWarnings("unchecked")
@@ -421,7 +479,6 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
                 if (item instanceof Map<?, ?> scene) {
                     Map<String, Object> copy = new LinkedHashMap<>((Map<String, Object>) scene);
                     copy.put("id", "scene_%03d".formatted(scenes.size() + 1));
-                    copy.put("act_id", "act_1");
                     scenes.add(copy);
                 }
             }
@@ -459,7 +516,7 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
         chapterIndex = Math.max(1, Math.min(Math.max(1, chapterCount), chapterIndex <= 0 ? 1 : chapterIndex));
 
         scene.put("id", "scene_%03d".formatted(sceneIndex));
-        scene.put("act_id", "act_1");
+        scene.put("act_id", actIdForChapter(chapterIndex, chapterCount));
         scene.put("chapter_index", chapterIndex);
         scene.put("source_chapter_id", firstText(
                 raw.get("source_chapter_id"),
@@ -522,6 +579,21 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
         return dialogues;
     }
 
+    private String actIdForChapter(int chapterIndex, int chapterCount) {
+        if (chapterCount < 3) {
+            return "act_1";
+        }
+        int firstEnd = Math.max(1, chapterCount / 3);
+        int secondEnd = Math.max(firstEnd + 1, chapterCount * 2 / 3);
+        if (chapterIndex <= firstEnd) {
+            return "act_1";
+        }
+        if (chapterIndex <= secondEnd) {
+            return "act_2";
+        }
+        return "act_3";
+    }
+
     private ScenePlan.Scene findScene(ScenePlan scenePlan, String sceneId, int index) {
         if (hasText(sceneId)) {
             for (ScenePlan.Scene scene : scenePlan.scenes()) {
@@ -559,6 +631,17 @@ public class LlmScriptYamlGenerationStage implements ScriptYamlGenerationStage {
             return number.intValue();
         }
         return 0;
+    }
+
+    private List<String> stringList(Object value) {
+        if (!(value instanceof List<?> rawValues)) {
+            return List.of();
+        }
+        return rawValues.stream()
+                .map(this::text)
+                .filter(this::hasText)
+                .distinct()
+                .toList();
     }
 
     private String dumpYaml(Map<String, Object> document) {

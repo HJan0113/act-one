@@ -27,7 +27,7 @@
 1. 只输出 YAML 文本，不要输出 Markdown 代码围栏或解释文字。
 2. schema_version 固定为 "1.0"，kind 固定为 "screenplay_draft"。
 3. source.type 固定为 "novel"，source.generation_mode 固定为 "ai_pipeline"，source.chapter_count 为项目章节总数（正整数）。
-4. acts 每项必须包含 id、title、chapter_range（对象，含 start 和 end 正整数，start <= end）。
+4. acts 每项必须包含 id、title、chapter_range（对象，含 start 和 end 正整数，start <= end）。完整剧本必须覆盖 chapter 1 到 chapter_count；chapter_count >= 3 时优先输出 act_1、act_2、act_3 三幕，章节区间连续、不重叠、不遗漏。
 5. characters、acts、scenes 必须是数组；不要输出 relationships 顶层字段。
 6. characters 从 chapter_summaries 和 scene_plan 中归纳，必须补齐人物卡片字段：
    - id: 稳定 snake_case，优先拼音/英文，不使用中文
@@ -51,7 +51,7 @@
        first_appearance_chapter_id: "chapter_1"
        source_chapter_ids: ["chapter_1"]
 7. scene.characters 使用 characters[].id；dialogues[].speaker 使用 characters[].name 或“旁白”。
-8. scene 的 act_id、chapter_index、source_chapter_id、title、location、time、scene_purpose、source_excerpt 必须来自 scene_plan 或章节摘要，不得改变原作关键事实。
+8. scene 的 act_id、chapter_index、source_chapter_id、title、location、time、scene_purpose、source_excerpt 必须来自 scene_plan 或章节摘要，不得改变原作关键事实；act_id 必须落在该 scene.chapter_index 所属 chapter_range 对应的 act。
 9. scene.action 必须把心理描写、抽象情绪和叙述性信息转译为可拍的动作、表情、道具、空间调度、沉默或转场。
 10. scene.dialogues 必须基于 scene.conflict、scene.beats 和章节摘要生成可编辑对白；speaker 使用角色名或“旁白”，避免所有角色同一种口吻；每个场景通常 1-2 句对白。
 11. 每个 scene 必须输出布尔字段 ai_expansion；当 action 或 dialogues 包含源文摘录外的影视化、压缩、转场或对白改写时设为 true；只有完全由 source_excerpt 直接支撑时才设为 false。

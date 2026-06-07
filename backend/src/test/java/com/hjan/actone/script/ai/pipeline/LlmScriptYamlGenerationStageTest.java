@@ -57,7 +57,7 @@ class LlmScriptYamlGenerationStageTest {
         assertThat(request.temperature()).isEqualTo(0.15D);
         assertThat(request.topP()).isEqualTo(0.8D);
         assertThat(request.maxTokens()).isEqualTo(4096);
-        assertThat(request.timeout()).isEqualTo(Duration.ofSeconds(120));
+        assertThat(request.timeout()).isEqualTo(Duration.ofSeconds(240));
         assertThat(request.messages()).singleElement()
                 .satisfies(message -> {
                     assertThat(message.role()).isEqualTo(ChatRole.USER);
@@ -66,6 +66,8 @@ class LlmScriptYamlGenerationStageTest {
                             .contains("<scene_plan>")
                             .contains("generation_scope: 完整剧本")
                             .contains("ai_expansion")
+                            .contains("first_appearance_chapter_id")
+                            .contains("source_chapter_ids")
                             .contains("\"characters\":[\"林夜\"")
                             .contains("\"id\":\"scene_001\"")
                             .contains("\"sourceExcerpt\":\"林夜缓缓睁开眼，瞳孔在黑暗中收缩如针。\"")
@@ -88,7 +90,11 @@ class LlmScriptYamlGenerationStageTest {
         String yaml = stage.generate(manySceneContext());
 
         assertThat(llmService.requests()).hasSize(2);
-        assertThat(yaml).contains("scene_001", "scene_007");
+        assertThat(yaml)
+                .contains("scene_001", "scene_007")
+                .contains("id: act_2", "id: act_3")
+                .contains("act_id: act_2", "act_id: act_3")
+                .contains("source_chapter_ids:");
         ScriptYamlValidationResult validationResult = validator.validate(yaml);
         assertThat(validationResult.valid()).isTrue();
     }
