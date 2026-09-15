@@ -43,6 +43,7 @@ Act One 的目标是让小说改编剧本的早期阶段更可控：
 - AI 应用开发中演示“模型编排 + 结构化生成 + 可追溯降级”的完整链路。
 
 ## 产品展示
+![转换页](backend/src/main/resources/image3.png)
 ![追溯页](backend/src/main/resources/image.png)
 ![热力页](backend/src/main/resources/image2.png)
 
