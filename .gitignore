@@ -4,6 +4,7 @@
 /notice/
 /docs/*
 !/docs/script-yaml-schema.md
+!/docs/development.md
 /output/
 /.claude/
 /.gstack/
